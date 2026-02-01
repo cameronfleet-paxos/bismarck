@@ -1,0 +1,25 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Hansi Flick - Soccer coach, neat professional appearance, short hair -->
+  <!-- Head -->
+  <ellipse cx="12" cy="8" rx="5" ry="5.5"/>
+  <!-- Short neat hair -->
+  <path d="M7 5 Q8 3 12 3 Q16 3 17 5 Q15 4 12 4 Q9 4 7 5"/>
+  <!-- Friendly focused eyes -->
+  <ellipse cx="9.5" cy="7.5" rx="1" ry="0.7" fill="black"/>
+  <ellipse cx="14.5" cy="7.5" rx="1" ry="0.7" fill="black"/>
+  <!-- Eyebrows - focused coach look -->
+  <path d="M8 6 L11 6.5" fill="none" stroke="black" stroke-width="0.4"/>
+  <path d="M16 6 L13 6.5" fill="none" stroke="black" stroke-width="0.4"/>
+  <!-- Nose -->
+  <path d="M12 8 L12 10"/>
+  <!-- Slight smile - approachable -->
+  <path d="M10 11.5 Q12 12.5 14 11.5" fill="none" stroke="black" stroke-width="0.4"/>
+  <!-- Neck -->
+  <rect x="10" y="13" width="4" height="2"/>
+  <!-- Tracksuit/coaching jacket with zipper -->
+  <path d="M4 24 L7 15 L17 15 L20 24 Z"/>
+  <!-- Jacket collar -->
+  <path d="M9 15 L12 17 L15 15" fill="none" stroke="black" stroke-width="0.5"/>
+  <!-- Zipper line -->
+  <line x1="12" y1="17" x2="12" y2="24" stroke="black" stroke-width="0.5"/>
+</svg>

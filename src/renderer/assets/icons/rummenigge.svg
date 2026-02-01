@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Rummenigge - 80s style feathered hair, mustache -->
+  <!-- Big 80s feathered hair - KEY feature -->
+  <path d="M5 6c-1-3 2-5 7-5s8 2 7 5c0 1-1 2-1 2H6c0 0-1-1-1-2z"/>
+  <!-- Feathered sides -->
+  <path d="M4 7c-1 0-1 2 0 3l2-1v-2h-2z"/>
+  <path d="M20 7c1 0 1 2 0 3l-2-1v-2h2z"/>
+  <!-- Head -->
+  <ellipse cx="12" cy="11" rx="5" ry="5"/>
+  <!-- Prominent 80s MUSTACHE - KEY feature -->
+  <path d="M8 13c0 0 1-1 4-1s4 1 4 1v1.5c0 0-1.5 0.5-4 0.5s-4-0.5-4-0.5v-1.5z"/>
+  <!-- Thick mustache shape -->
+  <ellipse cx="12" cy="13.5" rx="3.5" ry="1.2"/>
+  <!-- 80s collar - wide -->
+  <path d="M7 17l-1 1-3-1v7h18v-7l-3 1-1-1h-10z"/>
+  <!-- Wide collar points -->
+  <path d="M7 17l2 3h6l2-3"/>
+</svg>

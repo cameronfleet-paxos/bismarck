@@ -1,0 +1,26 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Karl Lagerfeld - ICONIC: white ponytail, dark sunglasses, high collar -->
+  <!-- Head -->
+  <ellipse cx="12" cy="8" rx="5" ry="5.5"/>
+  <!-- Signature white ponytail pulled back -->
+  <path d="M17 6 Q20 6 21 8 Q22 10 20 14 Q19 16 18 14 Q19 10 17 8 Z"/>
+  <ellipse cx="19" cy="14" rx="1.5" ry="2"/>
+  <!-- Hair slicked back -->
+  <path d="M7 4 Q12 2 17 4 Q17 6 12 5 Q7 6 7 4"/>
+  <!-- DARK SUNGLASSES - his absolute trademark -->
+  <ellipse cx="9" cy="8" rx="2.5" ry="1.8" fill="black" stroke="white" stroke-width="0.3"/>
+  <ellipse cx="15" cy="8" rx="2.5" ry="1.8" fill="black" stroke="white" stroke-width="0.3"/>
+  <line x1="11.5" y1="8" x2="12.5" y2="8" stroke="white" stroke-width="0.5"/>
+  <!-- Sharp nose -->
+  <path d="M12 9 L12 11"/>
+  <!-- Stern expression -->
+  <line x1="10" y1="12" x2="14" y2="12" stroke="black" stroke-width="0.4"/>
+  <!-- HIGH COLLAR - essential Lagerfeld look -->
+  <path d="M6 14 L8 13 L8 18 L6 24 Z"/>
+  <path d="M18 14 L16 13 L16 18 L18 24 Z"/>
+  <!-- Collar points up to chin -->
+  <path d="M8 13 L10 15 L10 13 Z"/>
+  <path d="M16 13 L14 15 L14 13 Z"/>
+  <!-- Jacket body -->
+  <rect x="8" y="15" width="8" height="9"/>
+</svg>

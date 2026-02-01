@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Powdered wig top - higher and more styled -->
+  <path d="M7 9 Q6 5 9 4 Q11 2 12 2 Q13 2 15 4 Q18 5 17 9 L16 7 Q17 5 14 4.5 Q12 3.5 12 3.5 Q12 3.5 10 4.5 Q7 5 8 7 Z"/>
+  <!-- Left side curl (single elegant roll) -->
+  <ellipse cx="5" cy="12" rx="2" ry="3"/>
+  <ellipse cx="5" cy="16" rx="1.5" ry="2"/>
+  <!-- Right side curl -->
+  <ellipse cx="19" cy="12" rx="2" ry="3"/>
+  <ellipse cx="19" cy="16" rx="1.5" ry="2"/>
+  <!-- Wig body -->
+  <path d="M7 8 L7 18 L17 18 L17 8"/>
+  <!-- Ribbon/bow at back (visible from side) -->
+  <path d="M15 19 Q17 20 19 19 Q20 21 19 22 Q17 23 15 22 Q14 21 15 19 Z"/>
+  <circle cx="17" cy="20" r="1"/>
+  <!-- Face -->
+  <ellipse cx="12" cy="14" rx="4" ry="5"/>
+</svg>

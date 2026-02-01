@@ -1,0 +1,21 @@
+# Bismark Mock Agent Container
+#
+# Minimal image for testing the Docker → stdout → StreamEventParser pipeline.
+# Outputs mock NDJSON events without calling the real Claude API.
+#
+# Build: ./build-mock.sh
+# Run: docker run --rm -e BISMARK_TASK_ID=test-1 bismark-agent-mock:test
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy the mock script
+COPY mock-claude.js .
+
+# Run as non-root user for consistency with real image
+RUN adduser -D -s /bin/sh agent
+USER agent
+
+# Use absolute path since working directory may be overridden by -w flag
+ENTRYPOINT ["node", "/app/mock-claude.js"]

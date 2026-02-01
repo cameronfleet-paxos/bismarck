@@ -1,0 +1,12 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Robotic/mannequin head - geometric electronic aesthetic -->
+  <!-- Angular head shape -->
+  <path d="M6 4h12v14h-12z"/>
+  <!-- Eye slots - horizontal band -->
+  <rect x="7" y="8" width="10" height="2" fill="black"/>
+  <!-- Mouth grid -->
+  <rect x="8" y="13" width="8" height="1" fill="black"/>
+  <rect x="8" y="15" width="8" height="1" fill="black"/>
+  <!-- Neck/shoulders -->
+  <path d="M8 18h8v2h2v4h-12v-4h2z"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Dramatic wild wavy hair -->
+  <path d="M3 11 Q2 8 4 6 Q3 4 5 3 Q7 1 9 2 Q11 1 12 1 Q13 1 15 2 Q17 1 19 3 Q21 4 20 6 Q22 8 21 11 L20 10 Q21 7 19 6 Q20 4 17 4 Q18 2 15 3 Q14 2 12 2 Q10 2 9 3 Q6 2 7 4 Q4 4 5 6 Q3 7 4 10 Z"/>
+  <!-- Wavy hair texture -->
+  <path d="M6 8 Q7 6 9 7 Q10 5 12 6 Q14 5 15 7 Q17 6 18 8"/>
+  <!-- Face -->
+  <ellipse cx="12" cy="15" rx="5" ry="6"/>
+  <!-- Intense furrowed brow -->
+  <path d="M7 12 L10 11 M14 11 L17 12"/>
+  <!-- Stern expression lines -->
+  <path d="M9 13 L10 12.5 M14 12.5 L15 13"/>
+</svg>

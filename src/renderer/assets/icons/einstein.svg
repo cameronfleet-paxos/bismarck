@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Wild frizzy hair sticking out in all directions -->
+  <path d="M2 9 Q1 7 3 5 Q2 3 5 3 Q4 1 7 2 Q9 0 12 1 Q15 0 17 2 Q20 1 21 3 Q23 3 22 5 Q24 7 22 9 Q23 11 21 12 L21 10 Q20 8 18 9 Q19 7 17 7 Q18 5 16 5 Q17 4 14 4 Q15 3 12 3 Q9 3 10 4 Q8 4 9 5 Q7 5 8 7 Q6 7 7 9 Q5 8 4 10 L4 12 Q2 11 2 9 Z"/>
+  <!-- Face -->
+  <ellipse cx="12" cy="15" rx="5.5" ry="6"/>
+  <!-- Bushy mustache -->
+  <path d="M6.5 16 Q8 14.5 12 14.5 Q16 14.5 17.5 16 Q16 17.5 12 17.5 Q8 17.5 6.5 16 Z"/>
+</svg>

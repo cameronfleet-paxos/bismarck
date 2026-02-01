@@ -1,0 +1,21 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Werner Herzog - Contemplative, distinctive nose, serious expression -->
+  <!-- Head -->
+  <ellipse cx="12" cy="9" rx="5.5" ry="6.5"/>
+  <!-- Hair - receding, wavy -->
+  <path d="M7 5 Q8 2 12 2 Q16 2 17 5 Q14 4 12 4 Q10 4 7 5"/>
+  <!-- Distinctive prominent nose -->
+  <path d="M12 7 L13 10 L14 12 L12 13 L10 12 Z"/>
+  <!-- Deep-set contemplative eyes -->
+  <ellipse cx="9" cy="8" rx="1.2" ry="0.8" fill="black"/>
+  <ellipse cx="15" cy="8" rx="1.2" ry="0.8" fill="black"/>
+  <!-- Furrowed brow -->
+  <path d="M7 6 L11 7" fill="none" stroke="black" stroke-width="0.4"/>
+  <path d="M17 6 L13 7" fill="none" stroke="black" stroke-width="0.4"/>
+  <!-- Stern mouth -->
+  <line x1="10" y1="14" x2="14" y2="14" stroke="black" stroke-width="0.5"/>
+  <!-- Neck -->
+  <rect x="10" y="15" width="4" height="3"/>
+  <!-- Shoulders with jacket collar -->
+  <path d="M4 24 L7 18 L10 19 L12 17 L14 19 L17 18 L20 24 Z"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Nico Rosberg - Sleek F1 helmet with aerodynamic profile -->
+  <path d="M4.5 12.5c0-5 3.5-8.5 7.5-8.5s7.5 3.5 7.5 8.5c0 2-0.5 3.5-1.5 4.5l-1.5 1.5v1.5c0 0.5-0.5 1-1 1H8.5c-0.5 0-1-0.5-1-1v-1.5L6 17c-1-1-1.5-2.5-1.5-4.5z"/>
+  <!-- Aerodynamic chin spoiler -->
+  <path d="M8 18h8l-1 2H9z" fill="white"/>
+  <!-- Visor - wide curved opening -->
+  <ellipse cx="12" cy="11" rx="5.5" ry="4" fill="black" opacity="0.35"/>
+  <!-- Visor slit - horizontal curved -->
+  <path d="M6.5 10.5c1-0.5 3.5-1 5.5-1s4.5 0.5 5.5 1v2.5c-1 0.3-3.5 0.5-5.5 0.5s-4.5-0.2-5.5-0.5z" fill="black" opacity="0.7"/>
+</svg>

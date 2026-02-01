@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Receding hair, neat -->
+  <path d="M7 7 Q6 5 8 4 Q10 3 12 3 Q14 3 16 4 Q18 5 17 7 L16 6 Q15 4.5 12 4.5 Q9 4.5 8 6 Z"/>
+  <!-- Head/Face -->
+  <ellipse cx="12" cy="12" rx="5.5" ry="6"/>
+  <!-- Round glasses - left lens -->
+  <circle cx="9" cy="10" r="2.5" fill="none" stroke="white" stroke-width="1"/>
+  <!-- Round glasses - right lens -->
+  <circle cx="15" cy="10" r="2.5" fill="none" stroke="white" stroke-width="1"/>
+  <!-- Glasses bridge -->
+  <path d="M11.5 10 L12.5 10" fill="none" stroke="white" stroke-width="0.8"/>
+  <!-- Neat beard -->
+  <path d="M7 14 Q7 18 12 20 Q17 18 17 14 Q15 13 12 13 Q9 13 7 14 Z"/>
+  <!-- Cigar sticking out of mouth -->
+  <rect x="17" y="14" width="6" height="1.5" rx="0.5"/>
+  <ellipse cx="23" cy="14.75" rx="0.8" ry="1"/>
+</svg>

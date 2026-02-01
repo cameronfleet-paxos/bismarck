@@ -1,0 +1,15 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Angela Merkel - Bob haircut and diamond hands pose -->
+  <!-- Head with distinctive bob -->
+  <ellipse cx="12" cy="6" rx="5" ry="5.5"/>
+  <!-- Bob haircut sides -->
+  <path d="M7 3 Q6 6 7 9 L8 8 Q7.5 5 8 3 Z"/>
+  <path d="M17 3 Q18 6 17 9 L16 8 Q16.5 5 16 3 Z"/>
+  <!-- Shoulders/body -->
+  <path d="M6 14 Q6 11 9 10 L15 10 Q18 11 18 14 L18 20 L6 20 Z"/>
+  <!-- Diamond hands (Merkel-Raute) - her iconic pose -->
+  <path d="M10 15 L12 13 L14 15 L12 17 Z"/>
+  <!-- Arms forming diamond -->
+  <path d="M6 14 Q8 13 10 15"/>
+  <path d="M18 14 Q16 13 14 15"/>
+</svg>

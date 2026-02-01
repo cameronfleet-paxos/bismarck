@@ -1,0 +1,19 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Klaus Kinski - Wild eyes, intense expression, disheveled hair -->
+  <!-- Head -->
+  <ellipse cx="12" cy="10" rx="6" ry="7"/>
+  <!-- Wild disheveled hair -->
+  <path d="M6 6 L4 2 L7 5 L6 1 L9 4 L10 0 L12 4 L14 0 L15 4 L18 1 L17 5 L20 2 L18 6 Q12 3 6 6"/>
+  <!-- Intense hollow eyes -->
+  <ellipse cx="9" cy="9" rx="2" ry="1.5" fill="black"/>
+  <ellipse cx="15" cy="9" rx="2" ry="1.5" fill="black"/>
+  <!-- Wild stare pupils -->
+  <circle cx="9" cy="9" r="0.8"/>
+  <circle cx="15" cy="9" r="0.8"/>
+  <!-- Gaunt cheeks -->
+  <path d="M6 11 Q7 13 7 14" fill="none" stroke="black" stroke-width="0.5"/>
+  <path d="M18 11 Q17 13 17 14" fill="none" stroke="black" stroke-width="0.5"/>
+  <!-- Neck and shoulders -->
+  <rect x="10" y="16" width="4" height="3"/>
+  <path d="M4 24 L8 19 L16 19 L20 24 Z"/>
+</svg>

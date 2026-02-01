@@ -1,0 +1,23 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Joseph Beuys - SIGNATURE FELT HAT and vest - essential elements -->
+  <!-- Felt hat - wide brim, distinctive trilby/fedora shape -->
+  <ellipse cx="12" cy="4" rx="8" ry="2"/>
+  <path d="M5 4 Q5 2 12 1 Q19 2 19 4 L17 4 Q17 3 12 2.5 Q7 3 7 4 Z"/>
+  <rect x="7" y="2" width="10" height="3" rx="1"/>
+  <!-- Head under hat -->
+  <ellipse cx="12" cy="9" rx="4.5" ry="4"/>
+  <!-- Intense eyes -->
+  <circle cx="10" cy="8.5" r="0.8" fill="black"/>
+  <circle cx="14" cy="8.5" r="0.8" fill="black"/>
+  <!-- Nose -->
+  <path d="M12 9 L12 11"/>
+  <!-- Mouth -->
+  <line x1="10" y1="12" x2="14" y2="12" stroke="black" stroke-width="0.4"/>
+  <!-- Neck -->
+  <rect x="10" y="13" width="4" height="2"/>
+  <!-- Vest over shirt - his signature look -->
+  <path d="M5 24 L7 15 L9 16 L9 24 Z"/>
+  <path d="M19 24 L17 15 L15 16 L15 24 Z"/>
+  <!-- Shirt underneath -->
+  <path d="M9 16 L9 24 L15 24 L15 16 L12 18 Z"/>
+</svg>

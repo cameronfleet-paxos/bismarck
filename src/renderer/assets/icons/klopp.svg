@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Klopp - Baseball cap, thick glasses, big toothy smile -->
+  <!-- Baseball cap -->
+  <path d="M4 6h16l1-2H3l1 2z"/>
+  <path d="M5 6c0-2 3-3 7-3s7 1 7 3H5z"/>
+  <!-- Cap brim -->
+  <path d="M4 6h10v1.5H4z"/>
+  <!-- Head -->
+  <ellipse cx="12" cy="11" rx="5" ry="5"/>
+  <!-- THICK rectangular glasses - KEY feature -->
+  <rect x="6" y="9" width="4.5" height="3" rx="0.5"/>
+  <rect x="13.5" y="9" width="4.5" height="3" rx="0.5"/>
+  <rect x="10.5" y="10" width="3" height="1"/>
+  <!-- Big toothy smile -->
+  <path d="M8 14h8v2c0 1-2 2-4 2s-4-1-4-2v-2z"/>
+  <path d="M9 14v1h1v-1h1v1h1v-1h1v1h1v-1h1v1h-6v-1z" fill="black" opacity="0.3"/>
+  <!-- Stubble/beard area -->
+  <path d="M7 13c0 3 2 5 5 5s5-2 5-5" fill="none"/>
+  <!-- Shoulders -->
+  <path d="M6 19c-2 0.5-3 2-3 3v2h18v-2c0-1-1-2.5-3-3h-12z"/>
+</svg>

@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "Error: bd binary not available in container" >&2
+echo "The bd CLI needs to be built for Linux and placed at docker/bd" >&2
+exit 1

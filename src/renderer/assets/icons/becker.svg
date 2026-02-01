@@ -1,0 +1,29 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Boris Becker - Tennis player, red hair in 80s, headband -->
+  <!-- HEADBAND - signature 80s tennis look -->
+  <rect x="6" y="3" width="12" height="2" rx="0.5"/>
+  <!-- Head -->
+  <ellipse cx="12" cy="8" rx="5" ry="5"/>
+  <!-- 80s fluffy hair above headband -->
+  <path d="M6 4 Q5 2 8 1 Q12 0 16 1 Q19 2 18 4"/>
+  <path d="M7 3 Q6 1 9 0.5"/>
+  <path d="M17 3 Q18 1 15 0.5"/>
+  <!-- Hair sides -->
+  <path d="M6 5 Q5 7 6 9"/>
+  <path d="M18 5 Q19 7 18 9"/>
+  <!-- Intense competitive eyes -->
+  <ellipse cx="9.5" cy="7.5" rx="1.2" ry="0.9" fill="black"/>
+  <ellipse cx="14.5" cy="7.5" rx="1.2" ry="0.9" fill="black"/>
+  <!-- Nose -->
+  <path d="M12 8 L12 10"/>
+  <!-- Determined expression -->
+  <path d="M10 11 L14 11" stroke="black" stroke-width="0.5"/>
+  <!-- Strong jaw -->
+  <path d="M7 9 Q7 13 12 13 Q17 13 17 9"/>
+  <!-- Neck -->
+  <rect x="10" y="13" width="4" height="2"/>
+  <!-- Tennis polo collar -->
+  <path d="M5 24 L7 15 L10 16 L12 14 L14 16 L17 15 L19 24 Z"/>
+  <!-- Collar detail -->
+  <path d="M10 16 L12 14 L14 16" fill="none" stroke="black" stroke-width="0.8"/>
+</svg>

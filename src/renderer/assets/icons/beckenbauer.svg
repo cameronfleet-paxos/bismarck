@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Der Kaiser - distinguished, slicked back hair, confident regal pose -->
+  <!-- Slicked back hair with volume -->
+  <path d="M7 4c0-1 1.5-2 5-2s5 1 5 2c0 1-1 2-1 3h-8c0-1-1-2-1-3z"/>
+  <!-- Head with strong features -->
+  <ellipse cx="12" cy="9" rx="5" ry="5.5"/>
+  <!-- Distinguished neck and shoulders - confident stance -->
+  <path d="M8 14c-3 1-5 3-5 6v2h18v-2c0-3-2-5-5-6l-2 2h-4l-2-2z"/>
+  <!-- Collar detail for elegance -->
+  <path d="M10 14l2 3 2-3"/>
+</svg>

@@ -1,0 +1,210 @@
+# Bismark
+
+Electron app for managing Claude Code workspaces.
+
+## Installation
+
+To build and install the app to `~/Applications`:
+
+```bash
+./scripts/install.sh
+```
+
+## Development
+
+### Starting the dev server
+
+**Basic development** (two processes):
+
+1. **Start Vite dev server** (serves the renderer/frontend):
+   ```bash
+   npm run dev
+   ```
+
+2. **Start Electron** (in a separate terminal):
+   ```bash
+   npm run dev:electron
+   ```
+
+The Vite server must be running first on `localhost:5173` before starting Electron.
+
+**Development with CDP** (for automated testing):
+
+Use the unified command that starts all services:
+
+```bash
+npm run dev:cdp        # Start Vite, Electron+CDP, and CDP server
+npm run dev:cdp:clean  # Kill existing processes first, then start
+npm run dev:check      # Check if all services are running
+```
+
+Ports used:
+- **5173**: Vite dev server
+- **9222**: Electron CDP endpoint
+- **9333**: CDP HTTP server
+
+These commands are excluded from sandbox mode in `.claude/settings.local.json` since Electron requires macOS bootstrap permissions.
+
+### Building
+
+```bash
+npm run build
+```
+
+This compiles both the main process TypeScript and the Vite renderer.
+
+## Automated Testing
+
+### Self-Testing Workflow
+
+**When making UI changes, always self-test before asking the user for feedback.** Use the testing skills to verify your changes work correctly:
+
+1. **Start the test environment**: `/bismark:start-test` (runs `npm run dev:cdp:clean`)
+2. **Take screenshots to verify UI state**: `/bismark:screenshot`
+3. **Run interactive tests**: `/bismark:test <scenario>`
+
+Only ask the user/operator for input if:
+- You encounter an issue you cannot diagnose from screenshots/state
+- The change requires subjective feedback (design decisions, UX preferences)
+- Tests pass but you need confirmation on edge cases
+
+### Running with CDP (Chrome DevTools Protocol)
+
+The easiest way to start with CDP is the unified command:
+
+```bash
+npm run dev:cdp:clean  # Start all services with cleanup
+npm run dev:check      # Verify services are running
+```
+
+This starts:
+- Vite dev server (port 5173)
+- Electron with CDP (port 9222)
+- CDP HTTP server (port 9333)
+
+CDP enables:
+- Taking screenshots: `Page.captureScreenshot`
+- Executing JS: `Runtime.evaluate`
+- Simulating user input via KeyboardEvent dispatch
+
+### CDP Connection
+
+1. Get WebSocket URL: `curl http://localhost:9222/json`
+2. Find the "Bismark" page target
+3. Connect to `webSocketDebuggerUrl`
+
+### Testing Skills (Use These!)
+
+These skills are the primary way to test changes:
+
+| Skill | Purpose |
+|-------|---------|
+| `/bismark:start-test` | Start app with CDP enabled for testing |
+| `/bismark:screenshot` | Capture current UI state as PNG |
+| `/bismark:test <scenario>` | Run automated interaction test |
+
+**Recommended workflow after making changes:**
+```
+1. /bismark:start-test     # Start fresh test instance
+2. /bismark:screenshot     # Verify initial state
+3. <interact via CDP>      # Test your changes
+4. /bismark:screenshot     # Verify final state
+```
+
+### Test Scripts
+
+Located in `scripts/test/`:
+
+- `dev-with-cdp.js` - **Unified startup script** - starts Vite, Electron+CDP, and CDP server
+- `cdp-server.js` - HTTP server for fast CDP interactions (started automatically by dev-with-cdp.js)
+- `cdp-helper.js` - Shared CDP connection module (used by cdp-server.js)
+
+### CDP Server
+
+The CDP server maintains a persistent WebSocket connection, making interactions ~50ms instead of ~2s per action.
+
+**The CDP server is started automatically by `npm run dev:cdp:clean`.** You don't need to start it manually.
+
+**Use curl to interact:**
+```bash
+# Health check
+curl -s localhost:9333/health
+
+# Take screenshot
+curl -s "localhost:9333/screenshot?path=/tmp/claude/bismark-screenshot.png"
+
+# Get app state
+curl -s localhost:9333/state
+
+# Evaluate JavaScript
+curl -s -X POST localhost:9333/eval -d 'document.title'
+
+# Click element
+curl -s -X POST localhost:9333/click -d '{"selector":"button"}'
+curl -s -X POST localhost:9333/click -d '{"text":"Submit"}'
+
+# Type into input
+curl -s -X POST localhost:9333/type -d '{"selector":"input","text":"hello"}'
+
+# Press key with modifiers
+curl -s -X POST localhost:9333/key -d '{"key":"d","meta":true,"shift":true}'
+
+# Toggle dev console
+curl -s localhost:9333/toggle-dev-console
+
+# Start mock agent
+curl -s -X POST localhost:9333/mock-agent -d '{"taskId":"test-1"}'
+```
+
+### Dev Console (Development Only)
+
+Press `Cmd+Shift+D` to toggle the dev console for:
+- Running mock headless agents
+- Testing event flow without API costs
+- Viewing real-time event logs
+
+### Monitoring Debug Logs
+
+Each plan has a debug log at `~/.bismark/plans/<planId>/debug.log`. To monitor a running plan:
+
+```bash
+# Find the active plan ID
+cat ~/.bismark/plans.json | jq '.[] | select(.status == "in_progress") | .id'
+
+# Tail the debug log (replace <planId> with actual ID)
+tail -f ~/.bismark/plans/<planId>/debug.log
+
+# Filter for important events only
+tail -f ~/.bismark/plans/<planId>/debug.log | grep -E "\[INFO\]|\[WARN\]|\[ERROR\]"
+
+# Filter for worktree/task activity
+tail -f ~/.bismark/plans/<planId>/debug.log | grep -E "(worktree|task|agent)"
+```
+
+You can also check task status directly:
+```bash
+cd ~/.bismark/plans/<planId>
+bd --sandbox list --json | jq '.[] | {id, status, labels}'
+```
+
+### Useful CDP Patterns
+
+```javascript
+// Execute JS in renderer
+await send('Runtime.evaluate', {
+  expression: 'window.electronAPI.devStartMockAgent("test-1")',
+  awaitPromise: true,
+  returnByValue: true
+});
+
+// Simulate keyboard shortcut
+await send('Runtime.evaluate', {
+  expression: `window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'd', metaKey: true, shiftKey: true, bubbles: true
+  }))`
+});
+
+// Take screenshot
+const { data } = await send('Page.captureScreenshot', { format: 'png' });
+fs.writeFileSync('screenshot.png', Buffer.from(data, 'base64'));
+```

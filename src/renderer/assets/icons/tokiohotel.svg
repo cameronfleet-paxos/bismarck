@@ -1,0 +1,21 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bill Kaulitz's iconic dramatic spiky/tall hair -->
+  <!-- Tall dramatic spiky hair - the KEY identifier -->
+  <path d="M12 0l-1 6h2z"/>
+  <path d="M10 1l-2 7h2z"/>
+  <path d="M14 1l2 7h-2z"/>
+  <path d="M8 3l-3 6h2z"/>
+  <path d="M16 3l3 6h-2z"/>
+  <path d="M6 5l-2 5h2z"/>
+  <path d="M18 5l2 5h-2z"/>
+  <!-- Hair mass connecting spikes -->
+  <path d="M5 9h14v4h-14z"/>
+  <!-- Face - angular/dramatic -->
+  <path d="M7 12h10l-1 7c0 1-2 2-4 2s-4-1-4-2z"/>
+  <!-- Dark dramatic eye makeup -->
+  <ellipse cx="9" cy="15" rx="1.5" ry="1" fill="black"/>
+  <ellipse cx="15" cy="15" rx="1.5" ry="1" fill="black"/>
+  <!-- Neck and shoulders -->
+  <rect x="10" y="20" width="4" height="1"/>
+  <path d="M6 21h12v3h-12z"/>
+</svg>

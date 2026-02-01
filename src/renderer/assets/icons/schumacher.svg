@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Michael Schumacher - Classic F1 helmet with angular visor -->
+  <path d="M4 12c0-5 3.5-8 8-8s8 3 8 8c0 2-0.5 3.5-1.5 4.5L17 18v2c0 0.5-0.5 1-1 1H8c-0.5 0-1-0.5-1-1v-2l-1.5-1.5C4.5 15.5 4 14 4 12z"/>
+  <!-- Visor - distinctive angular shape -->
+  <path d="M6 11c0-3.5 2.5-6 6-6s6 2.5 6 6c0 1-0.3 2-0.8 2.5l-0.7 0.5H7.5l-0.7-0.5C6.3 13 6 12 6 11z" fill="black" opacity="0.4"/>
+  <!-- Visor opening - horizontal strip -->
+  <rect x="6.5" y="10" width="11" height="3" rx="0.5" fill="black" opacity="0.7"/>
+</svg>

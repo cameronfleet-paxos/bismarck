@@ -1,0 +1,22 @@
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <!-- 80s big curly hair, feminine silhouette -->
+  <!-- Big voluminous 80s curly hair -->
+  <ellipse cx="12" cy="7" rx="9" ry="6"/>
+  <circle cx="4" cy="8" r="3"/>
+  <circle cx="20" cy="8" r="3"/>
+  <circle cx="5" cy="5" r="2.5"/>
+  <circle cx="19" cy="5" r="2.5"/>
+  <circle cx="8" cy="3" r="2"/>
+  <circle cx="16" cy="3" r="2"/>
+  <circle cx="12" cy="2" r="2"/>
+  <!-- Face -->
+  <ellipse cx="12" cy="11" rx="4" ry="5"/>
+  <!-- Eyes and lips hint -->
+  <ellipse cx="10" cy="10" rx="0.8" ry="0.5" fill="black"/>
+  <ellipse cx="14" cy="10" rx="0.8" ry="0.5" fill="black"/>
+  <ellipse cx="12" cy="13" rx="1.5" ry="0.7" fill="black"/>
+  <!-- Neck -->
+  <rect x="10" y="15" width="4" height="2"/>
+  <!-- Shoulders -->
+  <path d="M5 18h14l1 6h-16z"/>
+</svg>

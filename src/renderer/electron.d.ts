@@ -1,0 +1,146 @@
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask } from '../shared/types'
+
+export interface ElectronAPI {
+  // Workspace management
+  getWorkspaces: () => Promise<Workspace[]>
+  saveWorkspace: (workspace: Workspace) => Promise<Workspace>
+  deleteWorkspace: (id: string) => Promise<void>
+
+  // Terminal management
+  createTerminal: (workspaceId: string) => Promise<string>
+  writeTerminal: (terminalId: string, data: string) => Promise<void>
+  resizeTerminal: (
+    terminalId: string,
+    cols: number,
+    rows: number
+  ) => Promise<void>
+  closeTerminal: (terminalId: string) => Promise<void>
+  stopWorkspace: (workspaceId: string) => Promise<void>
+
+  // State management
+  getState: () => Promise<AppState>
+  setFocusedWorkspace: (workspaceId: string | undefined) => Promise<void>
+
+  // Tab management
+  createTab: (name?: string) => Promise<AgentTab>
+  renameTab: (tabId: string, name: string) => Promise<void>
+  deleteTab: (
+    tabId: string
+  ) => Promise<{ success: boolean; workspaceIds: string[] }>
+  setActiveTab: (tabId: string) => Promise<void>
+  getTabs: () => Promise<AgentTab[]>
+  reorderWorkspaceInTab: (
+    tabId: string,
+    workspaceId: string,
+    newPosition: number
+  ) => Promise<boolean>
+  moveWorkspaceToTab: (
+    workspaceId: string,
+    targetTabId: string,
+    position?: number
+  ) => Promise<boolean>
+
+  // Waiting queue management
+  getWaitingQueue: () => Promise<string[]>
+  acknowledgeWaiting: (workspaceId: string) => Promise<void>
+
+  // Preferences management
+  getPreferences: () => Promise<AppPreferences>
+  setPreferences: (preferences: Partial<AppPreferences>) => Promise<AppPreferences>
+
+  // Plan management (Team Mode)
+  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy }) => Promise<Plan>
+  getPlans: () => Promise<Plan[]>
+  executePlan: (planId: string, referenceAgentId: string) => Promise<Plan | null>
+  startDiscussion: (planId: string, referenceAgentId: string) => Promise<Plan | null>
+  cancelDiscussion: (planId: string) => Promise<Plan | null>
+  cancelPlan: (planId: string) => Promise<Plan | null>
+  restartPlan: (planId: string) => Promise<Plan | null>
+  completePlan: (planId: string) => Promise<Plan | null>
+  requestFollowUps: (planId: string) => Promise<Plan | null>
+  getTaskAssignments: (planId: string) => Promise<TaskAssignment[]>
+  getPlanActivities: (planId: string) => Promise<PlanActivity[]>
+  getBeadTasks: (planId: string) => Promise<BeadTask[]>
+  setPlanSidebarOpen: (open: boolean) => Promise<void>
+  setActivePlanId: (planId: string | null) => Promise<void>
+  deletePlan: (planId: string) => Promise<void>
+  deletePlans: (planIds: string[]) => Promise<{ deleted: string[]; errors: Array<{ planId: string; error: string }> }>
+  clonePlan: (planId: string, options?: { includeDiscussion?: boolean }) => Promise<Plan>
+
+  // Headless agent management
+  getHeadlessAgentInfo: (taskId: string) => Promise<HeadlessAgentInfo | undefined>
+  getHeadlessAgentsForPlan: (planId: string) => Promise<HeadlessAgentInfo[]>
+  stopHeadlessAgent: (taskId: string) => Promise<void>
+
+  // OAuth token management
+  getOAuthToken: () => Promise<string | null>
+  setOAuthToken: (token: string) => Promise<boolean>
+  hasOAuthToken: () => Promise<boolean>
+  runOAuthSetup: () => Promise<string>
+  clearOAuthToken: () => Promise<boolean>
+
+  // Git repository management
+  detectGitRepository: (directory: string) => Promise<Repository | null>
+  getRepositories: () => Promise<Repository[]>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name'>>) => Promise<Repository | undefined>
+
+  // Terminal events
+  onTerminalData: (
+    callback: (terminalId: string, data: string) => void
+  ) => void
+  onTerminalExit: (callback: (terminalId: string, code: number) => void) => void
+
+  // Agent waiting events
+  onAgentWaiting: (callback: (workspaceId: string) => void) => void
+  onFocusWorkspace: (callback: (workspaceId: string) => void) => void
+  onMaximizeWorkspace: (callback: (workspaceId: string) => void) => void
+  onWaitingQueueChanged: (callback: (queue: string[]) => void) => void
+  onInitialState: (callback: (state: AppState) => void) => void
+
+  // Plan events (Team Mode)
+  onPlanUpdate: (callback: (plan: Plan) => void) => void
+  onPlanDeleted: (callback: (planId: string) => void) => void
+  onTaskAssignmentUpdate: (callback: (assignment: TaskAssignment) => void) => void
+  onPlanActivity: (callback: (activity: PlanActivity) => void) => void
+  onStateUpdate: (callback: (state: AppState) => void) => void
+  onTerminalCreated: (callback: (data: { terminalId: string; workspaceId: string }) => void) => void
+
+  // Headless agent events
+  onHeadlessAgentStarted: (callback: (data: { taskId: string; planId: string; worktreePath: string }) => void) => void
+  onHeadlessAgentUpdate: (callback: (info: HeadlessAgentInfo) => void) => void
+  onHeadlessAgentEvent: (callback: (data: { planId: string; taskId: string; event: StreamEvent }) => void) => void
+
+  // Bead task events
+  onBeadTasksUpdated: (callback: (planId: string) => void) => void
+
+  // Terminal queue status
+  onTerminalQueueStatus: (callback: (status: { queued: number; active: number; pending: string[] }) => void) => void
+
+  // External URL handling
+  openExternal: (url: string) => Promise<void>
+
+  // Open Docker Desktop
+  openDockerDesktop: () => Promise<{ success: boolean; error?: string }>
+
+  // File reading
+  readFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+
+  // Tray updates
+  updateTray: (count: number) => void
+
+  // Cleanup
+  removeAllListeners: () => void
+
+  // Dev test harness (development mode only)
+  devRunMockFlow?: (options?: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ planId: string; planDir: string; tasks: Array<{ id: string; subject: string }> } | undefined>
+  devStartMockAgent?: (taskId: string, planId?: string, worktreePath?: string, options?: { eventIntervalMs?: number }) => Promise<void>
+  devStopMock?: () => Promise<void>
+  devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
+  devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI
+  }
+}

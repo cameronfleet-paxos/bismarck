@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0f0f1a"/>
+    </linearGradient>
+    <linearGradient id="helmet" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8e8e8"/>
+      <stop offset="50%" stop-color="#d0d0d0"/>
+      <stop offset="100%" stop-color="#b8b8b8"/>
+    </linearGradient>
+    <linearGradient id="spike" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0f0f0"/>
+      <stop offset="100%" stop-color="#c0c0c0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="512" cy="512" r="480" fill="url(#bg)"/>
+
+  <!-- Pickelhaube helmet scaled from 24x32 viewBox to fit in 1024x1024 -->
+  <g transform="translate(192, 128) scale(26.67)">
+    <!-- Spike on top -->
+    <path d="M12 0 L13.5 8 L10.5 8 Z" fill="url(#spike)"/>
+
+    <!-- Helmet dome -->
+    <path d="M4 14 Q4 8 12 8 Q20 8 20 14 L20 20 Q20 24 12 26 Q4 24 4 20 Z" fill="url(#helmet)"/>
+
+    <!-- Visor/brim - left -->
+    <path d="M2 18 Q2 16 6 15 L6 17 Q4 17.5 4 18.5 Q4 20 6 20 L6 22 Q2 21 2 18 Z" fill="url(#helmet)"/>
+
+    <!-- Visor/brim - right -->
+    <path d="M22 18 Q22 16 18 15 L18 17 Q20 17.5 20 18.5 Q20 20 18 20 L18 22 Q22 21 22 18 Z" fill="url(#helmet)"/>
+
+    <!-- Chin strap hint -->
+    <path d="M6 24 Q6 28 12 30 Q18 28 18 24" fill="none" stroke="url(#helmet)" stroke-width="1.5"/>
+  </g>
+</svg>

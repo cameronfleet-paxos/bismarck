@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Monk's tonsure - bald top with ring of hair -->
+  <!-- Outer hair ring -->
+  <path d="M5 12 Q4 9 6 7 Q5 5 8 5 L8 8 Q6 9 6 12 Z"/>
+  <path d="M19 12 Q20 9 18 7 Q19 5 16 5 L16 8 Q18 9 18 12 Z"/>
+  <path d="M8 5 Q10 4 12 4 Q14 4 16 5 L16 6 Q14 5 12 5 Q10 5 8 6 Z"/>
+  <!-- Bald top of head -->
+  <ellipse cx="12" cy="8" rx="4" ry="3"/>
+  <!-- Face -->
+  <ellipse cx="12" cy="14" rx="5" ry="5.5"/>
+  <!-- Simple robe collar - V-neck -->
+  <path d="M6 19 L12 22 L18 19 L18 24 L6 24 Z"/>
+  <!-- Collar line -->
+  <path d="M7 20 L12 23 L17 20" fill="none" stroke="white" stroke-width="0.5"/>
+</svg>
