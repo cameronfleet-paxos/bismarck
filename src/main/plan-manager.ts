@@ -59,6 +59,7 @@ import { execWithPath } from './exec-utils'
 
 let mainWindow: BrowserWindow | null = null
 let pollInterval: NodeJS.Timeout | null = null
+let syncInProgress = false // Guard against overlapping syncs
 
 const POLL_INTERVAL_MS = 5000 // Poll bd every 5 seconds
 const DEFAULT_MAX_PARALLEL_AGENTS = 4
@@ -241,16 +242,15 @@ function initializePlanState(): void {
   const plans = loadPlans()
 
   for (const plan of plans) {
-    // Only load state for active plans
-    if (plan.status === 'delegating' || plan.status === 'in_progress' || plan.status === 'ready_for_review') {
-      // Load persisted activities into memory
-      const activities = loadPlanActivities(plan.id)
-      if (activities.length > 0) {
-        planActivities.set(plan.id, activities)
-        console.log(`[PlanManager] Loaded ${activities.length} activities for plan ${plan.id}`)
-      }
+    // Load activities for all plans (including completed) so history is viewable
+    const activities = loadPlanActivities(plan.id)
+    if (activities.length > 0) {
+      planActivities.set(plan.id, activities)
+      console.log(`[PlanManager] Loaded ${activities.length} activities for plan ${plan.id}`)
+    }
 
-      // Load persisted headless agent info into memory
+    // Only load headless agent info for active plans (they may need monitoring)
+    if (plan.status === 'delegating' || plan.status === 'in_progress' || plan.status === 'ready_for_review') {
       const agents = loadHeadlessAgentInfo(plan.id)
       for (const agent of agents) {
         if (agent.taskId) {
@@ -1374,6 +1374,23 @@ export function stopTaskPolling(): void {
  * @param planId - The ID of the plan to sync tasks for
  */
 async function syncTasksForPlan(planId: string): Promise<void> {
+  // Guard against overlapping syncs - prevents race conditions when creating worktrees
+  if (syncInProgress) {
+    return
+  }
+  syncInProgress = true
+
+  try {
+    await doSyncTasksForPlan(planId)
+  } finally {
+    syncInProgress = false
+  }
+}
+
+/**
+ * Internal implementation of sync - called by syncTasksForPlan with guard
+ */
+async function doSyncTasksForPlan(planId: string): Promise<void> {
   // Get the plan from in-memory cache (via getPlanById which loads from disk only if not cached)
   const activePlan = getPlanById(planId)
   const logCtx: LogContext = { planId }

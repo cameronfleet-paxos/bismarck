@@ -227,6 +227,19 @@ function App() {
     const loadedPlans = await window.electronAPI?.getPlans?.()
     if (loadedPlans) {
       setPlans(loadedPlans)
+
+      // Load activities for all plans (including completed plans for history viewing)
+      const activitiesMap = new Map<string, PlanActivity[]>()
+      for (const plan of loadedPlans) {
+        const activities = await window.electronAPI?.getPlanActivities?.(plan.id)
+        if (activities && activities.length > 0) {
+          activitiesMap.set(plan.id, activities)
+        }
+      }
+      if (activitiesMap.size > 0) {
+        setPlanActivities(activitiesMap)
+      }
+
       // Load task assignments and headless agents for the active plan if there is one
       const activePlan = loadedPlans.find(p => p.status === 'delegating' || p.status === 'in_progress')
       if (activePlan) {
