@@ -32,7 +32,7 @@ export interface PlanGitSummary {
   pullRequests?: PlanPullRequest[]  // For raise_prs strategy
 }
 
-// Repository configuration (stored in ~/.bismark/repositories.json)
+// Repository configuration (stored in ~/.bismarck/repositories.json)
 export interface Repository {
   id: string              // Hash of rootPath
   rootPath: string        // Absolute path to repository root
@@ -41,7 +41,7 @@ export interface Repository {
   remoteUrl?: string      // Origin remote URL
 }
 
-// Agent definition (stored in ~/.bismark/config.json)
+// Agent definition (stored in ~/.bismarck/config.json)
 export interface Agent {
   id: string
   name: string
@@ -85,14 +85,14 @@ export type OperatingMode = 'solo' | 'team'
 // Model for headless task agents
 export type AgentModel = 'opus' | 'sonnet' | 'haiku'
 
-// App preferences (stored in ~/.bismark/state.json)
+// App preferences (stored in ~/.bismarck/state.json)
 export interface AppPreferences {
   attentionMode: AttentionMode
   operatingMode: OperatingMode
   agentModel: AgentModel
 }
 
-// App state (stored in ~/.bismark/state.json)
+// App state (stored in ~/.bismarck/state.json)
 export interface AppState {
   activeWorkspaceIds: string[]
   tabs: AgentTab[]
@@ -176,7 +176,7 @@ export interface PlanWorktree {
   planId: string
   taskId: string
   repositoryId: string
-  path: string                  // e.g., ~/.bismark/plans/{planId}/worktrees/pax/fix-bug
+  path: string                  // e.g., ~/.bismarck/plans/{planId}/worktrees/pax/fix-bug
   branch: string
   agentId: string               // Task agent working in this worktree
   status: PlanWorktreeStatus    // ready_for_review = agent done, awaiting user review
@@ -268,7 +268,7 @@ export type HeadlessAgentStatus =
 
 // Container configuration for spawning Docker containers
 export interface ContainerConfig {
-  image: string           // Docker image name (e.g., "bismark-agent:latest")
+  image: string           // Docker image name (e.g., "bismarck-agent:latest")
   workingDir: string      // Path to mount as /workspace
   planDir?: string        // Path to mount as /plan (for bd commands)
   proxyHost?: string      // Override proxy URL (default: auto-detect)

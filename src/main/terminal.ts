@@ -145,7 +145,7 @@ export function createTerminal(
     }
   })
 
-  // Auto-accept workspace trust prompts for .bismark directories
+  // Auto-accept workspace trust prompts for .bismarck directories
   // This handles both the main terminal and subagents spawned by Claude's Task tool
   // The prompt shows "Yes, I trust this folder" as option 1
   // Buffer data to handle prompts that arrive across multiple chunks
@@ -164,11 +164,11 @@ export function createTerminal(
     }, 2000)
 
     // Check for the trust prompt in accumulated buffer
-    if (trustPromptBuffer.includes('Yes, I trust this folder') && trustPromptBuffer.includes('.bismark')) {
+    if (trustPromptBuffer.includes('Yes, I trust this folder') && trustPromptBuffer.includes('.bismarck')) {
       if (trustPromptDebounce) return
       trustPromptDebounce = true
       trustPromptBuffer = '' // Clear buffer once matched
-      console.log(`[Terminal] Auto-accepting workspace trust prompt for .bismark directory`)
+      console.log(`[Terminal] Auto-accepting workspace trust prompt for .bismarck directory`)
       // Send '1' to select "Yes, I trust this folder" after a short delay
       setTimeout(() => {
         ptyProcess.write('1\r')

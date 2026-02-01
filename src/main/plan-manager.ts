@@ -62,7 +62,7 @@ let pollInterval: NodeJS.Timeout | null = null
 
 const POLL_INTERVAL_MS = 5000 // Poll bd every 5 seconds
 const DEFAULT_MAX_PARALLEL_AGENTS = 4
-const DOCKER_IMAGE_NAME = 'bismark-agent:latest'
+const DOCKER_IMAGE_NAME = 'bismarck-agent:latest'
 
 // In-memory activity storage per plan
 const planActivities: Map<string, PlanActivity[]> = new Map()
@@ -144,7 +144,7 @@ export async function checkHeadlessModeAvailable(): Promise<{
       available: false,
       dockerAvailable: true,
       imageExists: false,
-      message: `Docker image '${DOCKER_IMAGE_NAME}' not found. Run: cd bismark/docker && ./build.sh`,
+      message: `Docker image '${DOCKER_IMAGE_NAME}' not found. Run: cd bismarck/docker && ./build.sh`,
     }
   }
 
@@ -300,7 +300,7 @@ export function createPlan(
     branchStrategy,
     // Generate feature branch name for feature_branch strategy
     featureBranch: branchStrategy === 'feature_branch'
-      ? `bismark/${planId.split('-')[1]}/feature`
+      ? `bismarck/${planId.split('-')[1]}/feature`
       : undefined,
     gitSummary: {
       commits: branchStrategy === 'feature_branch' ? [] : undefined,
@@ -359,7 +359,7 @@ export async function deletePlanById(planId: string): Promise<void> {
   // Remove from plans.json
   deletePlan(planId)
 
-  // Delete plan directory at ~/.bismark/plans/<planId>/
+  // Delete plan directory at ~/.bismarck/plans/<planId>/
   const planDir = getPlanDir(planId)
   try {
     await fs.rm(planDir, { recursive: true, force: true })
@@ -431,7 +431,7 @@ export async function clonePlan(
     worktrees: [],
     // Generate new feature branch name for feature_branch strategy
     featureBranch: source.branchStrategy === 'feature_branch'
-      ? `bismark/${newPlanId.split('-')[1]}/feature`
+      ? `bismarck/${newPlanId.split('-')[1]}/feature`
       : undefined,
     gitSummary: {
       commits: source.branchStrategy === 'feature_branch' ? [] : undefined,
@@ -848,7 +848,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   })
   addPlanActivity(planId, 'info', `Plan execution started with reference: ${referenceName}`)
 
-  // Ensure beads repo exists for this plan (creates ~/.bismark/plans/{plan_id}/)
+  // Ensure beads repo exists for this plan (creates ~/.bismarck/plans/{plan_id}/)
   const planDir = await ensureBeadsRepo(plan.id)
 
   // Update plan with reference agent and set status to delegating
@@ -1335,10 +1335,10 @@ IMPORTANT: All bd commands must run in ${planDir} directory.
 2. Create tasks: cd ${planDir} && bd --sandbox create --parent <epic-id> "task title"
 3. Set dependencies: cd ${planDir} && bd --sandbox dep <blocking-task-id> --blocks <blocked-task-id>
 4. Assign: cd ${planDir} && bd --sandbox update <task-id> --assignee <agent-name>
-5. Mark FIRST task ready: cd ${planDir} && bd --sandbox update <first-task-id> --add-label bismark-ready
+5. Mark FIRST task ready: cd ${planDir} && bd --sandbox update <first-task-id> --add-label bismarck-ready
 
 The orchestrator will automatically mark dependent tasks ready when their blockers complete.
-After marking a task with 'bismark-ready', Bismark will automatically send it to the assigned agent.`
+After marking a task with 'bismarck-ready', Bismark will automatically send it to the assigned agent.`
 
   return instructions
 }
@@ -1390,7 +1390,7 @@ async function syncTasksForPlan(planId: string): Promise<void> {
 
   try {
     // Get tasks marked as ready for Bismark (from the active plan's directory)
-    const readyTasks = await bdList(activePlan.id, { labels: ['bismark-ready'], status: 'open' })
+    const readyTasks = await bdList(activePlan.id, { labels: ['bismarck-ready'], status: 'open' })
     if (readyTasks.length > 0) {
       logger.info('plan', `Found ${readyTasks.length} ready tasks`, logCtx, {
         taskIds: readyTasks.map(t => t.id),
@@ -1627,8 +1627,8 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
 
       // Update bd labels
       await bdUpdate(planId, task.id, {
-        removeLabels: ['bismark-ready'],
-        addLabels: ['bismark-sent'],
+        removeLabels: ['bismarck-ready'],
+        addLabels: ['bismarck-sent'],
       })
 
       // Notify renderer about headless agent
@@ -1694,8 +1694,8 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
 
         // Update bd labels
         await bdUpdate(planId, task.id, {
-          removeLabels: ['bismark-ready'],
-          addLabels: ['bismark-sent'],
+          removeLabels: ['bismarck-ready'],
+          addLabels: ['bismarck-sent'],
         })
 
         addPlanActivity(planId, 'success', `Task ${task.id} started`, `Agent created in worktree: ${worktreeName}`)
@@ -1823,7 +1823,7 @@ Example for task bismark-abc.3:
   bd --sandbox update bismark-abc.3 --add-label "repo:pax" --add-label "worktree:remove-ca-3"
 
 Mark task ready for pickup:
-  bd --sandbox update <task-id> --add-label bismark-ready
+  bd --sandbox update <task-id> --add-label bismarck-ready
 
 Check task dependencies:
   bd --sandbox dep list <task-id> --direction=down
@@ -2047,7 +2047,7 @@ async function createTaskAgentWithWorktree(
   // Include task ID suffix to guarantee uniqueness across parallel task creation
   // Task IDs are like "bismark-6c8.1", extract the suffix after the dot
   const taskSuffix = task.id.includes('.') ? task.id.split('.').pop() : task.id.split('-').pop()
-  const baseBranchName = `bismark/${planId.split('-')[1]}/${worktreeName}-${taskSuffix}`
+  const baseBranchName = `bismarck/${planId.split('-')[1]}/${worktreeName}-${taskSuffix}`
 
   // Generate a unique branch name in case a branch with this name already exists
   // (can happen if a plan is restarted and old branches weren't cleaned up)
@@ -2839,7 +2839,7 @@ async function handleTaskCompletionStrategy(planId: string, taskId: string, work
 async function pushToFeatureBranch(plan: Plan, worktree: PlanWorktree, repository: Repository): Promise<void> {
   if (!plan.featureBranch) {
     // Create the feature branch if it doesn't exist
-    plan.featureBranch = `bismark/${plan.id.split('-')[1]}/feature`
+    plan.featureBranch = `bismarck/${plan.id.split('-')[1]}/feature`
     savePlan(plan)
   }
 
@@ -3202,12 +3202,12 @@ Help the user identify what additional work is needed. When they decide on tasks
 
 4. Mark tasks as ready for Bismark:
    \`\`\`bash
-   bd --sandbox update <task-id> --add-labels bismark-ready
+   bd --sandbox update <task-id> --add-labels bismarck-ready
    \`\`\`
 
 You can combine steps 3 and 4:
 \`\`\`bash
-bd --sandbox update <task-id> --add-labels "repo:${defaultRepo}" --add-labels "worktree:${defaultWorktree}" --add-labels bismark-ready
+bd --sandbox update <task-id> --add-labels "repo:${defaultRepo}" --add-labels "worktree:${defaultWorktree}" --add-labels bismarck-ready
 \`\`\`
 
 === ASKING QUESTIONS ===

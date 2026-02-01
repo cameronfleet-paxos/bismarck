@@ -115,7 +115,7 @@ export class HeadlessAgent extends EventEmitter {
     try {
       // Build container config
       const containerConfig: ContainerConfig = {
-        image: options.image || 'bismark-agent:latest',
+        image: options.image || 'bismarck-agent:latest',
         workingDir: options.worktreePath,
         planDir: options.planDir,
         planId: options.planId,

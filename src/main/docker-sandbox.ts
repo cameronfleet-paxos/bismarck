@@ -21,7 +21,7 @@ import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
 
 export interface ContainerConfig {
-  image: string // Docker image name (e.g., "bismark-agent:latest")
+  image: string // Docker image name (e.g., "bismarck-agent:latest")
   workingDir: string // Path to mount as /workspace
   planDir?: string // Path to mount as /plan (for bd commands)
   planId?: string // Plan ID for bd proxy commands
@@ -41,10 +41,10 @@ export interface ContainerResult {
 }
 
 // Default image name - should match what's built by Dockerfile
-const DEFAULT_IMAGE = 'bismark-agent:latest'
+const DEFAULT_IMAGE = 'bismarck-agent:latest'
 
 // Mock image for testing without real Claude API calls
-export const MOCK_IMAGE = 'bismark-agent-mock:test'
+export const MOCK_IMAGE = 'bismarck-agent-mock:test'
 
 // Event emitter for container lifecycle events
 export const containerEvents = new EventEmitter()
@@ -270,7 +270,7 @@ export async function checkDockerAvailable(): Promise<boolean> {
 }
 
 /**
- * Check if the bismark-agent image exists
+ * Check if the bismarck-agent image exists
  */
 export async function checkImageExists(
   imageName: string = DEFAULT_IMAGE
@@ -291,7 +291,7 @@ export async function checkImageExists(
 }
 
 /**
- * Build the bismark-agent Docker image
+ * Build the bismarck-agent Docker image
  */
 export async function buildAgentImage(
   dockerfilePath: string,

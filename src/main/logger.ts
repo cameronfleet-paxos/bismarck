@@ -1,9 +1,9 @@
 /**
- * Centralized Logger for Bismark
+ * Centralized Logger for Bismarck
  *
  * Provides structured logging with:
- * - Global debug log: /tmp/claude/bismark-debug.log
- * - Plan-specific logs: ~/.bismark/plans/{planId}/debug.log
+ * - Global debug log: /tmp/claude/bismarck-debug.log
+ * - Plan-specific logs: ~/.bismarck/plans/{planId}/debug.log
  * - Categories for filtering (plan, task, worktree, agent, git, bd, docker, proxy)
  * - Timing utilities for performance tracking
  * - Context (planId, taskId, agentId) for correlation
@@ -39,7 +39,7 @@ export interface LogContext {
 }
 
 // Global debug log path
-const GLOBAL_LOG_PATH = '/tmp/claude/bismark-debug.log'
+const GLOBAL_LOG_PATH = '/tmp/claude/bismarck-debug.log'
 
 // Ensure log directory exists
 function ensureLogDir(logPath: string): void {
@@ -51,7 +51,7 @@ function ensureLogDir(logPath: string): void {
 
 // Get plan-specific log path
 function getPlanLogPath(planId: string): string {
-  return path.join(os.homedir(), '.bismark', 'plans', planId, 'debug.log')
+  return path.join(os.homedir(), '.bismarck', 'plans', planId, 'debug.log')
 }
 
 // Format context for log line

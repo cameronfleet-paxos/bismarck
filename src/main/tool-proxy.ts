@@ -218,7 +218,7 @@ async function handleGhRequest(
  * (Duplicated from bd-client.ts to avoid circular dependency)
  */
 function getPlanDir(planId: string): string {
-  return path.join(os.homedir(), '.bismark', 'plans', planId)
+  return path.join(os.homedir(), '.bismarck', 'plans', planId)
 }
 
 /**
@@ -239,7 +239,7 @@ async function handleBdRequest(
 
     // Get plan ID from request body or header
     const planId =
-      body.planId || (req.headers['x-bismark-plan-id'] as string | undefined)
+      body.planId || (req.headers['x-bismarck-plan-id'] as string | undefined)
     if (!planId) {
       logger.warn('proxy', 'bd request missing planId')
       sendJson(res, 400, {

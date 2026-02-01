@@ -52,7 +52,7 @@ export function createHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] && exit 0
 
-MAPPING="$HOME/.bismark/sessions/\${SESSION_ID}.json"
+MAPPING="$HOME/.bismarck/sessions/\${SESSION_ID}.json"
 [ ! -f "$MAPPING" ] && exit 0
 
 # Read both values in one pass using grep (avoids jq startup overhead)
@@ -81,7 +81,7 @@ export function createNotificationHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] && exit 0
 
-MAPPING="$HOME/.bismark/sessions/\${SESSION_ID}.json"
+MAPPING="$HOME/.bismarck/sessions/\${SESSION_ID}.json"
 [ ! -f "$MAPPING" ] && exit 0
 
 # Read both values in one pass using grep (avoids jq startup overhead)
@@ -109,8 +109,8 @@ export function createSessionStartHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] || [ -z "$BISMARK_WORKSPACE_ID" ] || [ -z "$BISMARK_INSTANCE_ID" ] && exit 0
 
-mkdir -p "$HOME/.bismark/sessions"
-printf '{"workspaceId":"%s","instanceId":"%s"}' "$BISMARK_WORKSPACE_ID" "$BISMARK_INSTANCE_ID" > "$HOME/.bismark/sessions/\${SESSION_ID}.json"
+mkdir -p "$HOME/.bismarck/sessions"
+printf '{"workspaceId":"%s","instanceId":"%s"}' "$BISMARK_WORKSPACE_ID" "$BISMARK_INSTANCE_ID" > "$HOME/.bismarck/sessions/\${SESSION_ID}.json"
 exit 0
 `
 
@@ -150,7 +150,7 @@ export function configureClaudeHook(): void {
 
   // Configure Stop hook
   const stopHookExists = settings.hooks.Stop?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismark'))
+    config.hooks.some((hook) => hook.command.includes('bismarck'))
   )
 
   if (!stopHookExists) {
@@ -176,7 +176,7 @@ export function configureClaudeHook(): void {
 
   // Configure Notification hook for permission prompts
   const notificationHookExists = settings.hooks.Notification?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismark'))
+    config.hooks.some((hook) => hook.command.includes('bismarck'))
   )
 
   if (!notificationHookExists) {
@@ -200,7 +200,7 @@ export function configureClaudeHook(): void {
 
   // Configure SessionStart hook to create session-to-workspace mapping
   const sessionStartHookExists = settings.hooks.SessionStart?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismark'))
+    config.hooks.some((hook) => hook.command.includes('bismarck'))
   )
 
   if (!sessionStartHookExists) {
@@ -246,17 +246,17 @@ export function isHookConfigured(): boolean {
 
     const stopHookExists =
       settings.hooks?.Stop?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismark'))
+        config.hooks.some((hook) => hook.command.includes('bismarck'))
       ) ?? false
 
     const notificationHookExists =
       settings.hooks?.Notification?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismark'))
+        config.hooks.some((hook) => hook.command.includes('bismarck'))
       ) ?? false
 
     const sessionStartHookExists =
       settings.hooks?.SessionStart?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismark'))
+        config.hooks.some((hook) => hook.command.includes('bismarck'))
       ) ?? false
 
     return stopHookExists && notificationHookExists && sessionStartHookExists

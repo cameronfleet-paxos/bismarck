@@ -314,7 +314,7 @@ export interface MockOrchestratorOptions {
 /**
  * MockOrchestrator simulates the orchestrator behavior:
  * - Monitors for task completion
- * - Marks next task as bismark-ready when blocker completes
+ * - Marks next task as bismarck-ready when blocker completes
  * - Emits activity events to the renderer via IPC
  */
 export class MockOrchestrator extends EventEmitter {
@@ -443,7 +443,7 @@ export class MockOrchestrator extends EventEmitter {
 
           if (!hasOpenBlockers) {
             // All blockers are closed (or no blockers), mark as ready
-            await execAsync(`bd --sandbox --db "${dbPath}" label add "${task.id}" bismark-ready`)
+            await execAsync(`bd --sandbox --db "${dbPath}" label add "${task.id}" bismarck-ready`)
             console.log('[MockOrchestrator] Marked task ready:', task.id, '(blocker completed:', completedTaskId, ')')
             this.emitActivity('info', `Marked task ready: ${task.id}`)
             if (this.onTaskReadyCallback) {
@@ -527,7 +527,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
 
   // Create a temp directory for the plan
   const planId = `mock-plan-${Date.now()}`
-  const planDir = path.join(os.tmpdir(), 'bismark-mock-plans', planId)
+  const planDir = path.join(os.tmpdir(), 'bismarck-mock-plans', planId)
 
   // Ensure directory exists
   await fs.promises.mkdir(planDir, { recursive: true })
@@ -560,14 +560,14 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
     console.log(`[MockPlanSetup] Created task ${i + 1}:`, tasks[i].id)
   }
 
-  // Mark first task as bismark-ready (simulates orchestrator marking it)
+  // Mark first task as bismarck-ready (simulates orchestrator marking it)
   // For parallel tasks, mark all as ready
   if (parallelTasks) {
     for (const task of tasks) {
-      await execAsync(bdCmd(planDir, `label add "${task.id}" bismark-ready`))
+      await execAsync(bdCmd(planDir, `label add "${task.id}" bismarck-ready`))
     }
   } else {
-    await execAsync(bdCmd(planDir, `label add "${tasks[0].id}" bismark-ready`))
+    await execAsync(bdCmd(planDir, `label add "${tasks[0].id}" bismarck-ready`))
   }
 
   console.log('[MockPlanSetup] Created tasks:', tasks.map(t => t.id))
@@ -714,7 +714,7 @@ export async function startMockAgentWithDocker(
   // Check if mock image exists
   const imageExists = await checkImageExists(MOCK_IMAGE)
   if (!imageExists) {
-    throw new Error(`Mock image ${MOCK_IMAGE} not found. Run: cd bismark/docker && ./build-mock.sh`)
+    throw new Error(`Mock image ${MOCK_IMAGE} not found. Run: cd bismarck/docker && ./build-mock.sh`)
   }
 
   // Create the real HeadlessAgent with mock image
@@ -865,8 +865,8 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
     parallelTasks: opts.parallelTasks,
   })
 
-  // NEW: Create a Bismark Plan object
-  const bismarkPlan: Plan = {
+  // NEW: Create a Bismarck Plan object
+  const bismarckPlan: Plan = {
     id: plan.planId,
     title: 'Mock Test Plan',
     description: 'Testing headless agent flow',
@@ -885,20 +885,20 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
 
   // NEW: Create plan tab BEFORE saving the plan
   const planTab = createTab('Mock Plan', { isPlanTab: true })
-  bismarkPlan.orchestratorTabId = planTab.id
+  bismarckPlan.orchestratorTabId = planTab.id
   console.log('[DevHarness] Created plan tab:', planTab.id, 'isPlanTab:', planTab.isPlanTab)
 
   // NEW: Save plan so renderer can find it
-  savePlan(bismarkPlan)
-  console.log('[DevHarness] Saved Bismark plan:', bismarkPlan.id)
+  savePlan(bismarckPlan)
+  console.log('[DevHarness] Saved Bismarck plan:', bismarckPlan.id)
 
   // NEW: Switch to the plan tab
   setActiveTab(planTab.id)
 
   // FIXED ORDER: Emit plan-update FIRST so renderer has the plan in state
   // before we start agents (otherwise getHeadlessAgentsForTab returns [])
-  mainWindow?.webContents.send('plan-update', bismarkPlan)
-  console.log('[DevHarness] Emitted plan-update for:', bismarkPlan.id)
+  mainWindow?.webContents.send('plan-update', bismarckPlan)
+  console.log('[DevHarness] Emitted plan-update for:', bismarckPlan.id)
 
   // THEN emit state update so renderer knows about the new tab
   const state = getState()
@@ -928,7 +928,7 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
     const imageExists = await checkImageExists(MOCK_IMAGE)
     if (!imageExists) {
       console.warn(`[DevHarness] Mock image ${MOCK_IMAGE} not found, falling back to JS mock`)
-      console.warn('[DevHarness] To use Docker mock, run: cd bismark/docker && ./build-mock.sh')
+      console.warn('[DevHarness] To use Docker mock, run: cd bismarck/docker && ./build-mock.sh')
       opts.useMockImage = false
     } else {
       console.log('[DevHarness] Using Docker mock image:', MOCK_IMAGE)
@@ -948,10 +948,10 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
 
   activeOrchestrator.on('plan-completed', () => {
     console.log('[DevHarness] Mock flow completed!')
-    bismarkPlan.status = 'completed'
-    bismarkPlan.updatedAt = new Date().toISOString()
-    savePlan(bismarkPlan)
-    mainWindow?.webContents.send('plan-update', bismarkPlan)
+    bismarckPlan.status = 'completed'
+    bismarckPlan.updatedAt = new Date().toISOString()
+    savePlan(bismarckPlan)
+    mainWindow?.webContents.send('plan-update', bismarckPlan)
   })
 
   await activeOrchestrator.start()
