@@ -1,7 +1,7 @@
-# Bismark
+# Bismarck
 
 <p align="center">
-  <img src="assets/icon.svg" alt="Bismark Logo" width="128" height="128">
+  <img src="assets/icon.svg" alt="Bismarck Logo" width="128" height="128">
 </p>
 
 A desktop application for monitoring and managing Claude Code agent workspaces.
@@ -28,7 +28,7 @@ npm install
 ./scripts/deploy-local.sh
 ```
 
-The app will be installed to `~/Applications/Bismark.app`.
+The app will be installed to `~/Applications/Bismarck.app`.
 
 ## Development
 
@@ -53,7 +53,7 @@ npm run dev:electron
 
 ## Configuration
 
-Bismark stores its configuration in `~/.bismark/`:
+Bismarck stores its configuration in `~/.bismarck/`:
 
 - `settings.json` - Application settings
 - `sockets/` - Unix sockets for agent communication
@@ -61,7 +61,7 @@ Bismark stores its configuration in `~/.bismark/`:
 
 ## Claude Code Integration
 
-On first launch, Bismark automatically configures Claude Code hooks in `~/.claude/settings.json`:
+On first launch, Bismarck automatically configures Claude Code hooks in `~/.claude/settings.json`:
 
 - **Stop Hook** - Notifies when an agent stops and needs input
 - **Notification Hook** - Notifies when an agent requires permission approval

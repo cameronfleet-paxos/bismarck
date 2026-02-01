@@ -1,4 +1,4 @@
-# Bismark
+# Bismarck
 
 Electron app for managing Claude Code workspaces.
 
@@ -59,9 +59,9 @@ This compiles both the main process TypeScript and the Vite renderer.
 
 **When making UI changes, always self-test before asking the user for feedback.** Use the testing skills to verify your changes work correctly:
 
-1. **Start the test environment**: `/bismark:start-test` (runs `npm run dev:cdp:clean`)
-2. **Take screenshots to verify UI state**: `/bismark:screenshot`
-3. **Run interactive tests**: `/bismark:test <scenario>`
+1. **Start the test environment**: `/bismarck:start-test` (runs `npm run dev:cdp:clean`)
+2. **Take screenshots to verify UI state**: `/bismarck:screenshot`
+3. **Run interactive tests**: `/bismarck:test <scenario>`
 
 Only ask the user/operator for input if:
 - You encounter an issue you cannot diagnose from screenshots/state
@@ -90,7 +90,7 @@ CDP enables:
 ### CDP Connection
 
 1. Get WebSocket URL: `curl http://localhost:9222/json`
-2. Find the "Bismark" page target
+2. Find the "Bismarck" page target
 3. Connect to `webSocketDebuggerUrl`
 
 ### Testing Skills (Use These!)
@@ -99,16 +99,16 @@ These skills are the primary way to test changes:
 
 | Skill | Purpose |
 |-------|---------|
-| `/bismark:start-test` | Start app with CDP enabled for testing |
-| `/bismark:screenshot` | Capture current UI state as PNG |
-| `/bismark:test <scenario>` | Run automated interaction test |
+| `/bismarck:start-test` | Start app with CDP enabled for testing |
+| `/bismarck:screenshot` | Capture current UI state as PNG |
+| `/bismarck:test <scenario>` | Run automated interaction test |
 
 **Recommended workflow after making changes:**
 ```
-1. /bismark:start-test     # Start fresh test instance
-2. /bismark:screenshot     # Verify initial state
+1. /bismarck:start-test     # Start fresh test instance
+2. /bismarck:screenshot     # Verify initial state
 3. <interact via CDP>      # Test your changes
-4. /bismark:screenshot     # Verify final state
+4. /bismarck:screenshot     # Verify final state
 ```
 
 ### Test Scripts
@@ -131,7 +131,7 @@ The CDP server maintains a persistent WebSocket connection, making interactions 
 curl -s localhost:9333/health
 
 # Take screenshot
-curl -s "localhost:9333/screenshot?path=/tmp/claude/bismark-screenshot.png"
+curl -s "localhost:9333/screenshot?path=/tmp/claude/bismarck-screenshot.png"
 
 # Get app state
 curl -s localhost:9333/state
@@ -165,25 +165,25 @@ Press `Cmd+Shift+D` to toggle the dev console for:
 
 ### Monitoring Debug Logs
 
-Each plan has a debug log at `~/.bismark/plans/<planId>/debug.log`. To monitor a running plan:
+Each plan has a debug log at `~/.bismarck/plans/<planId>/debug.log`. To monitor a running plan:
 
 ```bash
 # Find the active plan ID
-cat ~/.bismark/plans.json | jq '.[] | select(.status == "in_progress") | .id'
+cat ~/.bismarck/plans.json | jq '.[] | select(.status == "in_progress") | .id'
 
 # Tail the debug log (replace <planId> with actual ID)
-tail -f ~/.bismark/plans/<planId>/debug.log
+tail -f ~/.bismarck/plans/<planId>/debug.log
 
 # Filter for important events only
-tail -f ~/.bismark/plans/<planId>/debug.log | grep -E "\[INFO\]|\[WARN\]|\[ERROR\]"
+tail -f ~/.bismarck/plans/<planId>/debug.log | grep -E "\[INFO\]|\[WARN\]|\[ERROR\]"
 
 # Filter for worktree/task activity
-tail -f ~/.bismark/plans/<planId>/debug.log | grep -E "(worktree|task|agent)"
+tail -f ~/.bismarck/plans/<planId>/debug.log | grep -E "(worktree|task|agent)"
 ```
 
 You can also check task status directly:
 ```bash
-cd ~/.bismark/plans/<planId>
+cd ~/.bismarck/plans/<planId>
 bd --sandbox list --json | jq '.[] | {id, status, labels}'
 ```
 

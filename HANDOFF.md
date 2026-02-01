@@ -59,7 +59,7 @@ But never saw `completed (headless)` activity entry or `ready for review` - mean
    ```
 3. **Check gitSummary** after task completion:
    ```bash
-   cat ~/.bismark/plans.json | jq '.[] | select(.status == "in_progress") | .gitSummary'
+   cat ~/.bismarck/plans.json | jq '.[] | select(.status == "in_progress") | .gitSummary'
    ```
 4. **If still not working**, investigate why `agent.on('complete')` isn't firing - check HeadlessAgent.emit('complete') in headless-agent.ts
 
@@ -69,11 +69,11 @@ But never saw `completed (headless)` activity entry or `ready for review` - mean
 3. Wait for at least one task to complete naturally (container exits with code 0)
 4. Check debug.log for `Headless agent complete event received`:
    ```bash
-   grep "complete event received" ~/.bismark/plans/<planId>/debug.log
+   grep "complete event received" ~/.bismarck/plans/<planId>/debug.log
    ```
 5. Check gitSummary is populated:
    ```bash
-   cat ~/.bismark/plans.json | jq '.[] | select(.status == "in_progress") | .gitSummary'
+   cat ~/.bismarck/plans.json | jq '.[] | select(.status == "in_progress") | .gitSummary'
    ```
    Expected: `{ "commits": [ { "sha": "...", "message": "...", ... } ] }`
 
