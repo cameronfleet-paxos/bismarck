@@ -152,11 +152,14 @@ export function buildDependencyGraph(
   const nodes = new Map<string, TaskNode>()
   const edges: DependencyGraph['edges'] = []
 
+  // Filter out epics - they're organizational units, not displayable tasks
+  const tasks = beadTasks.filter(t => t.type !== 'epic')
+
   // Create maps for quick lookup
   const taskMap = new Map<string, BeadTask>()
   const assignmentMap = new Map<string, TaskAssignment>()
 
-  for (const task of beadTasks) {
+  for (const task of tasks) {
     taskMap.set(task.id, task)
   }
   for (const assignment of assignments) {
@@ -164,7 +167,7 @@ export function buildDependencyGraph(
   }
 
   // First pass: create all nodes
-  for (const task of beadTasks) {
+  for (const task of tasks) {
     const assignment = assignmentMap.get(task.id)
     const status = getNodeStatus(task, assignment, taskMap, assignmentMap)
 
@@ -187,7 +190,7 @@ export function buildDependencyGraph(
   }
 
   // Second pass: populate blocks relationships and create edges
-  for (const task of beadTasks) {
+  for (const task of tasks) {
     const node = nodes.get(task.id)
     if (!node) continue
 
