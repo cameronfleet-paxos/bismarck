@@ -85,12 +85,12 @@ function buildDockerArgs(config: ContainerConfig): string[] {
 
   // Pass plan ID for bd proxy commands
   if (config.planId) {
-    args.push('-e', `BISMARK_PLAN_ID=${config.planId}`)
+    args.push('-e', `BISMARCK_PLAN_ID=${config.planId}`)
   }
 
   // Pass host worktree path for git proxy commands
   // The git wrapper needs to know the host path to execute commands
-  args.push('-e', `BISMARK_HOST_WORKTREE_PATH=${config.workingDir}`)
+  args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${config.workingDir}`)
 
   // Pass Claude OAuth token or Anthropic API key to container
   // OAuth token is preferred for headless agents using Claude subscription

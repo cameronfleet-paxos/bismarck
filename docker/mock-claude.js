@@ -7,14 +7,14 @@
  *
  * Environment variables:
  *   MOCK_EVENT_INTERVAL_MS - Delay between events (default: 1500)
- *   BISMARK_TASK_ID - Task ID to include in events (default: 'mock-task')
+ *   BISMARCK_TASK_ID - Task ID to include in events (default: 'mock-task')
  *
  * Usage:
- *   docker run --rm -e BISMARK_TASK_ID=test-1 bismark-agent-mock:test
+ *   docker run --rm -e BISMARCK_TASK_ID=test-1 bismarck-agent-mock:test
  */
 
 const INTERVAL_MS = parseInt(process.env.MOCK_EVENT_INTERVAL_MS || '1500', 10)
-const TASK_ID = process.env.BISMARK_TASK_ID || 'mock-task'
+const TASK_ID = process.env.BISMARCK_TASK_ID || 'mock-task'
 
 /**
  * Generate the mock event sequence

@@ -109,8 +109,8 @@ export function createTerminal(
       ...process.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      BISMARK_WORKSPACE_ID: workspaceId,
-      BISMARK_INSTANCE_ID: getInstanceId(),
+      BISMARCK_WORKSPACE_ID: workspaceId,
+      BISMARCK_INSTANCE_ID: getInstanceId(),
       // Help Claude find its own executable for subagent spawning
       CLAUDE_CODE_ENTRY_POINT: process.env.CLAUDE_CODE_ENTRY_POINT || 'claude',
     },

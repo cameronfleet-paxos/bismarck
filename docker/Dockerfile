@@ -1,9 +1,9 @@
-# Bismark Agent Container
+# Bismarck Agent Container
 #
 # Runs Claude Code in headless mode with tool proxy support.
 #
-# Build: docker build -t bismark-agent:latest -f docker/Dockerfile docker/
-# Run: docker run --rm -v /path/to/worktree:/workspace bismark-agent:latest claude -p "..."
+# Build: docker build -t bismarck-agent:latest -f docker/Dockerfile docker/
+# Run: docker run --rm -v /path/to/worktree:/workspace bismarck-agent:latest claude -p "..."
 
 FROM node:20-bookworm
 

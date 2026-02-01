@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# bd CLI proxy wrapper for Bismark containers
+# bd CLI proxy wrapper for Bismarck containers
 #
 # Instead of running bd directly (which would require access to the host's
-# ~/.bismark/plans/ directory), this script proxies all bd commands to the
-# Bismark tool proxy server running on the host.
+# ~/.bismarck/plans/ directory), this script proxies all bd commands to the
+# Bismarck tool proxy server running on the host.
 #
 # The tool proxy:
 # - Executes bd commands in the correct plan directory on the host
@@ -17,10 +17,10 @@ set -e
 
 # Get proxy URL and plan ID from environment (set by docker run)
 PROXY_URL="${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
-PLAN_ID="${BISMARK_PLAN_ID:-}"
+PLAN_ID="${BISMARCK_PLAN_ID:-}"
 
 if [ -z "$PLAN_ID" ]; then
-  echo "Error: BISMARK_PLAN_ID environment variable not set" >&2
+  echo "Error: BISMARCK_PLAN_ID environment variable not set" >&2
   exit 1
 fi
 
@@ -31,7 +31,7 @@ ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
 # Make request to proxy
 RESPONSE=$(curl -s -X POST "${PROXY_URL}/bd" \
   -H "Content-Type: application/json" \
-  -H "X-Bismark-Plan-Id: ${PLAN_ID}" \
+  -H "X-Bismarck-Plan-Id: ${PLAN_ID}" \
   -d "{\"args\": ${ARGS_JSON}, \"planId\": \"${PLAN_ID}\"}")
 
 # Extract fields from response

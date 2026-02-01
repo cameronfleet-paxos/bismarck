@@ -31,7 +31,7 @@ const PORTS = {
 
 const PROJECT_DIR = path.resolve(__dirname, '../..');
 const DOCKER_DIR = path.join(PROJECT_DIR, 'docker');
-const MOCK_IMAGE = 'bismark-agent-mock:test';
+const MOCK_IMAGE = 'bismarck-agent-mock:test';
 const children = [];
 
 /**
@@ -150,7 +150,7 @@ async function cleanup() {
 
   // Also kill by process name pattern
   try {
-    execSync('pkill -f "electron.*bismark" 2>/dev/null || true', { encoding: 'utf-8' });
+    execSync('pkill -f "electron.*bismarck" 2>/dev/null || true', { encoding: 'utf-8' });
   } catch {}
 
   // Wait for ports to be free
@@ -404,7 +404,7 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  console.log('Starting Bismark development environment with CDP...');
+  console.log('Starting Bismarck development environment with CDP...');
   console.log('');
 
   try {

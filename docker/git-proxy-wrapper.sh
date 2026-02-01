@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# git CLI proxy wrapper for Bismark containers
+# git CLI proxy wrapper for Bismarck containers
 #
 # Instead of running git directly (which fails because the worktree's .git file
 # references a path on the host that doesn't exist in the container), this script
-# proxies all git commands to the Bismark tool proxy server running on the host.
+# proxies all git commands to the Bismarck tool proxy server running on the host.
 #
 # The tool proxy:
 # - Executes git commands in the actual worktree directory on the host
@@ -17,10 +17,10 @@ set -e
 
 # Get proxy URL and host worktree path from environment (set by docker run)
 PROXY_URL="${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
-HOST_WORKTREE_PATH="${BISMARK_HOST_WORKTREE_PATH:-}"
+HOST_WORKTREE_PATH="${BISMARCK_HOST_WORKTREE_PATH:-}"
 
 if [ -z "$HOST_WORKTREE_PATH" ]; then
-  echo "Error: BISMARK_HOST_WORKTREE_PATH environment variable not set" >&2
+  echo "Error: BISMARCK_HOST_WORKTREE_PATH environment variable not set" >&2
   echo "git commands must be proxied to the host because /workspace is a worktree" >&2
   exit 1
 fi

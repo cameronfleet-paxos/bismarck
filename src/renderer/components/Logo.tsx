@@ -31,7 +31,7 @@ export function Logo({ size = 'sm' }: LogoProps) {
         style={{ fontFamily: 'Inter' }}
         className={`font-extrabold ${isLarge ? 'text-3xl' : 'text-lg'}`}
       >
-        Bismark
+        Bismarck
       </span>
     </div>
   )

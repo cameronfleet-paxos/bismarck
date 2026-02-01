@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CDP (Chrome DevTools Protocol) Helper for Bismark Testing
+ * CDP (Chrome DevTools Protocol) Helper for Bismarck Testing
  *
  * Provides a clean API for interacting with the Electron app via CDP.
  * Requires the app to be running with --remote-debugging-port=9222
@@ -20,7 +20,7 @@ class CDPHelper {
   }
 
   /**
-   * Get the WebSocket URL for the Bismark page target
+   * Get the WebSocket URL for the Bismarck page target
    */
   async getWebSocketUrl() {
     return new Promise((resolve, reject) => {
@@ -30,15 +30,15 @@ class CDPHelper {
         res.on('end', () => {
           try {
             const targets = JSON.parse(data);
-            // Find the Bismark page target (not extension or service worker)
+            // Find the Bismarck page target (not extension or service worker)
             const pageTarget = targets.find(t =>
               t.type === 'page' &&
-              (t.title.includes('Bismark') || t.url.includes('localhost:5173'))
+              (t.title.includes('Bismarck') || t.url.includes('localhost:5173'))
             );
             if (pageTarget) {
               resolve(pageTarget.webSocketDebuggerUrl);
             } else {
-              reject(new Error('Could not find Bismark page target. Available targets: ' +
+              reject(new Error('Could not find Bismarck page target. Available targets: ' +
                 targets.map(t => `${t.type}: ${t.title}`).join(', ')));
             }
           } catch (e) {
@@ -285,8 +285,8 @@ class CDPHelper {
           return { hasReactRoot: true };
         }
         // Check for exposed state
-        if (window.__BISMARK_STATE__) {
-          return window.__BISMARK_STATE__;
+        if (window.__BISMARCK_STATE__) {
+          return window.__BISMARCK_STATE__;
         }
         // Return basic DOM state
         return {

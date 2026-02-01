@@ -6,7 +6,7 @@
  *
  * Security benefits:
  * - Tokens never enter containers
- * - Bismark controls what operations are allowed
+ * - Bismarck controls what operations are allowed
  * - Can log/audit all sensitive operations
  * - Easy to add rate limiting or approval flows later
  */
@@ -244,7 +244,7 @@ async function handleBdRequest(
       logger.warn('proxy', 'bd request missing planId')
       sendJson(res, 400, {
         success: false,
-        error: 'planId required (in body or X-Bismark-Plan-Id header)',
+        error: 'planId required (in body or X-Bismarck-Plan-Id header)',
       })
       return
     }

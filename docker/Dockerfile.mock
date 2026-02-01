@@ -1,10 +1,10 @@
-# Bismark Mock Agent Container
+# Bismarck Mock Agent Container
 #
 # Minimal image for testing the Docker → stdout → StreamEventParser pipeline.
 # Outputs mock NDJSON events without calling the real Claude API.
 #
 # Build: ./build-mock.sh
-# Run: docker run --rm -e BISMARK_TASK_ID=test-1 bismark-agent-mock:test
+# Run: docker run --rm -e BISMARCK_TASK_ID=test-1 bismarck-agent-mock:test
 
 FROM node:20-alpine
 

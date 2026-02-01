@@ -1,5 +1,5 @@
 /**
- * Cleanup orphaned processes and stale socket files from previous Bismark sessions.
+ * Cleanup orphaned processes and stale socket files from previous Bismarck sessions.
  */
 
 import * as fs from 'fs/promises'
@@ -64,16 +64,16 @@ async function cleanupStaleSocketDirs(): Promise<void> {
 }
 
 /**
- * Kill orphaned PTY processes that have BISMARK_WORKSPACE_ID env var set.
+ * Kill orphaned PTY processes that have BISMARCK_WORKSPACE_ID env var set.
  * These are child processes from previous sessions that weren't properly terminated.
  */
 async function cleanupOrphanedPtyProcesses(): Promise<void> {
   try {
-    // Use ps to find processes with BISMARK_WORKSPACE_ID in their environment
+    // Use ps to find processes with BISMARCK_WORKSPACE_ID in their environment
     // This works on macOS and Linux
-    // We look for shell processes (zsh, bash) that have the BISMARK env var
+    // We look for shell processes (zsh, bash) that have the BISMARCK env var
     const { stdout } = await execAsync(
-      'ps -eo pid,ppid,command | grep -E "BISMARK_|claude" | grep -v grep || true'
+      'ps -eo pid,ppid,command | grep -E "BISMARCK_|claude" | grep -v grep || true'
     )
 
     if (!stdout.trim()) {
@@ -86,7 +86,7 @@ async function cleanupOrphanedPtyProcesses(): Promise<void> {
     const { stdout: envOutput } = await execAsync(
       `for pid in $(pgrep -f "claude\\|node-pty"); do
         if ps -p $pid -o pid= > /dev/null 2>&1; then
-          env_vars=$(ps eww -p $pid 2>/dev/null | grep BISMARK_WORKSPACE_ID || true)
+          env_vars=$(ps eww -p $pid 2>/dev/null | grep BISMARCK_WORKSPACE_ID || true)
           if [ -n "$env_vars" ]; then
             echo $pid
           fi
@@ -118,7 +118,7 @@ async function cleanupOrphanedPtyProcesses(): Promise<void> {
 }
 
 /**
- * Kill all processes with a specific BISMARK_INSTANCE_ID.
+ * Kill all processes with a specific BISMARCK_INSTANCE_ID.
  * Used during graceful shutdown to ensure all child processes are terminated.
  */
 export async function killProcessesByInstanceId(instanceId: string): Promise<void> {
@@ -126,7 +126,7 @@ export async function killProcessesByInstanceId(instanceId: string): Promise<voi
     const { stdout } = await execAsync(
       `for pid in $(pgrep -f "node\\|zsh\\|bash"); do
         if ps -p $pid -o pid= > /dev/null 2>&1; then
-          env_vars=$(ps eww -p $pid 2>/dev/null | grep "BISMARK_INSTANCE_ID=${instanceId}" || true)
+          env_vars=$(ps eww -p $pid 2>/dev/null | grep "BISMARCK_INSTANCE_ID=${instanceId}" || true)
           if [ -n "$env_vars" ]; then
             echo $pid
           fi

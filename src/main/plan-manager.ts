@@ -510,7 +510,7 @@ function generateDiscussionId(): string {
 function buildDiscussionAgentPrompt(plan: Plan, codebasePath: string): string {
   const planDir = getPlanDir(plan.id)
 
-  return `[BISMARK DISCUSSION AGENT]
+  return `[BISMARCK DISCUSSION AGENT]
 Plan: ${plan.title}
 ${plan.description}
 
@@ -1320,7 +1320,7 @@ function buildReferencePrompt(plan: Plan, agents: Agent[]): string {
 
   const planDir = getPlanDir(plan.id)
 
-  const instructions = `[BISMARK PLAN REQUEST]
+  const instructions = `[BISMARCK PLAN REQUEST]
 Plan ID: ${plan.id}
 Title: ${plan.title}
 Description: ${plan.description}
@@ -1338,7 +1338,7 @@ IMPORTANT: All bd commands must run in ${planDir} directory.
 5. Mark FIRST task ready: cd ${planDir} && bd --sandbox update <first-task-id> --add-label bismarck-ready
 
 The orchestrator will automatically mark dependent tasks ready when their blockers complete.
-After marking a task with 'bismarck-ready', Bismark will automatically send it to the assigned agent.`
+After marking a task with 'bismarck-ready', Bismarck will automatically send it to the assigned agent.`
 
   return instructions
 }
@@ -1389,7 +1389,7 @@ async function syncTasksForPlan(planId: string): Promise<void> {
   logger.debug('plan', 'Syncing tasks from bd', logCtx)
 
   try {
-    // Get tasks marked as ready for Bismark (from the active plan's directory)
+    // Get tasks marked as ready for Bismarck (from the active plan's directory)
     const readyTasks = await bdList(activePlan.id, { labels: ['bismarck-ready'], status: 'open' })
     if (readyTasks.length > 0) {
       logger.info('plan', `Found ${readyTasks.length} ready tasks`, logCtx, {
@@ -1734,7 +1734,7 @@ function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository
 3. Close task: cd ${planDir} && bd --sandbox close ${task.id} --message "Completed"`
   }
 
-  const instructions = `[BISMARK TASK ASSIGNMENT]
+  const instructions = `[BISMARCK TASK ASSIGNMENT]
 Task ID: ${task.id}
 Title: ${task.title}
 
@@ -1779,7 +1779,7 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
 
   const maxParallel = plan.maxParallelAgents ?? DEFAULT_MAX_PARALLEL_AGENTS
 
-  const instructions = `[BISMARK ORCHESTRATOR]
+  const instructions = `[BISMARCK ORCHESTRATOR]
 Plan ID: ${plan.id}
 Title: ${plan.title}
 
@@ -1794,14 +1794,14 @@ ${repoList}
 
 === CONFIGURATION ===
 Max parallel agents: ${maxParallel}
-(Bismark will automatically queue tasks if this limit is reached)
+(Bismarck will automatically queue tasks if this limit is reached)
 
 === RULES ===
 1. DO NOT pick up or work on tasks yourself
 2. Assign tasks to repositories based on where the work should happen
 3. Worktree names MUST include the task number for uniqueness
    - Format: "<descriptive-name>-<task-number>" (e.g., "fix-login-1", "fix-login-2")
-   - Extract task number from task ID: "bismark-xyz.5" → use "5"
+   - Extract task number from task ID: "bismarck-xyz.5" → use "5"
    - This ensures each task gets its own worktree directory
 4. You can assign multiple tasks to the same repo for parallel work
 5. Mark tasks as ready ONLY when their dependencies are complete
@@ -1819,8 +1819,8 @@ List all tasks (including closed):
 Assign a task to a repository with worktree name:
   bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<descriptive-name>-<task-number>"
 
-Example for task bismark-abc.3:
-  bd --sandbox update bismark-abc.3 --add-label "repo:pax" --add-label "worktree:remove-ca-3"
+Example for task bismarck-abc.3:
+  bd --sandbox update bismarck-abc.3 --add-label "repo:pax" --add-label "worktree:remove-ca-3"
 
 Mark task ready for pickup:
   bd --sandbox update <task-id> --add-label bismarck-ready
@@ -1896,7 +1896,7 @@ IMPORTANT: Create tasks that match the structure in this file.
 `
     : ''
 
-  return `[BISMARK PLAN AGENT]
+  return `[BISMARCK PLAN AGENT]
 Plan ID: ${plan.id}
 Title: ${plan.title}
 
@@ -2045,7 +2045,7 @@ async function createTaskAgentWithWorktree(
   logger.info('worktree', `Creating worktree for task`, logCtx, { worktreeName })
 
   // Include task ID suffix to guarantee uniqueness across parallel task creation
-  // Task IDs are like "bismark-6c8.1", extract the suffix after the dot
+  // Task IDs are like "bismarck-6c8.1", extract the suffix after the dot
   const taskSuffix = task.id.includes('.') ? task.id.split('.').pop() : task.id.split('-').pop()
   const baseBranchName = `bismarck/${planId.split('-')[1]}/${worktreeName}-${taskSuffix}`
 
@@ -2378,13 +2378,13 @@ function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?:
 4. Close task with PR URL:
    bd close ${task.id} --message "PR: <url>"`
   } else {
-    // feature_branch strategy - just commit, Bismark handles pushing on completion
+    // feature_branch strategy - just commit, Bismarck handles pushing on completion
     completionInstructions = `2. Commit your changes with a clear message
 3. Close the task to signal completion:
    bd close ${task.id} --message "Completed: <brief summary>"`
   }
 
-  return `[BISMARK TASK - HEADLESS MODE]
+  return `[BISMARCK TASK - HEADLESS MODE]
 Task ID: ${task.id}
 Title: ${task.title}
 
@@ -2406,7 +2406,7 @@ All these commands work normally (they are proxied to the host automatically):
    Do NOT use --file or -F flags - file paths don't work across the proxy
    since files in the container aren't accessible to git on the host.
 
-   NOTE: Do NOT push your commits directly. Bismark will automatically push
+   NOTE: Do NOT push your commits directly. Bismarck will automatically push
    your commits to the shared feature branch when you close the task.
 
 2. GitHub CLI (gh):
@@ -3164,7 +3164,7 @@ async function buildFollowUpAgentPrompt(plan: Plan, completedTasks: BeadTask[]):
   // Generate a unique worktree name for follow-up tasks
   const defaultWorktree = `followup-${Date.now()}`
 
-  return `[BISMARK FOLLOW-UP AGENT]
+  return `[BISMARCK FOLLOW-UP AGENT]
 Plan: ${plan.title}
 ${plan.description}
 
@@ -3200,7 +3200,7 @@ Help the user identify what additional work is needed. When they decide on tasks
    bd --sandbox update <task-id> --add-labels "repo:${defaultRepo}" --add-labels "worktree:${defaultWorktree}"
    \`\`\`
 
-4. Mark tasks as ready for Bismark:
+4. Mark tasks as ready for Bismarck:
    \`\`\`bash
    bd --sandbox update <task-id> --add-labels bismarck-ready
    \`\`\`

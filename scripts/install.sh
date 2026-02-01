@@ -3,12 +3,12 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-echo "Building Bismark..."
+echo "Building Bismarck..."
 npm run build
 npm run dist
 
 echo "Installing to Applications..."
-rm -rf ~/Applications/Bismark.app
-cp -R dist/mac-arm64/Bismark.app ~/Applications/
+rm -rf ~/Applications/Bismarck.app
+cp -R dist/mac-arm64/Bismarck.app ~/Applications/
 
-echo "Done! Bismark installed to ~/Applications/Bismark.app"
+echo "Done! Bismarck installed to ~/Applications/Bismarck.app"

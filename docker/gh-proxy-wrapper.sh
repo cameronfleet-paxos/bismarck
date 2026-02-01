@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# gh CLI proxy wrapper for Bismark containers
+# gh CLI proxy wrapper for Bismarck containers
 #
 # Instead of running gh directly (which would require tokens in the container),
-# this script proxies all gh commands to the Bismark tool proxy server running
+# this script proxies all gh commands to the Bismarck tool proxy server running
 # on the host.
 #
 # The tool proxy holds the GitHub token securely and executes commands on behalf

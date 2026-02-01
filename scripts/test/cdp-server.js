@@ -122,7 +122,7 @@ async function handleRequest(req, res) {
   try {
     switch (path) {
       case '/screenshot': {
-        const outputPath = url.searchParams.get('path') || '/tmp/claude/bismark-screenshot.png';
+        const outputPath = url.searchParams.get('path') || '/tmp/claude/bismarck-screenshot.png';
         await cdp.screenshot(outputPath);
         sendJson(res, { success: true, path: outputPath });
         break;

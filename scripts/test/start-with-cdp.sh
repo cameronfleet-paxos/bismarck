@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Start Bismark with Chrome DevTools Protocol (CDP) enabled
+# Start Bismarck with Chrome DevTools Protocol (CDP) enabled
 #
 # This script starts the app with remote debugging on port 9222,
 # enabling automated testing via CDP.
@@ -21,8 +21,8 @@ cd "$PROJECT_DIR"
 # Handle --clean flag
 if [ "$1" = "--clean" ]; then
     echo "Cleaning up existing processes..."
-    pkill -f "electron.*bismark" 2>/dev/null || true
-    pkill -f "vite.*bismark" 2>/dev/null || true
+    pkill -f "electron.*bismarck" 2>/dev/null || true
+    pkill -f "vite.*bismarck" 2>/dev/null || true
     sleep 1
 fi
 
