@@ -1,7 +1,7 @@
 {
-  "name": "bismark",
+  "name": "bismarck",
   "version": "1.0.0",
-  "description": "Bismark - Desktop application for monitoring and managing Claude Code agents",
+  "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {
     "dev": "vite",
@@ -50,8 +50,8 @@
     "ws": "^8.19.0"
   },
   "build": {
-    "appId": "com.bismark.app",
-    "productName": "Bismark",
+    "appId": "com.bismarck.app",
+    "productName": "Bismarck",
     "directories": {
       "output": "dist"
     },
