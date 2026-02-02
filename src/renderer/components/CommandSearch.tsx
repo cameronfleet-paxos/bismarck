@@ -314,20 +314,20 @@ export function CommandSearch({
               <span className="text-xs text-muted-foreground">
                 Working directory: {selectedAgent?.directory}
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <button
                   onClick={() => handleSubmitPrompt('sonnet')}
                   disabled={!prompt.trim()}
-                  className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Launch Sonnet
+                  Sonnet
                 </button>
                 <button
                   onClick={() => handleSubmitPrompt('opus')}
                   disabled={!prompt.trim()}
-                  className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Launch Opus
+                  Opus
                 </button>
               </div>
             </div>
