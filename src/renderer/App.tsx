@@ -25,6 +25,7 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
+import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
 
@@ -967,7 +968,11 @@ function App() {
         <header className="border-b px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Logo />
-            <span className="text-lg font-medium">Settings</span>
+            <Breadcrumb
+              items={[
+                { label: 'Settings' }
+              ]}
+            />
           </div>
           <Button
             size="sm"
