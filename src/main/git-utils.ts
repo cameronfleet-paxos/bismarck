@@ -248,12 +248,25 @@ export async function createWorktree(
   const parentDir = path.dirname(worktreePath);
   await fs.mkdir(parentDir, { recursive: true });
 
-  // First, fetch to make sure we have latest remote refs
+  // Fetch the specific base branch with explicit refspec to ensure we have the latest
+  // This is critical when the base branch was recently pushed by another task agent
+  // A general 'git fetch origin' may not update the ref if it was just pushed
   try {
-    await gitExec('git fetch origin', repoPath, ctx);
+    await gitExec(
+      `git fetch origin "${baseBranch}:refs/remotes/origin/${baseBranch}" --force`,
+      repoPath,
+      ctx
+    );
+    logger.debug('worktree', 'Fetched base branch with explicit refspec', ctx, { baseBranch });
   } catch {
-    logger.debug('worktree', 'Fetch failed (network may be unavailable)', ctx);
-    // Ignore fetch errors (might not have network)
+    // Fallback to general fetch if explicit fetch fails (branch may not exist on remote yet)
+    logger.debug('worktree', 'Explicit fetch failed, trying general fetch', ctx, { baseBranch });
+    try {
+      await gitExec('git fetch origin', repoPath, ctx);
+    } catch {
+      logger.debug('worktree', 'Fetch failed (network may be unavailable)', ctx);
+      // Ignore fetch errors (might not have network)
+    }
   }
 
   // Create the worktree with a new branch based on the base branch
@@ -275,6 +288,19 @@ export async function createWorktree(
     );
     logger.timeEnd(`worktree-create-${worktreePath}`, 'worktree', 'Created worktree from local branch', ctx);
   }
+
+  // Verify the worktree has content (more than just .git)
+  // This catches cases where the base branch ref was stale
+  const files = await fs.readdir(worktreePath);
+  const nonGitFiles = files.filter(f => f !== '.git');
+  if (nonGitFiles.length === 0) {
+    logger.error('worktree', 'Worktree created but appears empty - base branch may be stale', ctx, {
+      baseBranch,
+      files,
+    });
+    throw new Error(`Worktree created but is empty. Base branch '${baseBranch}' may not have been fetched correctly.`);
+  }
+  logger.debug('worktree', 'Worktree verified with content', ctx, { fileCount: nonGitFiles.length });
 }
 
 /**
