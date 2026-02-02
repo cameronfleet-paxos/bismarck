@@ -42,7 +42,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
   const [plansEnabled, setPlansEnabled] = useState(false)
   const [agentModel, setAgentModel] = useState<AgentModel>('sonnet')
   const [showSaved, setShowSaved] = useState(false)
-  const [promptsExpanded, setPromptsExpanded] = useState(false)
+  const [promptsExpanded, setPromptsExpanded] = useState(true)
   const [promptStatus, setPromptStatus] = useState<PromptStatus>({
     orchestrator: false,
     planner: false,
