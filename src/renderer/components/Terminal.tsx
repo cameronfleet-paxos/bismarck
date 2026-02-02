@@ -116,19 +116,36 @@ export function Terminal({
   }, [theme])
 
   // Re-fit terminal when it becomes visible
+  // Uses multiple fit attempts with increasing delays to handle race conditions
+  // when returning from settings view (CSS hidden class removal + isVisible change)
   useEffect(() => {
     if (isVisible && fitAddonRef.current && xtermRef.current) {
-      // Small delay to ensure DOM has updated
-      const timer = setTimeout(() => {
-        fitAddonRef.current?.fit()
-        const term = xtermRef.current
-        if (term) {
-          const { cols, rows } = term
+      const fitTerminal = () => {
+        if (fitAddonRef.current && xtermRef.current) {
+          fitAddonRef.current.fit()
+          const { cols, rows } = xtermRef.current
           window.electronAPI.resizeTerminal(terminalId, cols, rows)
-          term.focus()
         }
+      }
+
+      // Multiple fit attempts with increasing delays to ensure at least one
+      // occurs after the browser has fully computed layout
+      const delays = [0, 50, 150, 300]
+      const timers = delays.map((delay) =>
+        setTimeout(() => {
+          requestAnimationFrame(fitTerminal)
+        }, delay)
+      )
+
+      // Focus after initial fit
+      const focusTimer = setTimeout(() => {
+        xtermRef.current?.focus()
       }, 50)
-      return () => clearTimeout(timer)
+
+      return () => {
+        timers.forEach(clearTimeout)
+        clearTimeout(focusTimer)
+      }
     }
   }, [isVisible, terminalId])
 
