@@ -159,6 +159,7 @@ export function getDefaultPreferences(): AppPreferences {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
+    gridSize: '2x2',
   }
 }
 
@@ -256,6 +257,11 @@ export function loadState(): AppState {
     // Migration: add agentModel if missing (default to 'sonnet')
     if (!state.preferences.agentModel) {
       state.preferences.agentModel = 'sonnet'
+      needsSave = true
+    }
+    // Migration: add gridSize if missing (default to '2x2')
+    if (!state.preferences.gridSize) {
+      state.preferences.gridSize = '2x2'
       needsSave = true
     }
     // Persist migrations

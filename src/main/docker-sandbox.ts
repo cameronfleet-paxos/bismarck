@@ -19,6 +19,7 @@ import { getProxyUrl } from './tool-proxy'
 import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
+import { loadSettings } from './settings-manager'
 
 export interface ContainerConfig {
   image: string // Docker image name (e.g., "bismarck-agent:latest")
@@ -61,7 +62,9 @@ const runningContainers: Map<
 /**
  * Build the docker run command arguments
  */
-function buildDockerArgs(config: ContainerConfig): string[] {
+async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
+  const settings = await loadSettings()
+
   const args: string[] = [
     'run',
     '--rm', // Remove container after exit
@@ -91,6 +94,24 @@ function buildDockerArgs(config: ContainerConfig): string[] {
   // Pass host worktree path for git proxy commands
   // The git wrapper needs to know the host path to execute commands
   args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${config.workingDir}`)
+
+  // Forward SSH agent for private repo access (Bazel, Go modules)
+  // This allows real git (used outside /workspace) to authenticate with GitHub
+  // On macOS, Docker Desktop provides a special socket path for SSH agent forwarding
+  // because direct Unix socket mounting isn't supported
+  if (settings.docker.sshAgent?.enabled !== false) {
+    if (process.platform === 'darwin') {
+      // Docker Desktop on macOS provides SSH agent at this fixed path
+      args.push('--mount', 'type=bind,src=/run/host-services/ssh-auth.sock,target=/ssh-agent')
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+      // The socket is owned by root:root, so add agent user to root group for access
+      args.push('--group-add', '0')
+    } else if (process.env.SSH_AUTH_SOCK) {
+      // On Linux, mount the actual SSH agent socket
+      args.push('-v', `${process.env.SSH_AUTH_SOCK}:/ssh-agent`)
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+    }
+  }
 
   // Pass Claude OAuth token or Anthropic API key to container
   // OAuth token is preferred for headless agents using Claude subscription
@@ -144,7 +165,7 @@ function buildDockerArgs(config: ContainerConfig): string[] {
 export async function spawnContainerAgent(
   config: ContainerConfig
 ): Promise<ContainerResult> {
-  const args = buildDockerArgs(config)
+  const args = await buildDockerArgs(config)
   const trackingId = `container-${Date.now()}`
   const logContext: LogContext = {
     planId: config.planId,

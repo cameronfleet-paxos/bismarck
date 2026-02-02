@@ -211,8 +211,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
+
+  // Settings management
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) =>
+    ipcRenderer.invoke('update-docker-resource-limits', limits),
+  addDockerImage: (image: string) =>
+    ipcRenderer.invoke('add-docker-image', image),
+  removeDockerImage: (image: string) =>
+    ipcRenderer.invoke('remove-docker-image', image),
+  updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) =>
+    ipcRenderer.invoke('update-tool-paths', paths),
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) =>
+    ipcRenderer.invoke('add-proxied-tool', tool),
+  removeProxiedTool: (id: string) =>
+    ipcRenderer.invoke('remove-proxied-tool', id),
+  updateDockerSshSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-ssh-settings', settings),
 
   // External URL handling
   openExternal: (url: string): Promise<void> =>

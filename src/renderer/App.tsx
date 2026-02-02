@@ -18,6 +18,7 @@ import { Terminal } from '@/renderer/components/Terminal'
 import { TabBar } from '@/renderer/components/TabBar'
 import { Logo } from '@/renderer/components/Logo'
 import { SettingsModal } from '@/renderer/components/SettingsModal'
+import { SettingsPage } from '@/renderer/components/SettingsPage'
 import { PlanSidebar } from '@/renderer/components/PlanSidebar'
 import { PlanCreator } from '@/renderer/components/PlanCreator'
 import { HeadlessTerminal } from '@/renderer/components/HeadlessTerminal'
@@ -25,6 +26,7 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
+import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
 
@@ -33,10 +35,16 @@ interface ActiveTerminal {
   workspaceId: string
 }
 
+// App-level routing
+type AppView = 'main' | 'settings'
+
 // Type for terminal write functions
 type TerminalWriter = (data: string) => void
 
 function App() {
+  // View routing
+  const [currentView, setCurrentView] = useState<AppView>('main')
+
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeTerminals, setActiveTerminals] = useState<ActiveTerminal[]>([])
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null)
@@ -50,6 +58,7 @@ function App() {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
+    gridSize: '2x2',
   })
 
   // Team mode state
@@ -164,6 +173,13 @@ function App() {
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to return to main view from settings
+      if (e.key === 'Escape' && currentView === 'settings') {
+        e.preventDefault()
+        setCurrentView('main')
+        return
+      }
+
       // Cmd/Ctrl+Shift+D to toggle dev console (development only)
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
         e.preventDefault()
@@ -214,7 +230,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -959,6 +975,12 @@ function App() {
     )
   }
 
+  // Settings view
+  if (currentView === 'settings') {
+    return <SettingsPage onBack={() => setCurrentView('main')} />
+  }
+
+  // Main workspace view
   return (
     <div className="h-screen bg-background flex flex-col">
       {/* Header */}
@@ -1009,7 +1031,7 @@ function App() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setCurrentView('settings')}
           >
             <Settings className="h-4 w-4" />
           </Button>

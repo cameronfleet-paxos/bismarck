@@ -89,6 +89,16 @@ import {
   getAllRepositories,
   updateRepository,
 } from './repository-manager'
+import {
+  getSettings,
+  updateDockerResourceLimits,
+  addDockerImage,
+  removeDockerImage,
+  updateToolPaths,
+  addProxiedTool,
+  removeProxiedTool,
+  updateDockerSshSettings,
+} from './settings-manager'
 import { bdList } from './bd-client'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
@@ -104,6 +114,7 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import type { Workspace, AppPreferences, Repository } from '../shared/types'
+import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
 const instanceId = randomUUID()
@@ -320,6 +331,22 @@ function registerIpcHandlers() {
     return updated
   })
 
+  // Settings management (Tool Paths)
+  ipcMain.handle('detect-tool-paths', async () => {
+    const { detectToolPaths } = await import('./settings-manager')
+    return detectToolPaths()
+  })
+
+  ipcMain.handle('get-tool-paths', async () => {
+    const { getToolPaths } = await import('./settings-manager')
+    return getToolPaths()
+  })
+
+  ipcMain.handle('update-tool-paths', async (_event, paths: Partial<AppSettings['paths']>) => {
+    const { updateToolPaths } = await import('./settings-manager')
+    await updateToolPaths(paths)
+  })
+
   // Plan management (Team Mode)
   ipcMain.handle('create-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
     return await createPlan(title, description, options)
@@ -485,8 +512,45 @@ function registerIpcHandlers() {
     return getAllRepositories()
   })
 
-  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name'>>) => {
+  ipcMain.handle('get-all-repositories', async () => {
+    return getAllRepositories()
+  })
+
+  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => {
     return updateRepository(id, updates)
+  })
+
+  // Settings management
+  ipcMain.handle('get-settings', async () => {
+    return getSettings()
+  })
+
+  ipcMain.handle('update-docker-resource-limits', async (_event, limits: { cpu?: string; memory?: string }) => {
+    return updateDockerResourceLimits(limits)
+  })
+
+  ipcMain.handle('add-docker-image', async (_event, image: string) => {
+    return addDockerImage(image)
+  })
+
+  ipcMain.handle('remove-docker-image', async (_event, image: string) => {
+    return removeDockerImage(image)
+  })
+
+  ipcMain.handle('update-tool-paths', async (_event, paths: { bd?: string | null; gh?: string | null; git?: string | null }) => {
+    return updateToolPaths(paths)
+  })
+
+  ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string }) => {
+    return addProxiedTool(tool)
+  })
+
+  ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
+    return removeProxiedTool(id)
+  })
+
+  ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
+    return updateDockerSshSettings(settings)
   })
 
   // Dev test harness (development mode only)
