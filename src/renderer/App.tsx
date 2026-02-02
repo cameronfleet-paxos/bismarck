@@ -33,10 +33,16 @@ interface ActiveTerminal {
   workspaceId: string
 }
 
+// App-level routing
+type AppView = 'main' | 'settings'
+
 // Type for terminal write functions
 type TerminalWriter = (data: string) => void
 
 function App() {
+  // View routing
+  const [currentView, setCurrentView] = useState<AppView>('main')
+
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeTerminals, setActiveTerminals] = useState<ActiveTerminal[]>([])
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null)
@@ -164,6 +170,13 @@ function App() {
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to return to main view from settings
+      if (e.key === 'Escape' && currentView === 'settings') {
+        e.preventDefault()
+        setCurrentView('main')
+        return
+      }
+
       // Cmd/Ctrl+Shift+D to toggle dev console (development only)
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
         e.preventDefault()
@@ -214,7 +227,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -946,6 +959,51 @@ function App() {
     )
   }
 
+  // Settings view placeholder (to be replaced with SettingsPage component in Task 2)
+  if (currentView === 'settings') {
+    return (
+      <div className="h-screen bg-background flex flex-col">
+        {/* Header */}
+        <header className="border-b px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Logo />
+            <span className="text-lg font-medium">Settings</span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setCurrentView('main')}
+          >
+            Back to Workspace
+          </Button>
+        </header>
+
+        {/* Settings content placeholder */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Settings className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-xl font-semibold mb-2">Settings View</h2>
+            <p className="text-muted-foreground mb-4">
+              Settings page component will be implemented here
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Press <kbd className="px-2 py-1 bg-muted rounded">Esc</kbd> to return to workspace
+            </p>
+          </div>
+        </div>
+
+        {/* Keep modals available in settings view */}
+        <AgentModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          agent={editingAgent}
+          onSave={handleSaveAgent}
+        />
+      </div>
+    )
+  }
+
+  // Main workspace view
   return (
     <div className="h-screen bg-background flex flex-col">
       {/* Header */}
@@ -996,7 +1054,7 @@ function App() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setCurrentView('settings')}
           >
             <Settings className="h-4 w-4" />
           </Button>
