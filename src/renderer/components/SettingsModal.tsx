@@ -49,6 +49,22 @@ export function SettingsModal({
                 <input
                   type="radio"
                   name="attentionMode"
+                  value="off"
+                  checked={preferences.attentionMode === 'off'}
+                  onChange={() => handleAttentionModeChange('off')}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="font-medium">Off</div>
+                  <div className="text-sm text-muted-foreground">
+                    No visual indicators for waiting agents
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  name="attentionMode"
                   value="focus"
                   checked={preferences.attentionMode === 'focus'}
                   onChange={() => handleAttentionModeChange('focus')}
