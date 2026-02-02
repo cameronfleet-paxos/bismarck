@@ -7,6 +7,7 @@ import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
 import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
+import { RawJsonSettings } from '@/renderer/components/settings/sections/RawJsonSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -22,7 +23,7 @@ function getGitHubUrlFromRemote(remoteUrl: string): string | null {
   return null
 }
 
-type SettingsSection = 'general' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories'
+type SettingsSection = 'general' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -55,6 +56,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'repositories',
     label: 'Repositories',
     description: 'View and edit repository settings',
+  },
+  {
+    id: 'advanced',
+    label: 'Advanced',
+    description: 'Edit raw JSON settings',
   },
 ]
 
@@ -853,6 +859,13 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 })}
               </div>
             )}
+          </div>
+        )
+
+      case 'advanced':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <RawJsonSettings onSettingsChange={loadSettings} />
           </div>
         )
     }

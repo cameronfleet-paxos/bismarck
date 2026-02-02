@@ -234,6 +234,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('remove-proxied-tool', id),
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
+  setRawSettings: (settings: unknown) =>
+    ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
   getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }> =>

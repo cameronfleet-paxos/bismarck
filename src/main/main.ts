@@ -91,6 +91,7 @@ import {
 } from './repository-manager'
 import {
   getSettings,
+  saveSettings,
   updateDockerResourceLimits,
   addDockerImage,
   removeDockerImage,
@@ -561,6 +562,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSshSettings(settings)
+  })
+
+  ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {
+    return saveSettings(settings as AppSettings)
   })
 
   // Prompt management
