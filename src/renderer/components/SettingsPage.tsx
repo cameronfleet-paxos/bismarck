@@ -29,14 +29,9 @@ const sidebarItems: SidebarItem[] = [
     description: 'Container images and resource limits',
   },
   {
-    id: 'paths',
-    label: 'Tool Paths',
-    description: 'Configure tool executable paths',
-  },
-  {
     id: 'tools',
-    label: 'Proxied Tools',
-    description: 'Tools available in containers',
+    label: 'Tools',
+    description: 'Tool paths and proxied tools',
   },
   {
     id: 'plans',
@@ -96,6 +91,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [bdPath, setBdPath] = useState('')
   const [ghPath, setGhPath] = useState('')
   const [gitPath, setGitPath] = useState('')
+  const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; gh: string | null; git: string | null } | null>(null)
 
   // Proxied tools local state
   const [newToolName, setNewToolName] = useState('')
@@ -117,8 +113,12 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const loaded = await window.electronAPI.getSettings()
+      const [loaded, detectedPaths] = await Promise.all([
+        window.electronAPI.getSettings(),
+        window.electronAPI.detectToolPaths(),
+      ])
       setSettings(loaded)
+      setAutoDetectedPaths(detectedPaths)
 
       // Initialize local state from loaded settings
       setCpuLimit(loaded.docker.resourceLimits.cpu)
@@ -441,60 +441,124 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           </div>
         )
 
-      case 'paths':
-        return (
-          <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Tool Paths</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Configure paths to command-line tools. Leave empty to use auto-detected paths.
-            </p>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="bd-path">bd (Beads)</Label>
-                <Input
-                  id="bd-path"
-                  placeholder="e.g., /usr/local/bin/bd"
-                  value={bdPath}
-                  onChange={(e) => setBdPath(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="gh-path">gh (GitHub CLI)</Label>
-                <Input
-                  id="gh-path"
-                  placeholder="e.g., /usr/local/bin/gh"
-                  value={ghPath}
-                  onChange={(e) => setGhPath(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="git-path">git</Label>
-                <Input
-                  id="git-path"
-                  placeholder="e.g., /usr/bin/git"
-                  value={gitPath}
-                  onChange={(e) => setGitPath(e.target.value)}
-                />
-              </div>
-
-              <Button
-                onClick={handleSavePaths}
-                disabled={saving}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Tool Paths'}
-              </Button>
-            </div>
-          </div>
-        )
-
       case 'tools':
         return (
           <div className="space-y-6">
-            {/* Explanation Section */}
+            {/* Tool Paths Section */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-2">Tool Paths</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Configure paths to command-line tools used by Bismarck. Auto-detected paths are shown when no custom path is set.
+              </p>
+
+              <div className="space-y-4">
+                {/* bd path */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="bd-path">bd (Beads)</Label>
+                    {bdPath && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setBdPath(''); handleSavePaths() }}
+                        className="h-6 text-xs text-muted-foreground"
+                      >
+                        Reset to auto-detected
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id="bd-path"
+                    placeholder={autoDetectedPaths?.bd || 'Not found on system'}
+                    value={bdPath}
+                    onChange={(e) => setBdPath(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {bdPath ? (
+                      <span className="text-amber-600 dark:text-amber-400">Using custom path</span>
+                    ) : autoDetectedPaths?.bd ? (
+                      <span className="text-green-600 dark:text-green-400">Auto-detected: {autoDetectedPaths.bd}</span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400">Not found - specify path manually</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* gh path */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="gh-path">gh (GitHub CLI)</Label>
+                    {ghPath && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setGhPath(''); handleSavePaths() }}
+                        className="h-6 text-xs text-muted-foreground"
+                      >
+                        Reset to auto-detected
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id="gh-path"
+                    placeholder={autoDetectedPaths?.gh || 'Not found on system'}
+                    value={ghPath}
+                    onChange={(e) => setGhPath(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {ghPath ? (
+                      <span className="text-amber-600 dark:text-amber-400">Using custom path</span>
+                    ) : autoDetectedPaths?.gh ? (
+                      <span className="text-green-600 dark:text-green-400">Auto-detected: {autoDetectedPaths.gh}</span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400">Not found - specify path manually</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* git path */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="git-path">git</Label>
+                    {gitPath && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setGitPath(''); handleSavePaths() }}
+                        className="h-6 text-xs text-muted-foreground"
+                      >
+                        Reset to auto-detected
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id="git-path"
+                    placeholder={autoDetectedPaths?.git || 'Not found on system'}
+                    value={gitPath}
+                    onChange={(e) => setGitPath(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {gitPath ? (
+                      <span className="text-amber-600 dark:text-amber-400">Using custom path</span>
+                    ) : autoDetectedPaths?.git ? (
+                      <span className="text-green-600 dark:text-green-400">Auto-detected: {autoDetectedPaths.git}</span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400">Not found - specify path manually</span>
+                    )}
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleSavePaths}
+                  disabled={saving}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? 'Saving...' : 'Save Tool Paths'}
+                </Button>
+              </div>
+            </div>
+
+            {/* Proxied Tools Explanation */}
             <div className="bg-card border rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-2">What are Proxied Tools?</h3>
               <p className="text-sm text-muted-foreground mb-4">

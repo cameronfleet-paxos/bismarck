@@ -92,6 +92,7 @@ export interface ElectronAPI {
   removeDockerImage: (image: string) => Promise<boolean>
   setSelectedDockerImage: (image: string) => Promise<void>
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
+  detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
   removeProxiedTool: (id: string) => Promise<boolean>
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>

@@ -226,6 +226,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-selected-docker-image', image),
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) =>
     ipcRenderer.invoke('update-tool-paths', paths),
+  detectToolPaths: () =>
+    ipcRenderer.invoke('detect-tool-paths'),
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) =>
     ipcRenderer.invoke('add-proxied-tool', tool),
   removeProxiedTool: (id: string) =>
