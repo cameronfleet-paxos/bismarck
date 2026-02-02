@@ -22,6 +22,7 @@ import type {
   HeadlessAgentStatus,
 } from '@/shared/types'
 import { themes } from '@/shared/constants'
+import { extractPRUrl } from '@/shared/pr-utils'
 
 interface HeadlessTerminalProps {
   events: StreamEvent[]
@@ -194,6 +195,9 @@ export function HeadlessTerminal({
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [events, isVisible])
+
+  // Extract PR URL from events
+  const prUrl = extractPRUrl(events)
 
   // Toggle collapse state for a tool
   const toggleCollapse = (toolId: string) => {
@@ -599,6 +603,12 @@ export function HeadlessTerminal({
 
   // Status indicator
   const getStatusIndicator = () => {
+    const handleOpenPR = () => {
+      if (prUrl) {
+        window.electronAPI?.openExternal?.(prUrl)
+      }
+    }
+
     switch (status) {
       case 'starting':
         return (
@@ -624,26 +634,32 @@ export function HeadlessTerminal({
             <div className="flex items-center gap-2 text-green-500">
               <span>✓</span> Completed
             </div>
-            {isStandalone && (onConfirmDone || onStartFollowUp) && (
-              <div className="flex items-center gap-2">
-                {onStartFollowUp && (
-                  <button
-                    onClick={onStartFollowUp}
-                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-                  >
-                    Start Follow-up
-                  </button>
-                )}
-                {onConfirmDone && (
-                  <button
-                    onClick={onConfirmDone}
-                    className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
-                  >
-                    Confirm Done
-                  </button>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {prUrl && (
+                <button
+                  onClick={handleOpenPR}
+                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors"
+                >
+                  View PR
+                </button>
+              )}
+              {isStandalone && onStartFollowUp && (
+                <button
+                  onClick={onStartFollowUp}
+                  className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                >
+                  Start Follow-up
+                </button>
+              )}
+              {isStandalone && onConfirmDone && (
+                <button
+                  onClick={onConfirmDone}
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
+                >
+                  Confirm Done
+                </button>
+              )}
+            </div>
           </div>
         )
       case 'failed':

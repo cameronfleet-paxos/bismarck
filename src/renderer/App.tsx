@@ -32,6 +32,7 @@ import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
+import { extractPRUrl } from '@/shared/pr-utils'
 
 interface ActiveTerminal {
   terminalId: string
@@ -1606,6 +1607,7 @@ function App() {
                     {getHeadlessAgentsForTab(tab).map((info) => {
                       console.log('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
+                      const prUrl = extractPRUrl(info.events)
                       return (
                         <div
                           key={info.id}
@@ -1632,6 +1634,16 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {prUrl && info.status === 'completed' && (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => window.electronAPI?.openExternal?.(prUrl)}
+                                  className="h-6 text-xs px-2"
+                                >
+                                  View PR
+                                </Button>
+                              )}
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
@@ -1825,6 +1837,7 @@ function App() {
                       if (position === -1 || position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
+                      const prUrl = extractPRUrl(info.events)
 
                       return (
                         <div
@@ -1854,6 +1867,16 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {prUrl && info.status === 'completed' && (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => window.electronAPI?.openExternal?.(prUrl)}
+                                  className="h-6 text-xs px-2"
+                                >
+                                  View PR
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
