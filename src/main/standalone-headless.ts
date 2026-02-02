@@ -153,10 +153,17 @@ ${userPrompt}
 When you complete your work:
 
 1. Commit your changes with a clear, descriptive message
-2. Push your branch and create a PR:
+2. Push your branch to origin:
    git push -u origin ${branchName}
+3. Create a PR and capture the URL:
    gh pr create --fill
-3. Report the PR URL in your final message
+
+   IMPORTANT: You MUST actually create the PR using 'gh pr create'.
+   Do NOT just provide the GitHub "new PR" URL (github.com/.../pull/new/...).
+   The PR must be created and you must report the actual PR number URL
+   (e.g., github.com/.../pull/123).
+
+4. Report the PR URL in your final message (must be a real PR number, not /pull/new/)
 
 Type /exit when finished.`
 }
