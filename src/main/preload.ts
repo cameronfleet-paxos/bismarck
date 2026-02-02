@@ -213,6 +213,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-repositories'),
   updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
+  addRepository: (path: string): Promise<Repository | null> =>
+    ipcRenderer.invoke('add-repository', path),
+  removeRepository: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('remove-repository', id),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),

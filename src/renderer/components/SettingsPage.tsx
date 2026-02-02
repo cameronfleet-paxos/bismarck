@@ -124,6 +124,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [editPurpose, setEditPurpose] = useState('')
   const [editCompletionCriteria, setEditCompletionCriteria] = useState('')
   const [editProtectedBranches, setEditProtectedBranches] = useState('')
+  const [newRepoPath, setNewRepoPath] = useState('')
+  const [addingRepo, setAddingRepo] = useState(false)
+  const [addRepoError, setAddRepoError] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
@@ -298,6 +301,39 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       console.error('Failed to save repository:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleAddRepository = async () => {
+    if (!newRepoPath.trim()) return
+
+    setAddingRepo(true)
+    setAddRepoError(null)
+    try {
+      const repo = await window.electronAPI.addRepository(newRepoPath.trim())
+      if (repo) {
+        await loadSettings()
+        setNewRepoPath('')
+        setShowSaved(true)
+        setTimeout(() => setShowSaved(false), 2000)
+      } else {
+        setAddRepoError('Not a valid git repository')
+      }
+    } catch (error) {
+      setAddRepoError(`Failed to add repository: ${error}`)
+    } finally {
+      setAddingRepo(false)
+    }
+  }
+
+  const handleRemoveRepository = async (repoId: string) => {
+    try {
+      await window.electronAPI.removeRepository(repoId)
+      await loadSettings()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to remove repository:', error)
     }
   }
 
@@ -691,14 +727,46 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           <div className="bg-card border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-2">Repositories</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Git repositories that have been detected from your agent workspaces
+              Git repositories for your agent workspaces
             </p>
+
+            {/* Add repository form */}
+            <div className="mb-6 p-4 bg-muted/30 rounded-lg">
+              <Label className="text-sm font-medium mb-2 block">Add Repository</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="/path/to/your/repository"
+                  value={newRepoPath}
+                  onChange={(e) => {
+                    setNewRepoPath(e.target.value)
+                    setAddRepoError(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddRepository()
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleAddRepository}
+                  disabled={!newRepoPath.trim() || addingRepo}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {addingRepo ? 'Adding...' : 'Add'}
+                </Button>
+              </div>
+              {addRepoError && (
+                <p className="text-sm text-destructive mt-2">{addRepoError}</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Enter the absolute path to a git repository
+              </p>
+            </div>
 
             {repositories.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p>No repositories found.</p>
                 <p className="text-sm mt-2">
-                  Repositories are detected when you create agents with git-initialized directories.
+                  Add a repository above or create agents with git-initialized directories.
                 </p>
               </div>
             ) : (
@@ -743,8 +811,22 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                             </div>
                           </div>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {repo.defaultBranch}
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm text-muted-foreground">
+                            {repo.defaultBranch}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRemoveRepository(repo.id)
+                            }}
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            title="Remove repository"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
                       </button>
 

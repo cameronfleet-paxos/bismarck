@@ -88,6 +88,7 @@ import {
   detectRepository,
   getAllRepositories,
   updateRepository,
+  removeRepository,
 } from './repository-manager'
 import {
   getSettings,
@@ -529,6 +530,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => {
     return updateRepository(id, updates)
+  })
+
+  ipcMain.handle('add-repository', async (_event, path: string) => {
+    return detectRepository(path)
+  })
+
+  ipcMain.handle('remove-repository', async (_event, id: string) => {
+    return removeRepository(id)
   })
 
   // Settings management
