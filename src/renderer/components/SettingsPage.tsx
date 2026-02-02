@@ -493,13 +493,31 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
       case 'tools':
         return (
-          <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Proxied Tools</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Tools that will be available inside Docker containers via proxy
-            </p>
+          <div className="space-y-6">
+            {/* Explanation Section */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-2">What are Proxied Tools?</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Proxied tools let containers call commands on your host machine. This is needed when:
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-2 ml-4 list-disc">
+                <li><strong>Host credentials:</strong> Tools like <code className="bg-muted px-1 rounded">gh</code> (GitHub CLI) that use your host auth tokens</li>
+                <li><strong>Host environment:</strong> Package managers that need your local npm/pip config</li>
+                <li><strong>Native binaries:</strong> Tools that only work on your host OS (not in Linux containers)</li>
+              </ul>
+              <p className="text-sm text-muted-foreground mt-4">
+                When an agent runs a proxied tool, the command is forwarded to your host and the output is returned to the container.
+              </p>
+            </div>
 
-            <div className="space-y-3 mb-4">
+            {/* Configured Tools */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-2">Configured Tools</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                These tools are available to headless agents running in Docker containers.
+              </p>
+
+              <div className="space-y-3 mb-4">
               {settings.docker.proxiedTools.map((tool) => (
                 <div
                   key={tool.id}
@@ -527,9 +545,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 </div>
               ))}
             </div>
+            </div>
 
-            <div className="space-y-4 pt-4 border-t">
-              <h4 className="font-medium">Add Proxied Tool</h4>
+            {/* Add Proxied Tool Form */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">Add Proxied Tool</h3>
 
               <div className="space-y-2">
                 <Label htmlFor="tool-name">Tool Name</Label>
@@ -568,6 +588,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Tool
               </Button>
+
+              <p className="text-xs text-muted-foreground mt-4">
+                <strong>Tip:</strong> Find tool paths using <code className="bg-muted px-1 rounded">which tool-name</code> in your terminal (e.g., <code className="bg-muted px-1 rounded">which npm</code>).
+              </p>
             </div>
           </div>
         )
