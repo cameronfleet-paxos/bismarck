@@ -413,10 +413,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <div className="bg-card border rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-2">SSH Agent Forwarding</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Forward your SSH agent to containers for private repository access (Bazel, Go modules)
+                Forward your SSH agent to containers for private repository access (Bazel, Go modules, npm)
               </p>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <div>
                   <Label htmlFor="ssh-agent-enabled">Enable SSH Agent Forwarding</Label>
                   <p className="text-xs text-muted-foreground">
@@ -428,6 +428,14 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   checked={settings.docker.sshAgent?.enabled ?? true}
                   onCheckedChange={handleSshAgentToggle}
                 />
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  <strong>Security note:</strong> When enabled, processes inside containers can use your SSH keys
+                  to authenticate with remote services. Only enable this if you trust the code running in your
+                  containers. Your keys remain on your host machine and are never copied into containers.
+                </p>
               </div>
             </div>
           </div>
