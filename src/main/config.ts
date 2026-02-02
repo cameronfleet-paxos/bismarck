@@ -117,6 +117,15 @@ export function getWorktreePath(planId: string, repoName: string, branchName: st
   return path.join(getPlanWorktreesPath(planId), repoName, branchName)
 }
 
+// Standalone headless agent paths
+export function getStandaloneHeadlessDir(): string {
+  return path.join(getConfigDir(), 'standalone-headless')
+}
+
+export function getStandaloneHeadlessAgentInfoPath(): string {
+  return path.join(getStandaloneHeadlessDir(), 'headless-agents.json')
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [

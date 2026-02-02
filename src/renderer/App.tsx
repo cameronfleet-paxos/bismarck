@@ -722,6 +722,16 @@ function App() {
     }
   }
 
+  // Start standalone headless agent handler
+  const handleStartStandaloneHeadless = async (agentId: string, prompt: string) => {
+    const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt)
+    if (result) {
+      // Reload agents to pick up the new headless agent workspace
+      await loadAgents()
+      // The workspace will be added to a tab via IPC event, which will trigger state update
+    }
+  }
+
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
     setActiveTabId(tabId)
@@ -827,10 +837,26 @@ function App() {
       }
       return []
     }
-    const agents = Array.from(headlessAgents.values()).filter((info) => info.planId === plan.id)
-    console.log('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agents.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
-    return agents
+    const agentInfos = Array.from(headlessAgents.values()).filter((info) => info.planId === plan.id)
+    console.log('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
+    return agentInfos
   }, [plans, headlessAgents])
+
+  // Get standalone headless agents for a regular tab
+  const getStandaloneHeadlessForTab = useCallback((tab: AgentTab): Array<{ agent: Agent; info: HeadlessAgentInfo }> => {
+    // Find agents in this tab that are standalone headless
+    const results: Array<{ agent: Agent; info: HeadlessAgentInfo }> = []
+    for (const workspaceId of tab.workspaceIds) {
+      const agent = agents.find(a => a.id === workspaceId)
+      if (agent?.isStandaloneHeadless && agent.taskId) {
+        const info = headlessAgents.get(agent.taskId)
+        if (info) {
+          results.push({ agent, info })
+        }
+      }
+    }
+    return results
+  }, [agents, headlessAgents])
 
   // Debug: Log headlessAgents state changes
   useEffect(() => {
@@ -1692,6 +1718,63 @@ function App() {
                       )
                     })}
 
+                    {/* Render standalone headless agents */}
+                    {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
+                      const position = tabWorkspaceIds.indexOf(agent.id)
+                      if (position === -1 || position >= gridConfig.maxAgents) return null
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
+                      const isExpanded = expandedAgentId === info.id
+
+                      return (
+                        <div
+                          key={`headless-${info.id}-${tab.id}`}
+                          style={{ gridRow, gridColumn: gridCol }}
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                        >
+                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
+                              <span>{agent.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => window.electronAPI.openDockerDesktop()}
+                                className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                title="Open Docker Desktop"
+                              >
+                                <Container className="h-3 w-3" />
+                                <span>Docker</span>
+                              </button>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                                info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                                info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>{info.status}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))}
+                                className="h-6 w-6 p-0"
+                              >
+                                {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="h-[calc(100%-2rem)]">
+                            <HeadlessTerminal
+                              events={info.events}
+                              theme={agent.theme}
+                              status={info.status}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+
                     {/* Render empty slots separately - keyed by position */}
                     {gridPositions.map((position) => {
                       if (tabWorkspaceIds[position]) return null // Skip if occupied
@@ -1848,6 +1931,7 @@ function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
+        onStartHeadless={handleStartStandaloneHeadless}
       />
     </div>
     </>

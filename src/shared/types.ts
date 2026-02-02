@@ -75,6 +75,7 @@ export interface Agent {
   worktreePath?: string         // Path to worktree (for task agents)
   taskId?: string               // Associated task ID
   isHeadless?: boolean          // Running in headless Docker mode (no interactive terminal)
+  isStandaloneHeadless?: boolean // Standalone headless agent (not part of a plan)
 }
 
 // Alias for backwards compatibility

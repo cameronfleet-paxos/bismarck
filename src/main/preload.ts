@@ -112,6 +112,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopHeadlessAgent: (taskId: string): Promise<void> =>
     ipcRenderer.invoke('stop-headless-agent', taskId),
 
+  // Standalone headless agent management
+  startStandaloneHeadlessAgent: (agentId: string, prompt: string): Promise<{ headlessId: string; workspaceId: string }> =>
+    ipcRenderer.invoke('start-standalone-headless-agent', agentId, prompt),
+  getStandaloneHeadlessAgents: (): Promise<HeadlessAgentInfo[]> =>
+    ipcRenderer.invoke('get-standalone-headless-agents'),
+  stopStandaloneHeadlessAgent: (headlessId: string): Promise<void> =>
+    ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
+
   // OAuth token management
   getOAuthToken: (): Promise<string | null> =>
     ipcRenderer.invoke('get-oauth-token'),

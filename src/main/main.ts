@@ -106,6 +106,13 @@ import {
 } from './settings-manager'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
+import {
+  startStandaloneHeadlessAgent,
+  getStandaloneHeadlessAgents,
+  stopStandaloneHeadlessAgent,
+  setMainWindowForStandaloneHeadless,
+  initStandaloneHeadless,
+} from './standalone-headless'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
   setDevHarnessWindow,
@@ -164,11 +171,12 @@ function createWindow() {
     mainWindow.focus()
   }
 
-  // Set the main window reference for socket server, plan manager, dev harness, and queue
+  // Set the main window reference for socket server, plan manager, dev harness, queue, and standalone headless
   setMainWindow(mainWindow)
   setPlanManagerWindow(mainWindow)
   setDevHarnessWindow(mainWindow)
   setQueueMainWindow(mainWindow)
+  setMainWindowForStandaloneHeadless(mainWindow)
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
@@ -462,6 +470,19 @@ function registerIpcHandlers() {
     return stopHeadlessTaskAgent(taskId)
   })
 
+  // Standalone headless agent management
+  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string) => {
+    return startStandaloneHeadlessAgent(agentId, prompt)
+  })
+
+  ipcMain.handle('get-standalone-headless-agents', () => {
+    return getStandaloneHeadlessAgents()
+  })
+
+  ipcMain.handle('stop-standalone-headless-agent', async (_event, headlessId: string) => {
+    return stopStandaloneHeadlessAgent(headlessId)
+  })
+
   // OAuth token management
   ipcMain.handle('get-oauth-token', () => {
     return getClaudeOAuthToken()
@@ -635,6 +656,9 @@ app.whenReady().then(async () => {
 
   // Initialize state
   initializeState()
+
+  // Initialize standalone headless module
+  initStandaloneHeadless()
 
   // Create hook script and configure Claude settings
   createHookScript()
