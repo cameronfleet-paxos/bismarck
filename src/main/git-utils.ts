@@ -699,6 +699,66 @@ export async function fetchBranch(
 }
 
 /**
+ * Fetch a specific branch from remote with force flag
+ * This ensures the local tracking ref is updated even if it's not a fast-forward
+ * @param logContext - Optional logging context for correlation
+ */
+export async function fetchBranchWithForce(
+  repoPath: string,
+  branchName: string,
+  remote = 'origin',
+  logContext?: LogContext
+): Promise<void> {
+  const ctx = { ...logContext, repo: repoPath, branch: branchName };
+  logger.debug('git', `Force fetching branch from ${remote}`, ctx);
+  await gitExec(
+    `git fetch ${remote} "${branchName}:refs/remotes/${remote}/${branchName}" --force`,
+    repoPath,
+    ctx
+  );
+}
+
+/**
+ * Rebase the current branch onto a target remote branch
+ * @returns true if rebase succeeded, false if there was a conflict (rebase aborted)
+ * @throws Error on non-conflict rebase failures
+ */
+export async function rebaseOntoRemoteBranch(
+  repoPath: string,
+  targetBranch: string,
+  remote = 'origin',
+  logContext?: LogContext
+): Promise<{ success: boolean; conflictError?: Error }> {
+  const ctx = { ...logContext, repo: repoPath, branch: targetBranch };
+  logger.info('git', `Rebasing onto ${remote}/${targetBranch}`, ctx);
+
+  try {
+    await gitExec(`git rebase "${remote}/${targetBranch}"`, repoPath, ctx);
+    return { success: true };
+  } catch (error) {
+    const err = error as Error;
+    // Check if this is a conflict
+    const isConflict = err.message.includes('CONFLICT') ||
+                       err.message.includes('could not apply') ||
+                       err.message.includes('Resolve all conflicts') ||
+                       err.message.includes('fix conflicts');
+
+    if (isConflict) {
+      logger.warn('git', 'Rebase conflict detected, aborting rebase', ctx);
+      try {
+        await gitExec('git rebase --abort', repoPath, ctx);
+      } catch {
+        // Ignore abort errors
+      }
+      return { success: false, conflictError: err };
+    }
+
+    // Non-conflict error - rethrow
+    throw error;
+  }
+}
+
+/**
  * Check if a remote branch exists
  */
 export async function remoteBranchExists(

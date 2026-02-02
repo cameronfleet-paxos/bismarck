@@ -36,16 +36,16 @@ import {
   pushBranch,
   pushBranchToRemoteBranch,
   getCommitsBetween,
-  fetchAndRebase,
   getGitHubUrlFromRemote,
   createBranch,
   getHeadCommit,
   fetchBranch,
+  fetchBranchWithForce,
+  rebaseOntoRemoteBranch,
   generateUniqueBranchName,
   remoteBranchExists,
   deleteRemoteBranch,
   deleteLocalBranch,
-  pushWithRetry,
 } from './git-utils'
 import {
   getRepositoryById,
@@ -2743,33 +2743,28 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
     return false
   }
 
+  // Prefer repository's detected defaultBranch over plan's potentially incorrect default
+  const baseBranch = repository.defaultBranch || 'main'
+
   for (const worktree of unmergedWorktrees) {
+    const worktreeLogCtx: LogContext = { planId: plan.id, taskId: worktree.taskId }
+
     try {
-      // Fetch latest feature branch state
-      try {
-        await fetchBranch(worktree.path, plan.featureBranch)
-      } catch {
-        // Feature branch might not exist yet for first push
-      }
+      // Use safeRebaseAndPush to handle conflicts properly
+      const pushSucceeded = await safeRebaseAndPush(plan, worktree, worktreeLogCtx)
 
-      // Rebase this worktree's commits onto the feature branch
-      // Prefer repository's detected defaultBranch over plan's potentially incorrect default
-      const baseBranch = repository.defaultBranch || 'main'
-      try {
-        // First try to rebase onto feature branch if it exists
-        await fetchAndRebase(worktree.path, plan.featureBranch)
-      } catch {
-        // Feature branch might not exist or rebase failed
-        // Try rebasing onto base branch instead
-        try {
-          await fetchAndRebase(worktree.path, baseBranch)
-        } catch {
-          // Ignore rebase failures - push will either work or fail with clear error
-        }
+      if (!pushSucceeded) {
+        // Merge agent was spawned to resolve conflicts
+        // It will handle the push after resolving
+        addPlanActivity(
+          plan.id,
+          'info',
+          `Merge agent spawned for task ${worktree.taskId}`,
+          'Will push after resolving conflicts'
+        )
+        // Continue to try other worktrees - they may not have conflicts
+        continue
       }
-
-      // Push to feature branch with force-with-lease since we may have rebased
-      await pushBranchToRemoteBranch(worktree.path, 'HEAD', plan.featureBranch, 'origin', true)
 
       // Mark as merged
       worktree.mergedAt = new Date().toISOString()
@@ -2850,6 +2845,165 @@ async function handleTaskCompletionStrategy(planId: string, taskId: string, work
 }
 
 /**
+ * Spawn a headless agent to resolve merge conflicts in a worktree.
+ * Called when a rebase onto the feature branch fails due to conflicts.
+ */
+async function spawnMergeResolutionAgent(
+  plan: Plan,
+  worktree: PlanWorktree,
+  conflictError: Error
+): Promise<void> {
+  const logCtx: LogContext = { planId: plan.id, taskId: worktree.taskId }
+  logger.info('plan', 'Spawning merge resolution agent', logCtx, {
+    featureBranch: plan.featureBranch,
+    error: conflictError.message.substring(0, 200),
+  })
+
+  // Create merge task ID for tracking
+  const mergeTaskId = `${worktree.taskId}-merge`
+
+  // Build the merge resolution prompt
+  const prompt = `You are resolving a merge conflict for task ${worktree.taskId}.
+
+The rebase onto origin/${plan.featureBranch} failed with conflicts.
+
+Your job:
+1. Run: git rebase "origin/${plan.featureBranch}"
+2. For each conflict:
+   - Examine both versions carefully
+   - Resolve the conflict appropriately (usually keeping both changes where possible)
+   - Stage the resolved file: git add <file>
+   - Continue: git rebase --continue
+3. After rebase completes successfully, push: git push origin HEAD:refs/heads/${plan.featureBranch}
+4. Close this task with: bd close ${mergeTaskId} --message "Resolved merge conflicts and pushed to feature branch"
+
+If you cannot resolve the conflicts automatically, close the task with an error: bd close ${mergeTaskId} --message "CONFLICT: Could not auto-resolve - manual intervention required"
+
+Original error:
+${conflictError.message}
+`
+
+  addPlanActivity(
+    plan.id,
+    'info',
+    `Spawning merge agent for ${worktree.taskId}`,
+    'Resolving rebase conflicts'
+  )
+
+  // Create headless agent info for tracking
+  const agentInfo: HeadlessAgentInfo = {
+    id: `headless-${mergeTaskId}`,
+    taskId: mergeTaskId,
+    planId: plan.id,
+    status: 'starting',
+    worktreePath: worktree.path,
+    events: [],
+    startedAt: new Date().toISOString(),
+  }
+  headlessAgentInfo.set(mergeTaskId, agentInfo)
+  emitHeadlessAgentUpdate(agentInfo)
+
+  // Create and start the merge agent
+  const agent = new HeadlessAgent()
+  headlessAgents.set(mergeTaskId, agent)
+
+  // Set up event listeners (similar to startHeadlessTaskAgent)
+  agent.on('status', (status: HeadlessAgentStatus) => {
+    agentInfo.status = status
+    emitHeadlessAgentUpdate(agentInfo)
+  })
+
+  agent.on('event', (event: StreamEvent) => {
+    agentInfo.events.push(event)
+    emitHeadlessAgentEvent(plan.id, mergeTaskId, event)
+  })
+
+  agent.on('complete', async (result) => {
+    agentInfo.status = result.success ? 'completed' : 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    agentInfo.result = result
+    emitHeadlessAgentUpdate(agentInfo)
+
+    headlessAgents.delete(mergeTaskId)
+
+    if (result.success) {
+      addPlanActivity(plan.id, 'success', `Merge resolved for ${worktree.taskId}`)
+      // Mark the worktree as merged
+      worktree.mergedAt = new Date().toISOString()
+      worktree.mergedIntoFeatureBranch = true
+      savePlan(plan)
+      emitPlanUpdate(plan)
+    } else {
+      addPlanActivity(plan.id, 'error', `Merge resolution failed for ${worktree.taskId}`, result.error)
+    }
+  })
+
+  agent.on('error', (error: Error) => {
+    agentInfo.status = 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    emitHeadlessAgentUpdate(agentInfo)
+
+    headlessAgents.delete(mergeTaskId)
+    addPlanActivity(plan.id, 'error', `Merge agent error for ${worktree.taskId}`, error.message)
+  })
+
+  // Start the agent
+  const planDir = getPlanDir(plan.id)
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
+  await agent.start({
+    prompt,
+    worktreePath: worktree.path,
+    planDir,
+    planId: plan.id,
+    taskId: mergeTaskId,
+    image: DOCKER_IMAGE_NAME,
+    claudeFlags: ['--model', agentModel],
+  })
+}
+
+/**
+ * Safely rebase and push a worktree's commits to the feature branch.
+ * On conflict, spawns a merge resolution agent.
+ *
+ * @returns true if push succeeded, false if merge agent was spawned (will push after resolving)
+ */
+async function safeRebaseAndPush(
+  plan: Plan,
+  worktree: PlanWorktree,
+  logCtx: LogContext
+): Promise<boolean> {
+  const featureBranch = plan.featureBranch!
+
+  // 1. Explicitly fetch the feature branch with force to ensure ref is current
+  try {
+    await fetchBranchWithForce(worktree.path, featureBranch, 'origin', logCtx)
+  } catch {
+    // Branch might not exist on remote yet - that's OK
+    logger.debug('plan', 'Feature branch fetch failed (may not exist yet)', logCtx)
+  }
+
+  // 2. Check if feature branch exists on remote
+  const exists = await remoteBranchExists(worktree.path, featureBranch, 'origin')
+
+  // 3. If exists, must rebase to incorporate other task's commits
+  if (exists) {
+    const rebaseResult = await rebaseOntoRemoteBranch(worktree.path, featureBranch, 'origin', logCtx)
+
+    if (!rebaseResult.success) {
+      // Conflict detected - spawn merge agent to resolve
+      logger.warn('plan', 'Rebase conflict, spawning merge agent', logCtx)
+      await spawnMergeResolutionAgent(plan, worktree, rebaseResult.conflictError!)
+      return false // Merge agent will handle the push after resolving
+    }
+  }
+
+  // 4. Push to feature branch
+  await pushBranchToRemoteBranch(worktree.path, 'HEAD', featureBranch, 'origin', true, logCtx)
+  return true
+}
+
+/**
  * Push commits from a worktree to the shared feature branch
  * Used for feature_branch strategy
  */
@@ -2859,6 +3013,8 @@ async function pushToFeatureBranch(plan: Plan, worktree: PlanWorktree, repositor
     plan.featureBranch = `bismarck/${plan.id.split('-')[1]}/feature`
     savePlan(plan)
   }
+
+  const logCtx: LogContext = { planId: plan.id, taskId: worktree.taskId }
 
   // Use git push lock to serialize concurrent pushes to the same feature branch
   await withGitPushLock(plan.id, async () => {
@@ -2876,22 +3032,20 @@ async function pushToFeatureBranch(plan: Plan, worktree: PlanWorktree, repositor
       // Record commits in worktree tracking
       worktree.commits = commits.map(c => c.sha)
 
-      // Fetch and rebase onto feature branch if it exists
-      try {
-        await fetchAndRebase(worktree.path, plan.featureBranch!)
-      } catch {
-        // Feature branch might not exist yet, that's OK - we'll create it with the push
-      }
+      // Use safeRebaseAndPush to handle conflicts properly
+      const pushSucceeded = await safeRebaseAndPush(plan, worktree, logCtx)
 
-      // Push with retry logic for handling concurrent pushes
-      await pushWithRetry(
-        worktree.path,
-        'HEAD',
-        plan.featureBranch!,
-        'origin',
-        3,
-        { planId: plan.id, taskId: worktree.taskId }
-      )
+      if (!pushSucceeded) {
+        // Merge agent was spawned to resolve conflicts
+        // It will handle the push after resolving, so we return early
+        addPlanActivity(
+          plan.id,
+          'info',
+          `Merge agent spawned for task ${worktree.taskId}`,
+          'Will push after resolving conflicts'
+        )
+        return
+      }
 
       // Record commits in git summary
       const githubUrl = getGitHubUrlFromRemote(repository.remoteUrl)
