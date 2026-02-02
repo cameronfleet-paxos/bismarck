@@ -125,6 +125,11 @@ export interface ElectronAPI {
   // File reading
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
 
+  // Settings management (Tool Paths)
+  detectToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
+  getToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
+  updateToolPaths?: (paths: Partial<{ bd: string | null; gh: string | null; git: string | null }>) => Promise<void>
+
   // Tray updates
   updateTray: (count: number) => void
 

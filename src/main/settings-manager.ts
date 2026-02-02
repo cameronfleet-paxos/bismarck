@@ -274,3 +274,38 @@ export function clearSettingsCache(): void {
 function generateToolId(): string {
   return `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
+
+/**
+ * Detect tool paths on the system using 'which' command
+ */
+export async function detectToolPaths(): Promise<AppSettings['paths']> {
+  const { execFile } = require('child_process')
+  const { promisify } = require('util')
+  const execFileAsync = promisify(execFile)
+
+  const detectPath = async (toolName: string): Promise<string | null> => {
+    try {
+      const { stdout } = await execFileAsync('which', [toolName])
+      const path = stdout.trim()
+      return path || null
+    } catch (error) {
+      return null
+    }
+  }
+
+  const [bd, gh, git] = await Promise.all([
+    detectPath('bd'),
+    detectPath('gh'),
+    detectPath('git'),
+  ])
+
+  return { bd, gh, git }
+}
+
+/**
+ * Get tool paths (with auto-detected fallback)
+ */
+export async function getToolPaths(): Promise<AppSettings['paths']> {
+  const settings = await loadSettings()
+  return settings.paths
+}

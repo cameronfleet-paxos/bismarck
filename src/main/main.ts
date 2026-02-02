@@ -104,6 +104,7 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import type { Workspace, AppPreferences, Repository } from '../shared/types'
+import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
 const instanceId = randomUUID()
@@ -318,6 +319,22 @@ function registerIpcHandlers() {
       stopTaskPolling()
     }
     return updated
+  })
+
+  // Settings management (Tool Paths)
+  ipcMain.handle('detect-tool-paths', async () => {
+    const { detectToolPaths } = await import('./settings-manager')
+    return detectToolPaths()
+  })
+
+  ipcMain.handle('get-tool-paths', async () => {
+    const { getToolPaths } = await import('./settings-manager')
+    return getToolPaths()
+  })
+
+  ipcMain.handle('update-tool-paths', async (_event, paths: Partial<AppSettings['paths']>) => {
+    const { updateToolPaths } = await import('./settings-manager')
+    await updateToolPaths(paths)
   })
 
   // Plan management (Team Mode)
