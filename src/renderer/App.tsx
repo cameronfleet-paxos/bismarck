@@ -1634,16 +1634,6 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
-                              {prUrl && info.status === 'completed' && (
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  onClick={() => window.electronAPI?.openExternal?.(prUrl)}
-                                  className="h-6 text-xs px-2"
-                                >
-                                  View PR
-                                </Button>
-                              )}
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
@@ -1867,16 +1857,6 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
-                              {prUrl && info.status === 'completed' && (
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  onClick={() => window.electronAPI?.openExternal?.(prUrl)}
-                                  className="h-6 text-xs px-2"
-                                >
-                                  View PR
-                                </Button>
-                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
