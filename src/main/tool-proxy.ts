@@ -179,18 +179,19 @@ async function handleGhRequest(
   }
 
   try {
-    const body = (await parseBody(req)) as ProxyRequest
+    const body = (await parseBody(req)) as ProxyRequest & { cwd?: string }
 
     // Args already include subcommands from gh-proxy-wrapper.sh
     // The subpath is only used for logging/routing, not command building
     const args = body.args || []
+    const cwd = body.cwd
 
-    logger.debug('proxy', `gh request: ${args.join(' ')}`, undefined, { subpath })
+    logger.debug('proxy', `gh request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined, { subpath })
 
     // Log the operation
-    proxyEvents.emit('gh', { subpath, args })
+    proxyEvents.emit('gh', { subpath, args, cwd })
 
-    const result = await executeCommand('gh', args, body.stdin)
+    const result = await executeCommand('gh', args, body.stdin, cwd ? { cwd } : undefined)
 
     logger.proxyRequest('gh', args, result.exitCode === 0, undefined, {
       exitCode: result.exitCode,

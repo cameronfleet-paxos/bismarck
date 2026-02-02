@@ -16,6 +16,7 @@ set -e
 
 # Get proxy URL from environment (set by docker run)
 PROXY_URL="${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
+HOST_WORKTREE_PATH="${BISMARCK_HOST_WORKTREE_PATH:-}"
 
 # Build JSON payload with all arguments
 ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
@@ -46,7 +47,7 @@ esac
 # Make request to proxy
 RESPONSE=$(curl -s -X POST "${PROXY_URL}${ENDPOINT}" \
   -H "Content-Type: application/json" \
-  -d "{\"args\": ${ARGS_JSON}}")
+  -d "{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_WORKTREE_PATH}\"}")
 
 # Extract fields from response
 SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
