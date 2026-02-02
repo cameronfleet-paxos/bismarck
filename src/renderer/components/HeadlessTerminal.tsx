@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import type {
   ThemeName,
   StreamEvent,
+  StreamEventBase,
   StreamToolUseEvent,
   StreamToolResultEvent,
   HeadlessAgentStatus,
@@ -37,34 +38,140 @@ interface CollapsedState {
 }
 
 /**
- * Generate an inline summary for a tool invocation
+ * Generate an inline summary for a tool invocation in Claude Code style
+ * Format: ⏺ Tool(key_arg)
  */
 function getToolSummary(toolName?: string, input?: Record<string, unknown>): string {
-  if (!toolName) return '→ Unknown tool'
+  if (!toolName) return '⏺ Unknown tool'
 
   switch (toolName) {
-    case 'Read':
-      return `→ Read ${input?.file_path || 'file'}`
-    case 'Edit':
-      return `→ Edit ${input?.file_path || 'file'}`
-    case 'Write':
-      return `→ Write ${input?.file_path || 'file'}`
+    case 'Read': {
+      const filePath = input?.file_path as string
+      return `⏺ Read(${filePath || 'file'})`
+    }
+    case 'Edit': {
+      const filePath = input?.file_path as string
+      return `⏺ Edit(${filePath || 'file'})`
+    }
+    case 'Write': {
+      const filePath = input?.file_path as string
+      return `⏺ Write(${filePath || 'file'})`
+    }
     case 'Bash': {
       const cmd = input?.command as string
       if (cmd) {
-        const truncated = cmd.length > 50 ? cmd.slice(0, 50) + '...' : cmd
-        return `→ Run: ${truncated}`
+        const truncated = cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd
+        return `⏺ Bash(${truncated})`
       }
-      return '→ Run command'
+      return '⏺ Bash(command)'
     }
-    case 'Grep':
-      return `→ Search: ${input?.pattern || 'pattern'}`
-    case 'Glob':
-      return `→ Find: ${input?.pattern || 'pattern'}`
-    case 'Task':
-      return `→ Task: ${input?.description || 'subtask'}`
+    case 'Grep': {
+      const pattern = input?.pattern as string
+      return `⏺ Grep(${pattern || 'pattern'})`
+    }
+    case 'Glob': {
+      const pattern = input?.pattern as string
+      return `⏺ Glob(${pattern || 'pattern'})`
+    }
+    case 'Task': {
+      const desc = input?.description as string
+      const truncated = desc && desc.length > 40 ? desc.slice(0, 40) + '...' : desc
+      return `⏺ Task(${truncated || 'subtask'})`
+    }
+    case 'WebFetch': {
+      const url = input?.url as string
+      const truncated = url && url.length > 50 ? url.slice(0, 50) + '...' : url
+      return `⏺ WebFetch(${truncated || 'url'})`
+    }
+    case 'WebSearch': {
+      const query = input?.query as string
+      return `⏺ WebSearch(${query || 'query'})`
+    }
     default:
-      return `→ ${toolName}`
+      return `⏺ ${toolName}`
+  }
+}
+
+/**
+ * Generate a preview of tool output in Claude Code style
+ * Format: ⎿ Summary or first meaningful line
+ */
+function getOutputPreview(
+  toolName?: string,
+  input?: Record<string, unknown>,
+  output?: string,
+  isError?: boolean
+): string | null {
+  if (!output) return null
+  if (isError) {
+    // For errors, show first line
+    const firstLine = output.split('\n')[0]?.trim()
+    return firstLine ? `⎿ ${firstLine.slice(0, 80)}${firstLine.length > 80 ? '...' : ''}` : null
+  }
+
+  switch (toolName) {
+    case 'Read': {
+      // Count lines read
+      const lineCount = output.split('\n').length
+      return `⎿ Read ${lineCount} line${lineCount === 1 ? '' : 's'}`
+    }
+    case 'Edit': {
+      // Look for edit summary patterns
+      const addedMatch = output.match(/Added (\d+) lines?/i)
+      const removedMatch = output.match(/Removed (\d+) lines?/i)
+      const updatedMatch = output.match(/Updated (\d+) lines?/i)
+
+      if (addedMatch || removedMatch || updatedMatch) {
+        const parts = []
+        if (addedMatch) parts.push(`Added ${addedMatch[1]} line${addedMatch[1] === '1' ? '' : 's'}`)
+        if (removedMatch) parts.push(`removed ${removedMatch[1]} line${removedMatch[1] === '1' ? '' : 's'}`)
+        if (updatedMatch && !addedMatch && !removedMatch) parts.push(`Updated ${updatedMatch[1]} line${updatedMatch[1] === '1' ? '' : 's'}`)
+        return `⎿ ${parts.join(', ')}`
+      }
+      return '⎿ File updated'
+    }
+    case 'Write': {
+      const bytes = output.length
+      return `⎿ Wrote ${bytes} byte${bytes === 1 ? '' : 's'}`
+    }
+    case 'Bash': {
+      // Show first non-empty line of output
+      const lines = output.split('\n').filter(l => l.trim())
+      if (lines.length === 0) return '⎿ (no output)'
+      const firstLine = lines[0].trim()
+      const preview = firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine
+      const moreLines = lines.length > 1 ? ` (+${lines.length - 1} more)` : ''
+      return `⎿ ${preview}${moreLines}`
+    }
+    case 'Grep': {
+      // Count matches or show first result
+      const lines = output.split('\n').filter(l => l.trim())
+      if (lines.length === 0) return '⎿ No matches'
+      if (lines.length === 1) {
+        const preview = lines[0].length > 70 ? lines[0].slice(0, 70) + '...' : lines[0]
+        return `⎿ ${preview}`
+      }
+      return `⎿ Found ${lines.length} match${lines.length === 1 ? '' : 'es'}`
+    }
+    case 'Glob': {
+      const lines = output.split('\n').filter(l => l.trim())
+      if (lines.length === 0) return '⎿ No files found'
+      return `⎿ Found ${lines.length} file${lines.length === 1 ? '' : 's'}`
+    }
+    case 'Task': {
+      // Show completion summary
+      const lines = output.split('\n').filter(l => l.trim())
+      if (lines.length === 0) return '⎿ Completed'
+      const lastLine = lines[lines.length - 1].trim()
+      const preview = lastLine.length > 80 ? lastLine.slice(0, 80) + '...' : lastLine
+      return `⎿ ${preview}`
+    }
+    default: {
+      // Generic: show first line
+      const firstLine = output.split('\n').find(l => l.trim())?.trim()
+      if (!firstLine) return null
+      return `⎿ ${firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine}`
+    }
   }
 }
 
@@ -96,27 +203,115 @@ export function HeadlessTerminal({
     }))
   }
 
+  // Helper to extract tool_use content blocks from assistant events
+  // Claude Code sends tool_use nested inside assistant messages: { type: 'assistant', message: { content: [{ type: 'tool_use', ... }] } }
+  type ToolUseContentBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  const extractToolUseFromAssistant = (event: StreamEvent): ToolUseContentBlock | null => {
+    if (event.type !== 'assistant') return null
+    const msg = event as { message?: { content?: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> } }
+    const content = msg.message?.content
+    if (!Array.isArray(content)) return null
+    const toolUse = content.find(c => c.type === 'tool_use')
+    if (toolUse && toolUse.id && toolUse.name) {
+      return { type: 'tool_use', id: toolUse.id, name: toolUse.name, input: toolUse.input || {} }
+    }
+    return null
+  }
+
+  // Helper to extract tool_result content blocks from user events
+  // Claude Code sends tool_result nested inside user messages: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: '...', content: '...' }] } }
+  type ToolResultContentBlock = { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
+  const extractToolResultFromUser = (event: StreamEvent): ToolResultContentBlock | null => {
+    if (event.type !== 'user') return null
+    const msg = event as { message?: { content?: Array<{ type: string; tool_use_id?: string; content?: string | Array<{ text?: string }>; is_error?: boolean }> } }
+    const content = msg.message?.content
+    if (!Array.isArray(content)) return null
+    const toolResult = content.find(c => c.type === 'tool_result')
+    if (toolResult && toolResult.tool_use_id) {
+      // Content can be string or array of text blocks
+      let outputContent = ''
+      if (typeof toolResult.content === 'string') {
+        outputContent = toolResult.content
+      } else if (Array.isArray(toolResult.content)) {
+        outputContent = toolResult.content.map(c => c.text || '').join('\n')
+      }
+      return { type: 'tool_result', tool_use_id: toolResult.tool_use_id, content: outputContent, is_error: toolResult.is_error }
+    }
+    return null
+  }
+
   // Group events for rendering (tool_use + tool_result pairs)
   const groupedEvents = useMemo(() => {
     const groups: Array<{
       type: 'message' | 'tool' | 'result' | 'system'
       events: StreamEvent[]
       toolId?: string
+      // For tool groups extracted from assistant events, store the tool info directly
+      toolInfo?: { name: string; input: Record<string, unknown> }
     }> = []
 
     let currentMessageGroup: StreamEvent[] = []
     const toolResults: Map<string, StreamEvent> = new Map()
 
-    // First pass: collect tool results
+    // First pass: collect tool results (both top-level and embedded in user events)
     for (const event of events) {
+      // Handle top-level tool_result events
       if (event.type === 'tool_result') {
-        const resultEvent = event as { tool_id: string }
-        toolResults.set(resultEvent.tool_id, event)
+        const resultEvent = event as StreamToolResultEvent & { tool_use_id?: string }
+        const toolId = resultEvent.tool_id || resultEvent.tool_use_id
+        if (toolId) {
+          toolResults.set(toolId, event)
+        }
+      }
+      // Handle tool_result embedded in user events
+      const embeddedResult = extractToolResultFromUser(event)
+      if (embeddedResult) {
+        // Create a synthetic tool_result event
+        const syntheticResult: StreamToolResultEvent = {
+          type: 'tool_result',
+          tool_id: embeddedResult.tool_use_id,
+          output: embeddedResult.content,
+          is_error: embeddedResult.is_error,
+          timestamp: (event as StreamEventBase).timestamp,
+        }
+        toolResults.set(embeddedResult.tool_use_id, syntheticResult)
       }
     }
 
     // Second pass: group events
     for (const event of events) {
+      // Check if this assistant event contains a tool_use
+      const embeddedToolUse = extractToolUseFromAssistant(event)
+
+      if (embeddedToolUse) {
+        // This is a tool_use embedded in an assistant message
+        // Flush any pending message group
+        if (currentMessageGroup.length > 0) {
+          groups.push({ type: 'message', events: [...currentMessageGroup] })
+          currentMessageGroup = []
+        }
+
+        const toolId = embeddedToolUse.id
+        const result = toolResults.get(toolId)
+
+        // Create a synthetic tool_use event for rendering
+        const syntheticToolUse: StreamToolUseEvent = {
+          type: 'tool_use',
+          tool_id: toolId,
+          tool_name: embeddedToolUse.name,
+          input: embeddedToolUse.input,
+          timestamp: (event as StreamEventBase).timestamp,
+        }
+
+        groups.push({
+          type: 'tool',
+          events: result ? [syntheticToolUse, result] : [syntheticToolUse],
+          toolId,
+          toolInfo: { name: embeddedToolUse.name, input: embeddedToolUse.input },
+        })
+        continue
+      }
+
       switch (event.type) {
         case 'message':
         case 'assistant':
@@ -131,9 +326,10 @@ export function HeadlessTerminal({
             currentMessageGroup = []
           }
 
-          const toolEvent = event as { tool_id: string }
-          const toolId = toolEvent.tool_id
-          const result = toolResults.get(toolId)
+          // Use fallback for tool_id in case events weren't normalized
+          const toolEvent = event as StreamToolUseEvent & { id?: string }
+          const toolId = toolEvent.tool_id || toolEvent.id
+          const result = toolId ? toolResults.get(toolId) : undefined
 
           groups.push({
             type: 'tool',
@@ -144,7 +340,9 @@ export function HeadlessTerminal({
         }
 
         case 'tool_result':
-          // Already handled with tool_use
+        case 'user':
+          // tool_result: Already handled with tool_use
+          // user: Contains tool_results which are already extracted in first pass
           break
 
         case 'result':
@@ -208,25 +406,29 @@ export function HeadlessTerminal({
     return (
       <div key={key} className="mb-4 space-y-3">
         {paragraphs.map((para, i) => (
-          <p
+          <div
             key={i}
-            className="whitespace-pre-wrap font-mono text-sm leading-relaxed"
+            className="flex gap-2 font-mono text-sm leading-relaxed"
           >
-            {para.trim()}
-          </p>
+            <span className="text-white flex-shrink-0">⏺</span>
+            <p className="whitespace-pre-wrap">
+              {para.trim()}
+            </p>
+          </div>
         ))}
       </div>
     )
   }
 
-  // Render a tool use/result group with inline summary
+  // Render a tool use/result group with Claude Code style
   const renderToolGroup = (
     events: StreamEvent[],
     toolId: string,
     key: number
   ) => {
+    // Use fallbacks for field names in case events weren't normalized
     const toolUse = events.find((e) => e.type === 'tool_use') as
-      | StreamToolUseEvent
+      | (StreamToolUseEvent & { name?: string })
       | undefined
     const toolResult = events.find((e) => e.type === 'tool_result') as
       | StreamToolResultEvent
@@ -235,62 +437,104 @@ export function HeadlessTerminal({
     const isCollapsed = collapsed[toolId] ?? true
     const hasError = toolResult?.is_error
 
-    // Generate inline summary
-    const summary = getToolSummary(toolUse?.tool_name, toolUse?.input)
+    // Use fallback for tool_name in case events weren't normalized
+    const toolName = toolUse?.tool_name || toolUse?.name
+    // Generate inline summary in Claude Code format
+    const summary = getToolSummary(toolName, toolUse?.input)
+    const outputPreview = getOutputPreview(
+      toolName,
+      toolUse?.input,
+      toolResult?.output,
+      hasError
+    )
+
+    // Special handling for Task (subagent) tools - show output with elbow brackets
+    const isTaskTool = toolName === 'Task'
+    const taskOutput = isTaskTool && toolResult?.output ? toolResult.output : null
 
     return (
-      <div key={key} className="mb-4">
-        {/* Inline tool summary - always visible */}
-        <div
-          className={`text-sm font-mono mb-2 ${
-            hasError ? 'text-red-400' : 'text-blue-400'
-          }`}
-        >
-          {summary}
-          {toolResult && !hasError && (
-            <span className="ml-2 text-green-400">✓</span>
-          )}
-          {toolResult && hasError && <span className="ml-2 text-red-400">✗</span>}
-          {!toolResult && (
-            <span className="ml-2 text-yellow-400 animate-pulse">...</span>
-          )}
+      <div key={key} className="mb-3 font-mono text-sm">
+        {/* Tool summary line: ⏺ Tool(arg) - green bullet for tools */}
+        <div className="flex items-start gap-2">
+          <span className="text-green-500 flex-shrink-0">
+            {summary.slice(0, 1)}
+          </span>
+          <div className="flex-1 min-w-0">
+            <span className={hasError ? 'text-red-400' : 'text-white'}>
+              {summary.slice(2)}
+            </span>
+            {!toolResult && (
+              <span className="ml-2 text-yellow-400 animate-pulse">...</span>
+            )}
+          </div>
         </div>
 
-        {/* Collapsible details */}
-        <div
-          className={`border-l-2 pl-3 ${
-            hasError ? 'border-red-500' : 'border-blue-500/30'
-          }`}
-        >
+        {/* For Task tools, show subagent output with elbow brackets */}
+        {isTaskTool && taskOutput && (
+          <div className="ml-2 mt-1 space-y-0.5">
+            {taskOutput.split('\n').filter(line => line.trim()).slice(0, 10).map((line, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`flex-shrink-0 ${hasError ? 'text-red-400' : 'text-zinc-500'}`}>
+                  ⎿
+                </span>
+                <span className={`${hasError ? 'text-red-400' : 'text-zinc-400'} break-all`}>
+                  {line.trim().length > 100 ? line.trim().slice(0, 100) + '...' : line.trim()}
+                </span>
+              </div>
+            ))}
+            {taskOutput.split('\n').filter(line => line.trim()).length > 10 && (
+              <div className="flex items-start gap-2">
+                <span className="flex-shrink-0 text-zinc-500">⎿</span>
+                <span className="text-zinc-500 italic">
+                  (+{taskOutput.split('\n').filter(line => line.trim()).length - 10} more lines)
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* For non-Task tools, show single preview line */}
+        {!isTaskTool && outputPreview && (
+          <div className="flex items-start gap-2 ml-2 mt-1">
+            <span className={`flex-shrink-0 ${hasError ? 'text-red-400' : 'text-zinc-500'}`}>
+              ⎿
+            </span>
+            <span className={`${hasError ? 'text-red-400' : 'text-zinc-400'} break-all`}>
+              {outputPreview.slice(2)}
+            </span>
+          </div>
+        )}
+
+        {/* Expandable details */}
+        <div className="ml-4 mt-1">
           <button
             onClick={() => toggleCollapse(toolId)}
-            className="flex items-center gap-2 text-xs font-mono hover:opacity-80 w-full text-left opacity-60"
+            className="flex items-center gap-1.5 text-xs hover:opacity-80 text-zinc-500"
           >
-            <span>{isCollapsed ? '▶' : '▼'}</span>
-            <span>{toolUse?.tool_name || 'Unknown tool'}</span>
-            <span className="text-xs">details</span>
+            <span className="text-[10px]">{isCollapsed ? '▶' : '▼'}</span>
+            <span>{isCollapsed ? 'show details' : 'hide details'}</span>
           </button>
 
-          {/* Tool details (collapsible) */}
+          {/* Full details (collapsible) */}
           {!isCollapsed && (
-            <div className="mt-2 ml-4 text-xs font-mono">
+            <div className="mt-2 text-xs space-y-2">
               {/* Input */}
               {toolUse?.input && (
-                <div className="mb-2">
-                  <div className="opacity-60 mb-1">Input:</div>
-                  <pre className="bg-black/20 p-2 rounded overflow-x-auto">
+                <div>
+                  <div className="text-zinc-500 mb-1">Input:</div>
+                  <pre className="bg-black/30 p-2 rounded overflow-x-auto text-zinc-300">
                     {JSON.stringify(toolUse.input, null, 2)}
                   </pre>
                 </div>
               )}
 
-              {/* Output */}
+              {/* Full output */}
               {toolResult?.output && (
                 <div>
-                  <div className="opacity-60 mb-1">Output:</div>
+                  <div className="text-zinc-500 mb-1">Output:</div>
                   <pre
                     className={`p-2 rounded overflow-x-auto whitespace-pre-wrap ${
-                      hasError ? 'bg-red-900/20' : 'bg-black/20'
+                      hasError ? 'bg-red-900/20 text-red-300' : 'bg-black/30 text-zinc-300'
                     }`}
                   >
                     {toolResult.output.length > 2000
@@ -481,8 +725,9 @@ export function HeadlessTerminal({
 
         {/* Running indicator at bottom */}
         {status === 'running' && events.length > 0 && (
-          <div className="mt-4 text-sm opacity-60 animate-pulse">
-            Thinking...
+          <div className="mt-4 flex items-center gap-2 text-sm font-mono">
+            <span className="text-white animate-pulse">⏺</span>
+            <span className="text-zinc-500 animate-pulse">Thinking...</span>
           </div>
         )}
       </div>

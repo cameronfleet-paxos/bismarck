@@ -2183,6 +2183,76 @@ export async function stopHeadlessTaskAgent(taskId: string): Promise<void> {
 }
 
 /**
+ * Destroy a headless agent - stop container, remove worktree, delete branches
+ */
+export async function destroyHeadlessAgent(
+  taskId: string,
+  isStandalone: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const logCtx: LogContext = { taskId }
+  logger.info('agent', 'Destroying headless agent', logCtx, { isStandalone })
+
+  try {
+    if (isStandalone) {
+      // Import standalone functions to avoid circular dependency at module load
+      const { stopStandaloneHeadlessAgent, cleanupStandaloneWorktree } = await import('./standalone-headless')
+      // Stop the agent if running
+      await stopStandaloneHeadlessAgent(taskId)
+      // Clean up worktree and branches (existing function handles all cleanup)
+      await cleanupStandaloneWorktree(taskId)
+    } else {
+      // Get info before stopping (need planId for worktree lookup)
+      const info = headlessAgentInfo.get(taskId)
+
+      // Stop the agent
+      await stopHeadlessTaskAgent(taskId)
+
+      // Clean up worktree if exists
+      if (info?.planId) {
+        const plan = getPlanById(info.planId)
+        const worktree = plan?.worktrees?.find(w => w.taskId === taskId)
+        if (worktree) {
+          const repo = await getRepositoryById(worktree.repositoryId)
+          if (repo?.rootPath) {
+            // Remove worktree
+            try {
+              await removeWorktree(repo.rootPath, worktree.path, true, logCtx)
+            } catch (e) {
+              logger.warn('agent', 'Worktree removal failed', logCtx, { error: String(e) })
+            }
+
+            // Delete local branch
+            try {
+              await deleteLocalBranch(repo.rootPath, worktree.branch, logCtx)
+            } catch (e) {
+              // may already be deleted
+            }
+
+            // Delete remote branch if exists
+            try {
+              if (await remoteBranchExists(repo.rootPath, worktree.branch)) {
+                await deleteRemoteBranch(repo.rootPath, worktree.branch, 'origin', logCtx)
+              }
+            } catch (e) {
+              logger.warn('agent', 'Remote branch deletion failed', logCtx, { error: String(e) })
+            }
+
+            // Mark worktree as cleaned in plan
+            worktree.status = 'cleaned'
+            await savePlan(plan!)
+          }
+        }
+      }
+    }
+
+    return { success: true }
+  } catch (error) {
+    logger.error('agent', 'Failed to destroy agent', logCtx, { error: String(error) })
+    return { success: false, error: String(error) }
+  }
+}
+
+/**
  * Stop all headless agents for a plan
  */
 async function stopAllHeadlessAgents(planId: string): Promise<void> {

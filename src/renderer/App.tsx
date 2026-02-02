@@ -95,6 +95,10 @@ function App() {
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
 
+  // Destroy agent confirmation dialog state
+  const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
+  const [isDestroying, setIsDestroying] = useState(false)
+
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
 
@@ -714,6 +718,29 @@ function App() {
     setTabs(state.tabs || [])
   }
 
+  const handleDestroyAgent = async () => {
+    if (!destroyAgentTarget) return
+    const { info, isStandalone } = destroyAgentTarget
+    setIsDestroying(true)
+    try {
+      await window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
+      // Remove from headless agents map
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        newMap.delete(info.taskId!)
+        return newMap
+      })
+      // Reload agents to pick up workspace deletion
+      await loadAgents()
+      // Refresh tabs
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+    } finally {
+      setIsDestroying(false)
+      setDestroyAgentTarget(null)
+    }
+  }
+
   const handleStandaloneStartFollowup = async (headlessId: string) => {
     // Show a simple prompt for follow-up task
     const prompt = window.prompt('Enter the follow-up task:')
@@ -782,8 +809,8 @@ function App() {
   }
 
   // Start standalone headless agent handler
-  const handleStartStandaloneHeadless = async (agentId: string, prompt: string) => {
-    const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt)
+  const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
+    const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
     if (result) {
       // Reload agents to pick up the new headless agent workspace
       await loadAgents()
@@ -1608,6 +1635,16 @@ function App() {
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDestroyAgentTarget({ info, isStandalone: false })}
+                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                                title="Destroy agent"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
@@ -1825,6 +1862,16 @@ function App() {
                               >
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
+                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                                title="Destroy agent"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
@@ -2000,6 +2047,34 @@ function App() {
         </DialogContent>
       </Dialog>
 
+      {/* Destroy Agent Confirmation Dialog */}
+      {destroyAgentTarget && (
+        <Dialog open onOpenChange={(open) => !open && setDestroyAgentTarget(null)}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle className="text-red-400">Destroy Agent?</DialogTitle>
+              <DialogDescription>
+                This will permanently delete:
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+              <li>The Docker container (if running)</li>
+              <li>The git worktree</li>
+              <li>Local and remote branches</li>
+            </ul>
+            <p className="text-sm text-yellow-500">This action cannot be undone.</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)} disabled={isDestroying}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDestroyAgent} disabled={isDestroying}>
+                {isDestroying ? 'Destroying...' : 'Destroy'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator
         open={planCreatorOpen}
@@ -2033,6 +2108,7 @@ function App() {
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
+        onStartPlan={() => setPlanCreatorOpen(true)}
       />
     </div>
     </>

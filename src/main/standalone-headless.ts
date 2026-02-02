@@ -25,12 +25,13 @@ import { getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab } from './s
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
-  getCurrentBranch,
+  getDefaultBranch,
   createWorktree,
   removeWorktree,
   deleteLocalBranch,
   deleteRemoteBranch,
   remoteBranchExists,
+  getCommitsBetween,
 } from './git-utils'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
 
@@ -169,15 +170,52 @@ Type /exit when finished.`
 }
 
 /**
+ * Build enhanced prompt for follow-up agents with commit history context
+ */
+function buildFollowUpPrompt(
+  userPrompt: string,
+  workingDir: string,
+  branchName: string,
+  recentCommits: Array<{ shortSha: string; message: string }>
+): string {
+  const commitHistory = recentCommits
+    .map(c => `  - ${c.shortSha}: ${c.message}`)
+    .join('\n')
+
+  return `[STANDALONE HEADLESS AGENT - FOLLOW-UP]
+
+Working Directory: ${workingDir}
+Branch: ${branchName}
+
+=== PREVIOUS WORK (review these commits for context) ===
+${commitHistory || '(No prior commits on this branch)'}
+
+=== YOUR FOLLOW-UP TASK ===
+${userPrompt}
+
+=== COMPLETION REQUIREMENTS ===
+1. Review the previous commits above to understand what was done
+2. Make your changes and commit with clear messages
+3. Push your changes: git push origin ${branchName}
+4. Update the existing PR if needed:
+   - gh pr edit --title "new title" --body "new body"
+5. Report the PR URL in your final message
+
+Type /exit when finished.`
+}
+
+/**
  * Start a standalone headless agent
  *
  * @param referenceAgentId - The agent whose directory will be used as the working directory
  * @param prompt - The prompt to send to the agent
+ * @param model - The model to use ('opus' or 'sonnet')
  * @returns The headless agent ID and workspace ID
  */
 export async function startStandaloneHeadlessAgent(
   referenceAgentId: string,
-  prompt: string
+  prompt: string,
+  model: 'opus' | 'sonnet' = 'sonnet'
 ): Promise<{ headlessId: string; workspaceId: string }> {
   // Look up the reference agent to get its directory
   const referenceAgent = getWorkspaceById(referenceAgentId)
@@ -196,8 +234,8 @@ export async function startStandaloneHeadlessAgent(
   }
   const repoName = path.basename(repoPath)
 
-  // Get current branch as base for worktree
-  const baseBranch = await getCurrentBranch(repoPath) || 'main'
+  // Get default branch as base for worktree
+  const baseBranch = await getDefaultBranch(repoPath)
 
   // Generate fun random phrase for this agent (e.g., "plucky-otter")
   const randomPhrase = generateRandomPhrase()
@@ -314,6 +352,7 @@ export async function startStandaloneHeadlessAgent(
     planDir: getStandaloneHeadlessDir(),
     taskId: headlessId,
     image: selectedImage,
+    claudeFlags: ['--model', model],
   }
 
   try {
@@ -579,7 +618,15 @@ export async function startFollowUpAgent(
 
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
-  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, worktreePath, branch)
+
+  // Get recent commits for context (compare against default branch)
+  const defaultBranch = await getDefaultBranch(repoPath)
+  const allCommits = await getCommitsBetween(worktreePath, `origin/${defaultBranch}`, 'HEAD')
+  // Take last 5 commits (most recent)
+  const recentCommits = allCommits.slice(-5)
+  console.log(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
+
+  const enhancedPrompt = buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits)
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
     worktreePath: worktreePath,

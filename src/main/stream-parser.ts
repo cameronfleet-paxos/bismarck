@@ -146,6 +146,40 @@ export function parseStreamLine(line: string): StreamEvent | null {
       parsed.timestamp = new Date().toISOString()
     }
 
+    // Normalize field names for tool_use events
+    // Claude Code outputs: { id, name, input }
+    // Our types expect: { tool_id, tool_name, input }
+    if (parsed.type === 'tool_use') {
+      if (parsed.name && !parsed.tool_name) {
+        parsed.tool_name = parsed.name
+      }
+      if (parsed.id && !parsed.tool_id) {
+        parsed.tool_id = parsed.id
+      }
+    }
+
+    // Normalize field names for tool_result events
+    // Claude Code outputs: { tool_use_id, content/output }
+    // Our types expect: { tool_id, output }
+    if (parsed.type === 'tool_result') {
+      if (parsed.tool_use_id && !parsed.tool_id) {
+        parsed.tool_id = parsed.tool_use_id
+      }
+      // Handle content field (Claude Code sometimes uses 'content' instead of 'output')
+      if (parsed.content && !parsed.output) {
+        // content can be a string or an array of content blocks
+        if (typeof parsed.content === 'string') {
+          parsed.output = parsed.content
+        } else if (Array.isArray(parsed.content)) {
+          // Extract text from content blocks
+          parsed.output = parsed.content
+            .map((block: { text?: string }) => block.text || '')
+            .filter(Boolean)
+            .join('\n')
+        }
+      }
+    }
+
     return parsed as StreamEvent
   } catch {
     // Not valid JSON - might be raw output, ignore

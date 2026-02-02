@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ interface Command {
 
 const commands: Command[] = [
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
+  { id: 'start-plan', label: 'Start: Plan', icon: FileText },
 ]
 
 interface CommandSearchProps {
@@ -34,7 +35,8 @@ interface CommandSearchProps {
   tabs: AgentTab[]
   activeTabId: string | null
   onSelectAgent: (agentId: string) => void
-  onStartHeadless?: (agentId: string, prompt: string) => void
+  onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
+  onStartPlan?: () => void
 }
 
 export function CommandSearch({
@@ -46,6 +48,7 @@ export function CommandSearch({
   tabs,
   onSelectAgent,
   onStartHeadless,
+  onStartPlan,
 }: CommandSearchProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -173,7 +176,9 @@ export function CommandSearch({
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         if (selectedAgent && prompt.trim() && onStartHeadless) {
-          onStartHeadless(selectedAgent.id, prompt.trim())
+          // Cmd+Shift+Enter -> Opus, Cmd+Enter -> Sonnet
+          const model = e.shiftKey ? 'opus' : 'sonnet'
+          onStartHeadless(selectedAgent.id, prompt.trim(), model)
           onOpenChange(false)
         }
       }
@@ -219,6 +224,9 @@ export function CommandSearch({
           setMode('agent-select')
           setQuery('')
           setSelectedIndex(0)
+        } else if (command.id === 'start-plan') {
+          onStartPlan?.()
+          onOpenChange(false)
         }
       } else {
         // Selected an agent directly
@@ -239,9 +247,9 @@ export function CommandSearch({
     }
   }
 
-  const handleSubmitPrompt = () => {
+  const handleSubmitPrompt = (model: 'opus' | 'sonnet') => {
     if (selectedAgent && prompt.trim() && onStartHeadless) {
-      onStartHeadless(selectedAgent.id, prompt.trim())
+      onStartHeadless(selectedAgent.id, prompt.trim(), model)
       onOpenChange(false)
     }
   }
@@ -306,13 +314,22 @@ export function CommandSearch({
               <span className="text-xs text-muted-foreground">
                 Working directory: {selectedAgent?.directory}
               </span>
-              <button
-                onClick={handleSubmitPrompt}
-                disabled={!prompt.trim()}
-                className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Start Agent
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSubmitPrompt('sonnet')}
+                  disabled={!prompt.trim()}
+                  className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Launch Sonnet
+                </button>
+                <button
+                  onClick={() => handleSubmitPrompt('opus')}
+                  disabled={!prompt.trim()}
+                  className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Launch Opus
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -510,10 +527,16 @@ export function CommandSearch({
         {/* Footer with hints */}
         <div className="border-t px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
           {mode === 'prompt-input' ? (
-            <span className="flex items-center gap-1">
-              <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
-              submit
-            </span>
+            <>
+              <span className="flex items-center gap-1">
+                <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
+                Sonnet
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+⇧+↵</kbd>
+                Opus
+              </span>
+            </>
           ) : (
             <>
               <span className="flex items-center gap-1">

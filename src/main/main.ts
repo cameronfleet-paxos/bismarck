@@ -80,6 +80,7 @@ import {
   getHeadlessAgentInfo,
   getHeadlessAgentInfoForPlan,
   stopHeadlessTaskAgent,
+  destroyHeadlessAgent,
   startDiscussion,
   cancelDiscussion,
   requestFollowUps,
@@ -219,11 +220,17 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('delete-workspace', async (_event, id: string) => {
-    // Check if this is a standalone headless workspace that needs worktree cleanup
     const workspace = getWorkspaces().find(w => w.id === id)
-    if (workspace?.isStandaloneHeadless && workspace.taskId) {
-      // Clean up the worktree before deleting
-      await cleanupStandaloneWorktree(workspace.taskId)
+
+    // Clean up headless agent worktrees and branches
+    if (workspace?.isHeadless && workspace.taskId) {
+      if (workspace.isStandaloneHeadless) {
+        // Standalone headless agent cleanup
+        await cleanupStandaloneWorktree(workspace.taskId)
+      } else {
+        // Plan-based headless agent cleanup
+        await destroyHeadlessAgent(workspace.taskId, false)
+      }
     }
 
     // Close terminal first to ensure PTY process is killed
@@ -481,9 +488,13 @@ function registerIpcHandlers() {
     return stopHeadlessTaskAgent(taskId)
   })
 
+  ipcMain.handle('destroy-headless-agent', async (_event, taskId: string, isStandalone: boolean) => {
+    return destroyHeadlessAgent(taskId, isStandalone)
+  })
+
   // Standalone headless agent management
-  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string) => {
-    return startStandaloneHeadlessAgent(agentId, prompt)
+  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
+    return startStandaloneHeadlessAgent(agentId, prompt, model)
   })
 
   ipcMain.handle('get-standalone-headless-agents', () => {
