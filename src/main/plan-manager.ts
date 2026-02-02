@@ -2246,17 +2246,14 @@ You are running in a Docker container with:
 === COMMANDS ===
 All these commands work normally (they are proxied to the host automatically):
 
-1. Git:
+${plan?.branchStrategy === 'raise_prs' ? `1. Git:
    - git status
    - git add .
    - git commit -m "Your commit message"
+   - git push origin HEAD (creates remote branch)
 
    IMPORTANT: For git commit, always use -m "message" inline.
-   Do NOT use --file or -F flags - file paths don't work across the proxy
-   since files in the container aren't accessible to git on the host.
-
-   NOTE: Do NOT push your commits directly. Bismarck will automatically push
-   your commits to the shared feature branch when you close the task.
+   Do NOT use --file or -F flags - file paths don't work across the proxy.
 
 2. GitHub CLI (gh):
    - gh pr create --base ${baseBranch} --title "..." --body "..."
@@ -2266,7 +2263,21 @@ All these commands work normally (they are proxied to the host automatically):
    IMPORTANT: For gh pr create:
    - Always use --body "..." inline (not --body-file)
    - If body starts with "-", use -- before --body to prevent parsing issues
-   - Example: gh pr create --base ${baseBranch} --title "My PR" -- --body "- Fixed bug"
+   - Example: gh pr create --base ${baseBranch} --title "My PR" -- --body "- Fixed bug"` : `1. Git:
+   - git status
+   - git add .
+   - git commit -m "Your commit message"
+
+   IMPORTANT: For git commit, always use -m "message" inline.
+   Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+   NOTE: Do NOT push your commits directly. Bismarck will automatically push
+   your commits to the shared feature branch when you close the task.
+
+2. GitHub CLI (gh):
+   - gh pr view (view existing PRs)
+
+   NOTE: In feature branch mode, Bismarck handles PR creation.`}
 
 3. Beads Task Management (bd):
    - bd close ${task.id} --message "..."  (REQUIRED when done)
