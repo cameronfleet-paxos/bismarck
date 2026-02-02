@@ -70,11 +70,11 @@ export interface Agent {
 // Alias for backwards compatibility
 export type Workspace = Agent
 
-// Tab containing up to 4 agents in a 2x2 grid
+// Tab containing agents in a configurable grid layout
 export interface AgentTab {
   id: string
   name: string
-  workspaceIds: string[] // Max 4, order = grid position (TL, TR, BL, BR)
+  workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
 }

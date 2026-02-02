@@ -1,7 +1,10 @@
 import { loadState, saveState, getDefaultPreferences } from './config'
 import type { AppState, AgentTab, AppPreferences } from '../shared/types'
+import { getGridConfig } from '../shared/grid-utils'
 
-const MAX_AGENTS_PER_TAB = 4
+function getMaxAgentsPerTab(): number {
+  return getGridConfig(currentState.preferences.gridSize).maxAgents
+}
 
 let currentState: AppState = {
   activeWorkspaceIds: [],
@@ -39,18 +42,18 @@ export function initializeState(): AppState {
     const defaultTab: AgentTab = {
       id: generateTabId(),
       name: 'Tab 1',
-      workspaceIds: currentState.activeWorkspaceIds.slice(0, MAX_AGENTS_PER_TAB),
+      workspaceIds: currentState.activeWorkspaceIds.slice(0, getMaxAgentsPerTab()),
     }
     currentState.tabs = [defaultTab]
     currentState.activeTabId = defaultTab.id
 
     // Handle overflow if more than 4 active workspaces
-    const remaining = currentState.activeWorkspaceIds.slice(MAX_AGENTS_PER_TAB)
+    const remaining = currentState.activeWorkspaceIds.slice(getMaxAgentsPerTab())
     while (remaining.length > 0) {
       const overflowTab: AgentTab = {
         id: generateTabId(),
         name: getNextTabName(),
-        workspaceIds: remaining.splice(0, MAX_AGENTS_PER_TAB),
+        workspaceIds: remaining.splice(0, getMaxAgentsPerTab()),
       }
       currentState.tabs.push(overflowTab)
     }
@@ -197,7 +200,7 @@ export function addWorkspaceToTab(
   // Regular tabs: find first empty slot (position 0-3)
   // workspaceIds may be sparse or shorter than 4
   let insertPosition = -1
-  for (let i = 0; i < MAX_AGENTS_PER_TAB; i++) {
+  for (let i = 0; i < getMaxAgentsPerTab(); i++) {
     if (!tab.workspaceIds[i]) {
       insertPosition = i
       break
@@ -241,7 +244,7 @@ export function reorderWorkspaceInTab(
   newPosition: number
 ): boolean {
   const tab = currentState.tabs.find((t) => t.id === tabId)
-  if (!tab || newPosition < 0 || newPosition >= MAX_AGENTS_PER_TAB) {
+  if (!tab || newPosition < 0 || newPosition >= getMaxAgentsPerTab()) {
     return false
   }
 
@@ -292,7 +295,7 @@ export function moveWorkspaceToTab(
   let targetPosition = position
   if (targetPosition === undefined) {
     // Find first empty slot
-    for (let i = 0; i < MAX_AGENTS_PER_TAB; i++) {
+    for (let i = 0; i < getMaxAgentsPerTab(); i++) {
       if (!targetTab.workspaceIds[i]) {
         targetPosition = i
         break
@@ -305,7 +308,7 @@ export function moveWorkspaceToTab(
   } else if (targetTab.workspaceIds[targetPosition]) {
     // Target position is occupied and no swap needed (cross-tab)
     // Find first empty slot instead
-    for (let i = 0; i < MAX_AGENTS_PER_TAB; i++) {
+    for (let i = 0; i < getMaxAgentsPerTab(); i++) {
       if (!targetTab.workspaceIds[i]) {
         targetPosition = i
         break
@@ -342,7 +345,7 @@ export function getOrCreateTabForWorkspace(workspaceId: string): AgentTab {
   for (const tab of currentState.tabs) {
     // Count actual workspaces (filter out undefined/null from sparse array)
     const actualCount = tab.workspaceIds.filter(Boolean).length
-    if (actualCount < MAX_AGENTS_PER_TAB) {
+    if (actualCount < getMaxAgentsPerTab()) {
       return tab
     }
   }

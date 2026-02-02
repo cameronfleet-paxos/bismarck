@@ -29,6 +29,7 @@ import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicat
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
+import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 
 interface ActiveTerminal {
   terminalId: string
@@ -946,8 +947,9 @@ function App() {
     (p) => p.status === 'delegating' || p.status === 'in_progress'
   ).length
 
-  // Grid positions: TL (0), TR (1), BL (2), BR (3)
-  const gridPositions = [0, 1, 2, 3]
+  // Grid configuration based on user preference
+  const gridConfig = getGridConfig(preferences.gridSize)
+  const gridPositions = gridConfig.positions
 
   // Empty state
   if (agents.length === 0) {
@@ -1419,12 +1421,12 @@ function App() {
                     })}
                   </div>
                 ) : (
-                  // Regular 2x2 grid for normal tabs (max 4 agents)
+                  // Regular grid for normal tabs (size based on user preference)
                   <div
                     className="h-full grid gap-2"
                     style={{
-                      gridTemplateColumns: '1fr 1fr',
-                      gridTemplateRows: '1fr 1fr',
+                      gridTemplateColumns: `repeat(${gridConfig.cols}, 1fr)`,
+                      gridTemplateRows: `repeat(${gridConfig.rows}, 1fr)`,
                     }}
                   >
                     {/* Render active terminals - keyed by terminalId, positioned by CSS grid */}
@@ -1438,8 +1440,7 @@ function App() {
                         const agent = agents.find((a) => a.id === workspaceId)
                         if (!agent) return null
 
-                      const gridRow = position < 2 ? 1 : 2      // 0,1 -> row 1; 2,3 -> row 2
-                      const gridCol = position % 2 === 0 ? 1 : 2 // 0,2 -> col 1; 1,3 -> col 2
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isWaiting = isAgentWaiting(workspaceId)
                       const isFocused = focusedAgentId === workspaceId
@@ -1586,8 +1587,7 @@ function App() {
                     {/* Render empty slots separately - keyed by position */}
                     {gridPositions.map((position) => {
                       if (tabWorkspaceIds[position]) return null // Skip if occupied
-                      const gridRow = position < 2 ? 1 : 2
-                      const gridCol = position % 2 === 0 ? 1 : 2
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
 
                       return (
