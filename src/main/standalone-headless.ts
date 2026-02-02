@@ -98,6 +98,29 @@ function emitStateUpdate(): void {
 }
 
 /**
+ * Build enhanced prompt for standalone headless agents with PR instructions
+ */
+function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string): string {
+  return `[STANDALONE HEADLESS AGENT]
+
+Working Directory: ${workingDir}
+
+=== YOUR TASK ===
+${userPrompt}
+
+=== COMPLETION REQUIREMENTS ===
+When you complete your work:
+
+1. Create a new branch for your changes
+2. Commit your changes with a clear, descriptive message
+3. Push your branch and create a PR:
+   gh pr create --fill
+4. Report the PR URL in your final message
+
+Type /exit when finished.`
+}
+
+/**
  * Start a standalone headless agent
  *
  * @param referenceAgentId - The agent whose directory will be used as the working directory
@@ -204,8 +227,9 @@ export async function startStandaloneHeadlessAgent(
   // Start the agent
   ensureStandaloneHeadlessDir()
   const selectedImage = await getSelectedDockerImage()
+  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, referenceAgent.directory)
   const options: HeadlessAgentOptions = {
-    prompt,
+    prompt: enhancedPrompt,
     worktreePath: referenceAgent.directory,
     planDir: getStandaloneHeadlessDir(),
     taskId: headlessId,
