@@ -272,14 +272,14 @@ function generatePlanId(): string {
 /**
  * Create a new plan in draft status
  */
-export function createPlan(
+export async function createPlan(
   title: string,
   description: string,
   options?: {
     maxParallelAgents?: number
     branchStrategy?: BranchStrategy
   }
-): Plan {
+): Promise<Plan> {
   const now = new Date().toISOString()
   const planId = generatePlanId()
   const branchStrategy = options?.branchStrategy ?? 'feature_branch'
@@ -308,7 +308,7 @@ export function createPlan(
     },
   }
 
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
   return plan
 }
@@ -357,7 +357,7 @@ export async function deletePlanById(planId: string): Promise<void> {
   executingPlans.delete(planId)
 
   // Remove from plans.json
-  deletePlan(planId)
+  await deletePlan(planId)
 
   // Delete plan directory at ~/.bismarck/plans/<planId>/
   const planDir = getPlanDir(planId)
@@ -468,7 +468,7 @@ export async function clonePlan(
     }
   }
 
-  savePlan(newPlan)
+  await savePlan(newPlan)
   emitPlanUpdate(newPlan)
   logger.info('plan', `Cloned plan ${planId} to ${newPlanId}`, logCtx, { newPlanId, title: newPlan.title })
 
@@ -485,13 +485,13 @@ export function getTaskAssignments(planId: string): TaskAssignment[] {
 /**
  * Update a plan's status
  */
-export function updatePlanStatus(planId: string, status: PlanStatus): Plan | null {
+export async function updatePlanStatus(planId: string, status: PlanStatus): Promise<Plan | null> {
   const plan = getPlanById(planId)
   if (!plan) return null
 
   plan.status = status
   plan.updatedAt = new Date().toISOString()
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
   return plan
 }
@@ -635,7 +635,7 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
   const discussionTab = createTab(`💬 ${plan.title.substring(0, 15)}`, { isPlanTab: true, planId: plan.id })
   plan.orchestratorTabId = discussionTab.id
 
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
 
   addPlanActivity(planId, 'info', 'Discussion phase started')
@@ -651,7 +651,7 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
   }
   saveWorkspace(discussionWorkspace)
   plan.discussionAgentWorkspaceId = discussionWorkspace.id
-  savePlan(plan)
+  await savePlan(plan)
 
   // Create terminal for discussion agent
   if (mainWindow) {
@@ -754,7 +754,7 @@ async function completeDiscussion(planId: string): Promise<void> {
   // Transition to 'discussed' status - ready for execution
   plan.status = 'discussed'
   plan.updatedAt = new Date().toISOString()
-  savePlan(plan)
+  await savePlan(plan)
 
   addPlanActivity(planId, 'success', 'Discussion completed - ready for execution')
   emitPlanUpdate(plan)
@@ -794,7 +794,7 @@ export async function cancelDiscussion(planId: string): Promise<Plan | null> {
   // Return to draft status
   plan.status = 'draft'
   plan.updatedAt = new Date().toISOString()
-  savePlan(plan)
+  await savePlan(plan)
 
   addPlanActivity(planId, 'info', 'Discussion cancelled - returned to draft')
   emitPlanUpdate(plan)
@@ -861,7 +861,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   const orchestratorTab = createTab(plan.title.substring(0, 20), { isPlanTab: true, planId: plan.id })
   plan.orchestratorTabId = orchestratorTab.id
 
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
 
   // Create orchestrator workspace (runs in plan directory to work with bd tasks)
@@ -876,7 +876,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   }
   saveWorkspace(orchestratorWorkspace)
   plan.orchestratorWorkspaceId = orchestratorWorkspace.id
-  savePlan(plan)
+  await savePlan(plan)
 
   // Create terminal for orchestrator and add to its dedicated tab
   console.log(`[PlanManager] mainWindow is: ${mainWindow ? 'defined' : 'NULL'}`)
@@ -918,7 +918,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       }
       saveWorkspace(planAgentWorkspace)
       plan.planAgentWorkspaceId = planAgentWorkspace.id
-      savePlan(plan)
+      await savePlan(plan)
 
       // Create terminal with plan agent prompt
       // Pass --add-dir flags so plan agent can access both plan directory and codebase
@@ -949,7 +949,9 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
           // Claude shows "Goodbye!" when /exit is used
           if (data.includes('Goodbye') || data.includes('Session ended')) {
             planAgentEmitter.removeListener('data', exitHandler)
-            cleanupPlanAgent(plan)
+            cleanupPlanAgent(plan).catch((err) => {
+              console.error('[PlanManager] Error cleaning up plan agent:', err)
+            })
           }
         }
         planAgentEmitter.on('data', exitHandler)
@@ -965,7 +967,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Revert status since we couldn't actually execute
       plan.status = 'discussed'
       plan.updatedAt = new Date().toISOString()
-      savePlan(plan)
+      await savePlan(plan)
       emitPlanUpdate(plan)
       return plan
     }
@@ -977,7 +979,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
     // Revert status since we couldn't actually execute
     plan.status = 'discussed'
     plan.updatedAt = new Date().toISOString()
-    savePlan(plan)
+    await savePlan(plan)
     emitPlanUpdate(plan)
     return plan
   }
@@ -1011,7 +1013,7 @@ export async function cancelPlan(planId: string): Promise<Plan | null> {
   // 2. Update plan state BEFORE worktree cleanup so UI knows plan is cancelled immediately
   plan.status = 'failed'
   plan.updatedAt = new Date().toISOString()
-  savePlan(plan)
+  await savePlan(plan)
   logger.info('plan', 'Plan status set to failed, emitting update', logCtx)
   emitPlanUpdate(plan)
   addPlanActivity(planId, 'error', 'Plan cancelled', 'Execution was stopped by user')
@@ -1084,7 +1086,7 @@ export async function restartPlan(planId: string): Promise<Plan | null> {
     await fs.rm(beadsDir, { recursive: true, force: true })
   } catch { /* ignore */ }
 
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
   addPlanActivity(planId, 'info', 'Plan restarted',
     hadApprovedDiscussion ? 'Discussion preserved' : 'Returned to draft')
@@ -1227,7 +1229,7 @@ async function cleanupAllWorktreesOnly(planId: string): Promise<void> {
     }
   }
 
-  savePlan(plan)
+  await savePlan(plan)
 
   // Also clean up the entire worktrees directory for this plan
   // This catches any directories not tracked in plan state
@@ -1276,9 +1278,9 @@ async function cleanupAllWorktreesOnly(planId: string): Promise<void> {
 /**
  * Cleanup orchestrator workspace, terminal, and tab for a plan
  */
-function cleanupOrchestrator(plan: Plan): void {
+async function cleanupOrchestrator(plan: Plan): Promise<void> {
   // Also cleanup plan agent if it's still running
-  cleanupPlanAgentSilent(plan)
+  await cleanupPlanAgentSilent(plan)
 
   if (plan.orchestratorWorkspaceId) {
     // Close terminal
@@ -1959,7 +1961,7 @@ Once you've created all tasks and dependencies, let the user know:
 /**
  * Cleanup plan agent workspace, terminal for a plan
  */
-function cleanupPlanAgent(plan: Plan): void {
+async function cleanupPlanAgent(plan: Plan): Promise<void> {
   if (!plan.planAgentWorkspaceId) return
 
   // Close terminal
@@ -1977,7 +1979,7 @@ function cleanupPlanAgent(plan: Plan): void {
   // Delete workspace config
   deleteWorkspace(plan.planAgentWorkspaceId)
   plan.planAgentWorkspaceId = null
-  savePlan(plan)
+  await savePlan(plan)
 
   addPlanActivity(plan.id, 'success', 'Plan agent completed task creation')
   emitStateUpdate()
@@ -1989,7 +1991,7 @@ function cleanupPlanAgent(plan: Plan): void {
 /**
  * Cleanup plan agent without logging success (used for cancellation)
  */
-function cleanupPlanAgentSilent(plan: Plan): void {
+async function cleanupPlanAgentSilent(plan: Plan): Promise<void> {
   if (!plan.planAgentWorkspaceId) return
 
   // Close terminal
@@ -2007,7 +2009,7 @@ function cleanupPlanAgentSilent(plan: Plan): void {
   // Delete workspace config
   deleteWorkspace(plan.planAgentWorkspaceId)
   plan.planAgentWorkspaceId = null
-  savePlan(plan)
+  await savePlan(plan)
 
   emitStateUpdate()
 }
@@ -2133,7 +2135,7 @@ async function createTaskAgentWithWorktree(
       currentPlan.worktrees = []
     }
     currentPlan.worktrees.push(planWorktree)
-    savePlan(currentPlan)
+    await savePlan(currentPlan)
   })
 
   return { agent: taskAgent, worktree: planWorktree }
@@ -2553,7 +2555,7 @@ async function cleanupTaskAgent(planId: string, taskId: string): Promise<void> {
 
   // Update worktree status
   worktree.status = 'cleaned'
-  savePlan(plan)
+  await savePlan(plan)
   logger.info('task', 'Task agent cleanup complete', logCtx)
 }
 
@@ -2589,7 +2591,7 @@ async function markWorktreeReadyForReview(planId: string, taskId: string): Promi
 
     worktree.status = 'ready_for_review'
     // Note: agentId kept for reference even though agent is cleaned up
-    savePlan(plan)
+    await savePlan(plan)
     emitPlanUpdate(plan)
     emitStateUpdate()
 
@@ -2815,7 +2817,7 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
     }
   }
 
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
 
   // Return false to indicate the dependent task can now proceed
@@ -2931,7 +2933,9 @@ ${conflictError.message}
       // Mark the worktree as merged
       worktree.mergedAt = new Date().toISOString()
       worktree.mergedIntoFeatureBranch = true
-      savePlan(plan)
+      savePlan(plan).catch((err) => {
+        console.error('[PlanManager] Error saving plan after merge:', err)
+      })
       emitPlanUpdate(plan)
     } else {
       addPlanActivity(plan.id, 'error', `Merge resolution failed for ${worktree.taskId}`, result.error)
@@ -3011,7 +3015,7 @@ async function pushToFeatureBranch(plan: Plan, worktree: PlanWorktree, repositor
   if (!plan.featureBranch) {
     // Create the feature branch if it doesn't exist
     plan.featureBranch = `bismarck/${plan.id.split('-')[1]}/feature`
-    savePlan(plan)
+    await savePlan(plan)
   }
 
   const logCtx: LogContext = { planId: plan.id, taskId: worktree.taskId }
@@ -3070,13 +3074,13 @@ async function pushToFeatureBranch(plan: Plan, worktree: PlanWorktree, repositor
       const newCommits = planCommits.filter(c => !existingShas.has(c.sha))
       plan.gitSummary.commits.push(...newCommits)
 
-      savePlan(plan)
+      await savePlan(plan)
       emitPlanUpdate(plan)
 
       // Mark worktree as merged into feature branch
       worktree.mergedAt = new Date().toISOString()
       worktree.mergedIntoFeatureBranch = true
-      savePlan(plan)
+      await savePlan(plan)
 
       addPlanActivity(
         plan.id,
@@ -3142,7 +3146,7 @@ async function recordPullRequest(plan: Plan, worktree: PlanWorktree, repository:
       }
       plan.gitSummary.pullRequests.push(planPR)
 
-      savePlan(plan)
+      await savePlan(plan)
       emitPlanUpdate(plan)
 
       addPlanActivity(
@@ -3231,7 +3235,7 @@ async function refreshGitSummary(plan: Plan): Promise<void> {
     logger.info('git', `Refreshed git summary: ${planCommits.length} commits on feature branch`, { planId: plan.id })
     addPlanActivity(plan.id, 'info', `Git summary refreshed: ${planCommits.length} commit(s) on feature branch`)
 
-    savePlan(plan)
+    await savePlan(plan)
     emitPlanUpdate(plan)
   } catch (error) {
     logger.warn('git', 'Failed to refresh git summary', { planId: plan.id }, { error: error instanceof Error ? error.message : String(error) })
@@ -3284,11 +3288,11 @@ export async function completePlan(planId: string): Promise<Plan | null> {
   await cleanupAllWorktrees(planId)
 
   // Cleanup orchestrator
-  cleanupOrchestrator(plan)
+  await cleanupOrchestrator(plan)
 
   plan.status = 'completed'
   plan.updatedAt = new Date().toISOString()
-  savePlan(plan)
+  await savePlan(plan)
   emitPlanUpdate(plan)
 
   addPlanActivity(planId, 'success', 'Plan completed', 'All work finished and cleaned up')
@@ -3417,7 +3421,7 @@ async function checkForNewTasksAndResume(planId: string): Promise<void> {
       logger.planStateChange(plan.id, plan.status, 'in_progress', `${openTasks.length} new follow-up tasks`)
       plan.status = 'in_progress'
       plan.updatedAt = new Date().toISOString()
-      savePlan(plan)
+      await savePlan(plan)
       emitPlanUpdate(plan)
 
       addPlanActivity(planId, 'info', `Resuming plan with ${openTasks.length} follow-up task(s)`)
@@ -3481,7 +3485,7 @@ export async function requestFollowUps(planId: string): Promise<Plan | null> {
     const newTab = createTab(`📋 ${plan.title.substring(0, 15)}`, { isPlanTab: true, planId: plan.id })
     tabId = newTab.id
     plan.orchestratorTabId = tabId
-    savePlan(plan)
+    await savePlan(plan)
   }
 
   // Create terminal for follow-up agent
@@ -3627,7 +3631,7 @@ async function updatePlanStatuses(): Promise<void> {
         // Refresh git summary to get accurate commit count from feature branch
         await refreshGitSummary(plan)
 
-        savePlan(plan)
+        await savePlan(plan)
         emitPlanUpdate(plan)
         addPlanActivity(plan.id, 'success', 'All tasks completed', 'Click "Mark Complete" to cleanup worktrees')
       } else if (openTasks.length > 0 && plan.status === 'delegating') {
@@ -3635,7 +3639,7 @@ async function updatePlanStatuses(): Promise<void> {
         logger.planStateChange(plan.id, plan.status, 'in_progress', `${openTasks.length} open tasks`)
         plan.status = 'in_progress'
         plan.updatedAt = new Date().toISOString()
-        savePlan(plan)
+        await savePlan(plan)
         emitPlanUpdate(plan)
         addPlanActivity(plan.id, 'info', 'Tasks are being worked on', `${openTasks.length} task(s) remaining`)
       }
@@ -3650,7 +3654,7 @@ async function updatePlanStatuses(): Promise<void> {
         logger.planStateChange(plan.id, plan.status, 'in_progress', `${openTasks.length} new follow-up tasks`)
         plan.status = 'in_progress'
         plan.updatedAt = new Date().toISOString()
-        savePlan(plan)
+        await savePlan(plan)
         emitPlanUpdate(plan)
         addPlanActivity(plan.id, 'info', `Resuming with ${openTasks.length} follow-up task(s)`)
 

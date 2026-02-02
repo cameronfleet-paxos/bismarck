@@ -36,6 +36,28 @@ export async function withPlanLock<T>(planId: string, fn: () => Promise<T>): Pro
 // Mutex for serializing git push operations per plan (separate from plan state lock)
 const gitPushMutexes: Map<string, Promise<void>> = new Map()
 
+// Global mutex for plans.json file operations
+// This prevents race conditions when multiple tasks modify their plans concurrently
+let plansFileMutex: Promise<void> = Promise.resolve()
+
+/**
+ * Execute a function with exclusive access to the plans.json file.
+ * This is a global lock that serializes all savePlan/deletePlan operations
+ * to prevent concurrent read-modify-write race conditions.
+ */
+export async function withPlansFileLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const pending = plansFileMutex
+  let resolve: () => void
+  plansFileMutex = new Promise<void>((r) => { resolve = r })
+
+  try {
+    await pending
+    return await fn()
+  } finally {
+    resolve!()
+  }
+}
+
 /**
  * Execute a function with exclusive access to git push operations for a plan.
  * Prevents concurrent pushes to the same feature branch.
@@ -265,23 +287,27 @@ export function savePlans(plans: Plan[]): void {
   writeConfigAtomic(getPlansPath(), plans)
 }
 
-export function savePlan(plan: Plan): Plan {
-  const plans = loadPlans()
-  const existingIndex = plans.findIndex((p) => p.id === plan.id)
+export async function savePlan(plan: Plan): Promise<Plan> {
+  return withPlansFileLock(() => {
+    const plans = loadPlans()
+    const existingIndex = plans.findIndex((p) => p.id === plan.id)
 
-  if (existingIndex >= 0) {
-    plans[existingIndex] = plan
-  } else {
-    plans.push(plan)
-  }
+    if (existingIndex >= 0) {
+      plans[existingIndex] = plan
+    } else {
+      plans.push(plan)
+    }
 
-  savePlans(plans)
-  return plan
+    savePlans(plans)
+    return plan
+  })
 }
 
-export function deletePlan(id: string): void {
-  const plans = loadPlans()
-  savePlans(plans.filter((p) => p.id !== id))
+export async function deletePlan(id: string): Promise<void> {
+  return withPlansFileLock(() => {
+    const plans = loadPlans()
+    savePlans(plans.filter((p) => p.id !== id))
+  })
 }
 
 export function getPlanById(id: string): Plan | undefined {

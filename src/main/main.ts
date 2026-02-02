@@ -321,8 +321,8 @@ function registerIpcHandlers() {
   })
 
   // Plan management (Team Mode)
-  ipcMain.handle('create-plan', (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
-    return createPlan(title, description, options)
+  ipcMain.handle('create-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
+    return await createPlan(title, description, options)
   })
 
   ipcMain.handle('get-plans', () => {
