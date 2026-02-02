@@ -1903,10 +1903,11 @@ async function createTaskAgentWithWorktree(
   // Determine worktree path
   const worktreePath = getWorktreePath(planId, repository.name, worktreeName)
 
+  // Determine base branch based on strategy and task dependencies
+  const baseBranch = await getBaseBranchForTask(plan, task, repository)
+
   // Create the worktree
   try {
-    // Determine base branch based on strategy and task dependencies
-    const baseBranch = await getBaseBranchForTask(plan, task, repository)
     await createWorktree(repository.rootPath, worktreePath, branchName, baseBranch)
     addPlanActivity(planId, 'info', `Created worktree: ${worktreeName}`, `Branch: ${branchName}, Base: ${baseBranch}`)
   } catch (error) {
@@ -1950,6 +1951,7 @@ async function createTaskAgentWithWorktree(
     createdAt: new Date().toISOString(),
     // Track task dependencies for merge logic
     blockedBy: task.blockedBy,
+    baseBranch,
   }
 
   // Add worktree to plan (use lock to prevent race conditions with parallel agent spawns)
@@ -1985,7 +1987,7 @@ async function startHeadlessTaskAgent(
     repo: repository.name,
     image: selectedImage,
   })
-  const taskPrompt = buildTaskPromptForHeadless(planId, task, repository, worktree.path)
+  const taskPrompt = buildTaskPromptForHeadless(planId, task, repository, worktree)
   logger.debug('agent', 'Built task prompt', logCtx, { promptLength: taskPrompt.length })
 
   // Create headless agent info for tracking
@@ -2212,16 +2214,16 @@ async function stopAllHeadlessAgents(planId: string): Promise<void> {
 /**
  * Build task prompt for headless mode (includes container-specific instructions)
  */
-function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?: Repository, _hostWorktreePath?: string): string {
+function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?: Repository, worktree?: PlanWorktree): string {
   const plan = getPlanById(planId)
-  // Prefer repository's detected defaultBranch over plan's potentially incorrect default
-  const baseBranch = repository?.defaultBranch || 'main'
+  // Use worktree's baseBranch if available (handles PR stacking), fall back to repository default
+  const baseBranch = worktree?.baseBranch || repository?.defaultBranch || 'main'
 
   // Build completion instructions based on branch strategy
   let completionInstructions: string
   if (plan?.branchStrategy === 'raise_prs') {
     completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR: gh pr create --base ${baseBranch}
+3. Push your branch and create a PR: gh pr create --base ${baseBranch} --title "..." -- --body "..."
 4. Close task with PR URL:
    bd close ${task.id} --message "PR: <url>"`
   } else {
@@ -2261,8 +2263,10 @@ All these commands work normally (they are proxied to the host automatically):
    - gh pr view
    - All standard gh commands work
 
-   IMPORTANT: For gh pr create, always use --body "..." inline.
-   Do NOT use --body-file - file paths don't work across the proxy.
+   IMPORTANT: For gh pr create:
+   - Always use --body "..." inline (not --body-file)
+   - If body starts with "-", use -- before --body to prevent parsing issues
+   - Example: gh pr create --base ${baseBranch} --title "My PR" -- --body "- Fixed bug"
 
 3. Beads Task Management (bd):
    - bd close ${task.id} --message "..."  (REQUIRED when done)
@@ -2491,9 +2495,24 @@ async function getBaseBranchForTask(
     return defaultBase
   }
 
-  // For raise_prs strategy, check if this task has blockers
-  // If it does, stack on the blocker's branch
-  // For now, we use the default base - the orchestrator can set a "stack-on:" label
+  // For raise_prs strategy with blockers, stack on the blocker's branch
+  if (task.blockedBy && task.blockedBy.length > 0) {
+    // Find blocker worktrees that are ready_for_review (completed)
+    const blockerWorktrees = (plan.worktrees || []).filter(w =>
+      task.blockedBy?.includes(w.taskId) &&
+      w.status === 'ready_for_review'
+    )
+
+    // If we have a completed blocker, stack on its branch
+    if (blockerWorktrees.length > 0) {
+      const blockerBranch = blockerWorktrees[0].branch
+      const logCtx: LogContext = { planId: plan.id, taskId: task.id }
+      logger.info('task', `Stacking PR on blocker branch: ${blockerBranch}`, logCtx)
+      return blockerBranch
+    }
+  }
+
+  // Fallback: check for manual stack-on label
   const stackOnLabel = task.labels?.find(l => l.startsWith('stack-on:'))
   if (stackOnLabel) {
     return stackOnLabel.substring('stack-on:'.length)

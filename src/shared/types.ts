@@ -90,7 +90,8 @@ export interface AgentTab {
 }
 
 // Attention mode determines how waiting agents are displayed
-export type AttentionMode = 'focus' | 'expand' | 'queue'
+// 'off' = no visual indicators for waiting agents
+export type AttentionMode = 'off' | 'focus' | 'expand' | 'queue'
 
 // Grid size for agent display
 export type GridSize = '1x1' | '2x2' | '2x3' | '3x3'
@@ -209,6 +210,7 @@ export interface PlanWorktree {
   mergeTaskId?: string          // ID of the merge task in beads (if merge agent was spawned)
   // Task dependency tracking
   blockedBy?: string[]          // Task IDs this task depends on
+  baseBranch?: string           // Branch this worktree was created from (for PR base)
 }
 
 // Plan definition for team mode coordination
