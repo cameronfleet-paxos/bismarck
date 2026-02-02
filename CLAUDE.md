@@ -136,7 +136,7 @@ curl -s localhost:9333/health
 # Take screenshot
 curl -s "localhost:9333/screenshot?path=/tmp/claude/bismarck-screenshot.png"
 
-# Get app state
+# Get app state (view detection: workspace/settings, active tab, plans panel status)
 curl -s localhost:9333/state
 
 # Evaluate JavaScript
@@ -158,6 +158,13 @@ curl -s localhost:9333/toggle-dev-console
 # Start mock agent
 curl -s -X POST localhost:9333/mock-agent -d '{"taskId":"test-1"}'
 ```
+
+### UI Interaction Tips
+
+- Use `/state` to quickly detect current view (`workspace`/`settings`) and active sections without screenshots.
+- Click header buttons by index: `document.querySelectorAll("header button")[2].click()` for settings (3rd button).
+- The `/click` endpoint with `{"text":"..."}` works for most buttons but fails on icon-only buttons or nested elements.
+- To expand plans, find the chevron button via DOM traversal: `h4.closest("div").parentElement.querySelector("svg.lucide-chevron-right")?.closest("button").click()`.
 
 ### Dev Console (Development Only)
 
