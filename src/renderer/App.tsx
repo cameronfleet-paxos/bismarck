@@ -27,6 +27,7 @@ import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
+import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -1714,6 +1715,15 @@ function App() {
         onOpenChange={setPlanCreatorOpen}
         onCreatePlan={handleCreatePlan}
       />
+
+      {/* Attention Queue (queue mode only) */}
+      {preferences.attentionMode === 'queue' && waitingQueue.length > 0 && currentView === 'main' && (
+        <AttentionQueue
+          waitingQueue={waitingQueue}
+          agents={agents}
+          onFocusAgent={handleFocusAgent}
+        />
+      )}
 
       {/* Dev Console (development only) */}
       <DevConsole

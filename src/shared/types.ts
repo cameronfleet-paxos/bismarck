@@ -90,7 +90,7 @@ export interface AgentTab {
 }
 
 // Attention mode determines how waiting agents are displayed
-export type AttentionMode = 'focus' | 'expand'
+export type AttentionMode = 'focus' | 'expand' | 'queue'
 
 // Grid size for agent display
 export type GridSize = '1x1' | '2x2' | '2x3' | '3x3'

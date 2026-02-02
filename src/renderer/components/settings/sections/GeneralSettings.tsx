@@ -106,6 +106,22 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
                 </div>
               </div>
             </label>
+            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+              <input
+                type="radio"
+                name="attentionMode"
+                value="queue"
+                checked={attentionMode === 'queue'}
+                onChange={() => handleAttentionModeChange('queue')}
+                className="mt-1"
+              />
+              <div>
+                <div className="font-medium">Queue</div>
+                <div className="text-sm text-muted-foreground">
+                  Shows a horizontal toast with agent icons at the bottom
+                </div>
+              </div>
+            </label>
           </div>
         </div>
 
