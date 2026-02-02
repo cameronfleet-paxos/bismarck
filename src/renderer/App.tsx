@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -97,6 +97,11 @@ function App() {
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+
+  // Discussion execute state - maps planId to selected agent id
+  const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
+  const [discussionExecuting, setDiscussionExecuting] = useState<Record<string, boolean>>({})
+
 
   // Collapsed plan groups in sidebar
   const [collapsedPlanGroups, setCollapsedPlanGroups] = useState<Set<string>>(new Set())
@@ -1268,28 +1273,96 @@ function App() {
                 className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'}`}
               >
                 {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 ? (
-                  tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed') ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center gap-4 p-8">
-                      <CheckCircle2 className="h-12 w-12 text-green-500" />
-                      <div>
-                        <h3 className="text-lg font-medium">Discussion Complete</h3>
-                        <p className="text-muted-foreground mt-2">
-                          Open the Plans panel to select a reference agent and execute your plan.
-                        </p>
+                  (() => {
+                    const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
+                    if (discussedPlan) {
+                      const selectedAgentId = discussionExecuteAgent[discussedPlan.id] || ''
+                      const isExecuting = discussionExecuting[discussedPlan.id] || false
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center gap-4 p-8">
+                          <CheckCircle2 className="h-12 w-12 text-green-500" />
+                          <div>
+                            <h3 className="text-lg font-medium">Discussion Complete</h3>
+                            <p className="text-muted-foreground mt-2">
+                              Ready to execute your plan. Select a reference agent:
+                            </p>
+                          </div>
+
+                          {/* Agent selector */}
+                          <select
+                            value={selectedAgentId}
+                            onChange={(e) => setDiscussionExecuteAgent(prev => ({ ...prev, [discussedPlan.id]: e.target.value }))}
+                            className="w-64 border rounded px-3 py-2 bg-background text-foreground"
+                            disabled={isExecuting}
+                          >
+                            <option value="">Select reference agent...</option>
+                            {agents
+                              .filter(a => !a.isOrchestrator && !a.isPlanAgent && !a.parentPlanId)
+                              .map(agent => (
+                                <option key={agent.id} value={agent.id}>
+                                  {agent.name}
+                                </option>
+                              ))}
+                          </select>
+
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setPlanSidebarOpen(true)}
+                              disabled={isExecuting}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Review Plan
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={!selectedAgentId || isExecuting}
+                              onClick={async () => {
+                                if (!selectedAgentId) return
+                                setDiscussionExecuting(prev => ({ ...prev, [discussedPlan.id]: true }))
+                                try {
+                                  const result = await handleExecutePlan(discussedPlan.id, selectedAgentId)
+                                  // Clean up state
+                                  setDiscussionExecuteAgent(prev => {
+                                    const next = { ...prev }
+                                    delete next[discussedPlan.id]
+                                    return next
+                                  })
+                                  // Delete the old discussion tab if a new one was created
+                                  if (result?.orchestratorTabId && result.orchestratorTabId !== tab.id) {
+                                    await handleTabDelete(tab.id)
+                                  }
+                                  // Expand the plan in sidebar
+                                  setExpandPlanId(discussedPlan.id)
+                                } finally {
+                                  setDiscussionExecuting(prev => {
+                                    const next = { ...prev }
+                                    delete next[discussedPlan.id]
+                                    return next
+                                  })
+                                }
+                              }}
+                            >
+                              {isExecuting ? (
+                                <>Executing...</>
+                              ) : (
+                                <>
+                                  <Play className="h-4 w-4 mr-2" />
+                                  Execute Plan
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        Launch an agent to see the terminal
                       </div>
-                      <Button
-                        size="sm"
-                        onClick={() => setPlanSidebarOpen(true)}
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Open Plans
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">
-                      Launch an agent to see the terminal
-                    </div>
-                  )
+                    )
+                  })()
                 ) : tab.isPlanTab ? (
                   // Scrollable 2-column grid for plan tabs (unlimited agents)
                   // Use CSS grid with fixed row heights that match the regular 2x2 layout
