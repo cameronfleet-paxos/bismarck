@@ -92,6 +92,9 @@ function App() {
   // Stop confirmation dialog state
   const [stopConfirmAgentId, setStopConfirmAgentId] = useState<string | null>(null)
 
+  // Tab delete confirmation dialog state
+  const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
 
@@ -556,6 +559,11 @@ function App() {
   const resumeAgents = async (agentIds: string[]) => {
     for (const agentId of agentIds) {
       try {
+        // Skip headless agents - they don't use interactive terminals
+        const agent = agents.find((a) => a.id === agentId)
+        if (agent?.isHeadless || agent?.isStandaloneHeadless) {
+          continue
+        }
         // Start fresh claude session (don't try to resume - agent IDs are not valid Claude session IDs)
         const terminalId = await window.electronAPI.createTerminal(agentId)
         setActiveTerminals((prev) => [
@@ -600,6 +608,21 @@ function App() {
   }
 
   const handleLaunchAgent = async (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId)
+
+    // Skip terminal creation for headless agents - they use HeadlessTerminal component
+    if (agent?.isHeadless || agent?.isStandaloneHeadless) {
+      // Find which tab contains this agent and switch to it
+      const tab = tabs.find((t) => t.workspaceIds.includes(agentId))
+      if (tab) {
+        setActiveTabId(tab.id)
+        await window.electronAPI?.setActiveTab?.(tab.id)
+      }
+      setFocusedAgentId(agentId)
+      window.electronAPI?.setFocusedWorkspace?.(agentId)
+      return
+    }
+
     // Check if already running
     if (activeTerminals.some((t) => t.workspaceId === agentId)) {
       // Find which tab contains this agent and switch to it
@@ -743,6 +766,11 @@ function App() {
     setTabs((prev) =>
       prev.map((t) => (t.id === tabId ? { ...t, name } : t))
     )
+  }
+
+  const handleTabDeleteRequest = (tabId: string) => {
+    // Show confirmation dialog instead of deleting immediately
+    setDeleteConfirmTabId(tabId)
   }
 
   const handleTabDelete = async (tabId: string) => {
