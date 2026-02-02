@@ -29,6 +29,7 @@ import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
+import { SetupWizard } from '@/renderer/components/SetupWizard'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -1105,29 +1106,27 @@ function App() {
   const gridConfig = getGridConfig(preferences.gridSize)
   const gridPositions = gridConfig.positions
 
-  // Empty state
+  // Empty state - show setup wizard
   if (agents.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-center">
-          <h1 className="text-foreground mb-4">
-            <Logo size="lg" />
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            No agents configured. Add one to get started.
-          </p>
-          <Button onClick={handleAddAgent}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Agent
-          </Button>
-        </div>
+      <>
+        <SetupWizard
+          onComplete={async (newAgents) => {
+            // Reload agents after wizard creates them
+            await loadAgents()
+          }}
+          onSkip={() => {
+            // Open the manual agent creation modal
+            handleAddAgent()
+          }}
+        />
         <AgentModal
           open={modalOpen}
           onOpenChange={setModalOpen}
           agent={editingAgent}
           onSave={handleSaveAgent}
         />
-      </div>
+      </>
     )
   }
 
