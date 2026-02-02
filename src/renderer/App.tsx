@@ -983,7 +983,10 @@ function App() {
     <>
       {/* Settings view - rendered on top when active */}
       {currentView === 'settings' && (
-        <SettingsPage onBack={() => setCurrentView('main')} />
+        <SettingsPage onBack={() => {
+          loadPreferences() // Reload preferences to pick up any changes made in settings
+          setCurrentView('main')
+        }} />
       )}
 
       {/* Main workspace view - always rendered to preserve terminal state */}
@@ -1432,12 +1435,13 @@ function App() {
                   >
                     {/* Render active terminals - keyed by terminalId, positioned by CSS grid */}
                     {/* Iterate over activeTerminals (stable order) and look up position from tabWorkspaceIds */}
+                    {/* Only render agents that fit within the current grid size */}
                     {activeTerminals
                       .filter((t) => tabWorkspaceIds.includes(t.workspaceId))
                       .map((terminal) => {
                         const workspaceId = terminal.workspaceId
                         const position = tabWorkspaceIds.indexOf(workspaceId)
-                        if (position === -1) return null
+                        if (position === -1 || position >= gridConfig.maxAgents) return null
                         const agent = agents.find((a) => a.id === workspaceId)
                         if (!agent) return null
 
