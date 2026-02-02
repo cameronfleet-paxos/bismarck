@@ -241,14 +241,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath: string): Promise<{ success: boolean; content?: string; error?: string }> =>
     ipcRenderer.invoke('read-file', filePath),
 
-  // Settings management (Tool Paths)
-  detectToolPaths: (): Promise<{ bd: string | null; gh: string | null; git: string | null }> =>
-    ipcRenderer.invoke('detect-tool-paths'),
-  getToolPaths: (): Promise<{ bd: string | null; gh: string | null; git: string | null }> =>
-    ipcRenderer.invoke('get-tool-paths'),
-  updateToolPaths: (paths: Partial<{ bd: string | null; gh: string | null; git: string | null }>): Promise<void> =>
-    ipcRenderer.invoke('update-tool-paths', paths),
-
   // Tray updates
   updateTray: (count: number): void => {
     ipcRenderer.send('update-tray', count)
