@@ -1674,7 +1674,8 @@ function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository
   let completionInstructions: string
   if (plan?.branchStrategy === 'raise_prs') {
     completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR: gh pr create --base ${baseBranch}
+3. Push your branch and create a PR using gh api (gh pr create has issues in worktrees):
+   gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
 4. Close task with PR URL: cd ${planDir} && bd --sandbox close ${task.id} --message "PR: <url>"`
   } else {
     // feature_branch strategy - just commit, pushing happens on completion
@@ -2293,7 +2294,8 @@ function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?:
   let completionInstructions: string
   if (plan?.branchStrategy === 'raise_prs') {
     completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR: gh pr create --base ${baseBranch} --title "..." -- --body "..."
+3. Push your branch and create a PR using gh api (gh pr create has issues in worktrees):
+   gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
 4. Close task with PR URL:
    bd close ${task.id} --message "PR: <url>"`
   } else {
@@ -2326,14 +2328,10 @@ ${plan?.branchStrategy === 'raise_prs' ? `1. Git:
    Do NOT use --file or -F flags - file paths don't work across the proxy.
 
 2. GitHub CLI (gh):
-   - gh pr create --base ${baseBranch} --title "..." --body "..."
+   - Use gh api for PR creation (gh pr create has issues in worktrees):
+     gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
    - gh pr view
-   - All standard gh commands work
-
-   IMPORTANT: For gh pr create:
-   - Always use --body "..." inline (not --body-file)
-   - If body starts with "-", use -- before --body to prevent parsing issues
-   - Example: gh pr create --base ${baseBranch} --title "My PR" -- --body "- Fixed bug"` : `1. Git:
+   - All standard gh commands work` : `1. Git:
    - git status
    - git add .
    - git commit -m "Your commit message"
