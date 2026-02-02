@@ -129,7 +129,72 @@ async function handleRequest(req, res) {
       }
 
       case '/state': {
-        const state = await cdp.getState();
+        const state = await cdp.evaluate(`
+          (function() {
+            const body = document.body.innerText;
+            const header = document.querySelector('header')?.textContent?.trim() || '';
+
+            // Detect current view based on specific UI elements
+            let view = 'unknown';
+
+            // Settings view: has "General Settings" heading or "Back to Workspace" link
+            const hasSettingsHeading = !!document.querySelector('h1, h2, h3')?.textContent?.includes('General Settings');
+            const hasBackToWorkspace = body.includes('Back to Workspace');
+
+            // Workspace view: has workspace tabs in the tab bar area
+            // Find the tab bar by looking for the second border-b element (first is header)
+            const borderBs = document.querySelectorAll('.border-b');
+            const tabBar = borderBs.length > 1 ? borderBs[1] : null;
+            const hasWorkspaceTabs = tabBar && tabBar.querySelectorAll('div.group').length > 0;
+
+            // Plans panel: Check if plans sidebar is visible (separate from main view)
+            const plansPanelVisible = !!document.querySelector('[class*="Plans"]') ||
+                                      body.includes('COMPLETED') && body.includes('New');
+
+            if (hasSettingsHeading || hasBackToWorkspace) {
+              view = 'settings';
+            } else if (hasWorkspaceTabs) {
+              view = 'workspace';
+            }
+
+            // Settings-specific info
+            let settings = null;
+            if (view === 'settings') {
+              const sections = ['General', 'Docker', 'Tool Paths', 'Proxied Tools', 'Plans', 'Repositories'];
+              // Active section has bg-primary class, inactive ones have text-muted-foreground
+              const activeSection = sections.find(s => {
+                const el = [...document.querySelectorAll('button')].find(
+                  b => b.textContent.includes(s) && b.classList.contains('bg-primary')
+                );
+                return el;
+              }) || 'General';
+              settings = { activeSection };
+            }
+
+            // Workspace-specific info
+            let workspace = null;
+            if (view === 'workspace') {
+              // Find workspace tabs (divs in the tab bar area with text content)
+              const tabs = tabBar ? [...tabBar.querySelectorAll('div.group')] : [];
+              // Active tab has bg-background class (not just hover:bg-muted/50)
+              const activeTab = tabs.find(t => t.classList.contains('bg-background'));
+              workspace = {
+                activeTab: activeTab?.textContent?.trim()?.replace(/\\s+/g, ' ') || null,
+                agentCount: document.querySelectorAll('h3.font-medium').length,
+                plansPanelOpen: plansPanelVisible
+              };
+            }
+
+            return {
+              view,
+              title: document.title,
+              url: location.href,
+              header: header,
+              settings,
+              workspace
+            };
+          })()
+        `);
         sendJson(res, state);
         break;
       }
