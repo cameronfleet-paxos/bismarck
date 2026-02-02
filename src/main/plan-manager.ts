@@ -2962,14 +2962,28 @@ ${conflictError.message}
   })
 
   agent.on('complete', async (result) => {
-    agentInfo.status = result.success ? 'completed' : 'failed'
+    // Check if bd close succeeded - treat as success even if container was force-stopped (exit 143)
+    const bdCloseSucceeded = tasksWithSuccessfulBdClose.has(mergeTaskId)
+    const effectiveSuccess = result.success || bdCloseSucceeded
+
+    logger.info('agent', 'Merge agent complete', logCtx, {
+      success: result.success,
+      exitCode: result.exitCode,
+      bdCloseSucceeded,
+      effectiveSuccess,
+    })
+
+    agentInfo.status = effectiveSuccess ? 'completed' : 'failed'
     agentInfo.completedAt = new Date().toISOString()
     agentInfo.result = result
     emitHeadlessAgentUpdate(agentInfo)
 
     headlessAgents.delete(mergeTaskId)
 
-    if (result.success) {
+    // Clean up tracking
+    tasksWithSuccessfulBdClose.delete(mergeTaskId)
+
+    if (effectiveSuccess) {
       // Close the merge task in beads FIRST to unblock dependent tasks
       if (worktree.mergeTaskId) {
         try {

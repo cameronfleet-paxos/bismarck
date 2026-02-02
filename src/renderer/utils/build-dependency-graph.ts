@@ -9,6 +9,12 @@ function getNodeStatus(
   allTasks: Map<string, BeadTask>,
   allAssignments: Map<string, TaskAssignment>
 ): TaskNodeStatus {
+  // If the bead task is closed, it's completed (regardless of assignment)
+  // This handles merge tasks that don't have TaskAssignment objects
+  if (task.status === 'closed') {
+    return 'completed'
+  }
+
   // If task has an assignment, use its status
   if (assignment) {
     return assignment.status
