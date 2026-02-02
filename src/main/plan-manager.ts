@@ -56,6 +56,7 @@ import { runSetupToken } from './oauth-setup'
 import { startToolProxy, stopToolProxy, isProxyRunning, proxyEvents } from './tool-proxy'
 import { checkDockerAvailable, checkImageExists, stopAllContainers } from './docker-sandbox'
 import { execWithPath } from './exec-utils'
+import { getSelectedDockerImage } from './settings-manager'
 
 let mainWindow: BrowserWindow | null = null
 let pollInterval: NodeJS.Timeout | null = null
@@ -63,7 +64,6 @@ let syncInProgress = false // Guard against overlapping syncs
 
 const POLL_INTERVAL_MS = 5000 // Poll bd every 5 seconds
 const DEFAULT_MAX_PARALLEL_AGENTS = 4
-const DOCKER_IMAGE_NAME = 'bismarck-agent:latest'
 
 // In-memory activity storage per plan
 const planActivities: Map<string, PlanActivity[]> = new Map()
@@ -139,13 +139,14 @@ export async function checkHeadlessModeAvailable(): Promise<{
     }
   }
 
-  const imageExists = await checkImageExists(DOCKER_IMAGE_NAME)
+  const selectedImage = await getSelectedDockerImage()
+  const imageExists = await checkImageExists(selectedImage)
   if (!imageExists) {
     return {
       available: false,
       dockerAvailable: true,
       imageExists: false,
-      message: `Docker image '${DOCKER_IMAGE_NAME}' not found. Run: cd bismarck/docker && ./build.sh`,
+      message: `Docker image '${selectedImage}' not found. Run: cd bismarck/docker && ./build.sh`,
     }
   }
 
@@ -2151,11 +2152,12 @@ async function startHeadlessTaskAgent(
   repository: Repository
 ): Promise<void> {
   const planDir = getPlanDir(planId)
+  const selectedImage = await getSelectedDockerImage()
   const logCtx: LogContext = { planId, taskId: task.id, worktreePath: worktree.path }
   logger.info('agent', 'Starting headless task agent', logCtx, {
     branch: worktree.branch,
     repo: repository.name,
-    image: DOCKER_IMAGE_NAME,
+    image: selectedImage,
   })
   const taskPrompt = buildTaskPromptForHeadless(planId, task, repository, worktree.path)
   logger.debug('agent', 'Built task prompt', logCtx, { promptLength: taskPrompt.length })
@@ -2256,7 +2258,7 @@ async function startHeadlessTaskAgent(
       planDir,
       planId,
       taskId: task.id,
-      image: DOCKER_IMAGE_NAME,
+      image: selectedImage,
       claudeFlags: ['--model', agentModel],
     })
 
@@ -3024,6 +3026,7 @@ ${conflictError.message}
   // Start the agent
   const planDir = getPlanDir(plan.id)
   const agentModel = getPreferences().agentModel || 'sonnet'
+  const selectedImage = await getSelectedDockerImage()
 
   await agent.start({
     prompt,
@@ -3031,7 +3034,7 @@ ${conflictError.message}
     planDir,
     planId: plan.id,
     taskId: mergeTaskId,
-    image: DOCKER_IMAGE_NAME,
+    image: selectedImage,
     claudeFlags: ['--model', agentModel],
   })
 }

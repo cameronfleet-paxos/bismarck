@@ -158,6 +158,15 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     }
   }
 
+  const handleSelectImage = async (image: string) => {
+    try {
+      await window.electronAPI.setSelectedDockerImage(image)
+      await loadSettings()
+    } catch (error) {
+      console.error('Failed to select image:', error)
+    }
+  }
+
   const handleSaveResourceLimits = async () => {
     setSaving(true)
     try {
@@ -305,7 +314,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <div className="bg-card border rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-2">Container Images</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Docker images used for headless task agents
+                Docker images used for headless task agents. Select which image to use.
               </p>
 
               <div className="space-y-3">
@@ -314,7 +323,17 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     key={image}
                     className="flex items-center justify-between p-3 bg-muted/50 rounded-md"
                   >
-                    <span className="font-mono text-sm">{image}</span>
+                    <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="selectedImage"
+                        value={image}
+                        checked={settings.docker.selectedImage === image}
+                        onChange={() => handleSelectImage(image)}
+                        className="h-4 w-4"
+                      />
+                      <span className="font-mono text-sm">{image}</span>
+                    </label>
                     <Button
                       size="sm"
                       variant="ghost"

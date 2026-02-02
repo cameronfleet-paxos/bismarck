@@ -30,6 +30,7 @@ export interface AppSettings {
   }
   docker: {
     images: string[]
+    selectedImage: string  // The active image to use for headless agents
     resourceLimits: {
       cpu: string          // e.g., "2"
       memory: string       // e.g., "4g"
@@ -63,6 +64,7 @@ export function getDefaultSettings(): AppSettings {
     },
     docker: {
       images: ['bismarck-agent:latest'],
+      selectedImage: 'bismarck-agent:latest',
       resourceLimits: {
         cpu: '2',
         memory: '4g',
@@ -243,8 +245,34 @@ export async function removeDockerImage(image: string): Promise<boolean> {
     return false // Image not found
   }
 
+  // If removed image was selected, select first remaining image
+  if (settings.docker.selectedImage === image && settings.docker.images.length > 0) {
+    settings.docker.selectedImage = settings.docker.images[0]
+  }
+
   await saveSettings(settings)
   return true
+}
+
+/**
+ * Set the selected Docker image for headless agents
+ */
+export async function setSelectedDockerImage(image: string): Promise<void> {
+  const settings = await loadSettings()
+  // Validate image is in the list
+  if (!settings.docker.images.includes(image)) {
+    throw new Error(`Image '${image}' is not in the available images list`)
+  }
+  settings.docker.selectedImage = image
+  await saveSettings(settings)
+}
+
+/**
+ * Get the selected Docker image for headless agents
+ */
+export async function getSelectedDockerImage(): Promise<string> {
+  const settings = await loadSettings()
+  return settings.docker.selectedImage || 'bismarck-agent:latest'
 }
 
 /**

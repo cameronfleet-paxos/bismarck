@@ -94,6 +94,7 @@ import {
   updateDockerResourceLimits,
   addDockerImage,
   removeDockerImage,
+  setSelectedDockerImage,
   updateToolPaths,
   addProxiedTool,
   removeProxiedTool,
@@ -152,9 +153,11 @@ function createWindow() {
     },
   })
 
-  // Bring app to foreground on macOS
-  app.focus({ steal: true })
-  mainWindow.focus()
+  // Bring app to foreground on macOS (skip in dev mode to avoid stealing focus)
+  if (process.env.NODE_ENV !== 'development') {
+    app.focus({ steal: true })
+    mainWindow.focus()
+  }
 
   // Set the main window reference for socket server, plan manager, dev harness, and queue
   setMainWindow(mainWindow)
@@ -539,6 +542,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('remove-docker-image', async (_event, image: string) => {
     return removeDockerImage(image)
+  })
+
+  ipcMain.handle('set-selected-docker-image', async (_event, image: string) => {
+    return setSelectedDockerImage(image)
   })
 
   ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string }) => {

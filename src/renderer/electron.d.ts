@@ -90,6 +90,7 @@ export interface ElectronAPI {
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) => Promise<void>
   addDockerImage: (image: string) => Promise<void>
   removeDockerImage: (image: string) => Promise<boolean>
+  setSelectedDockerImage: (image: string) => Promise<void>
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
   removeProxiedTool: (id: string) => Promise<boolean>
