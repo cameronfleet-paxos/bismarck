@@ -14,35 +14,16 @@ To build and install the app to `~/Applications`:
 
 ### Starting the dev server
 
-**Basic development** (two processes):
-
-1. **Start Vite dev server** (serves the renderer/frontend):
-   ```bash
-   npm run dev
-   ```
-
-2. **Start Electron** (in a separate terminal):
-   ```bash
-   npm run dev:electron
-   ```
-
-The Vite server must be running first on `localhost:5173` before starting Electron.
-
-**Development with CDP** (for automated testing):
-
-Use the unified command that starts all services:
-
 ```bash
-npm run dev:cdp        # Start Vite, Electron+CDP, and CDP server
+npm run dev:cdp:wait   # Start all services and wait until ready (recommended)
 npm run dev:cdp:clean  # Kill existing processes first, then start
-npm run dev:cdp:wait   # Start services and wait until ready (preferred for automation)
 npm run dev:check      # Check if all services are running
 ```
 
-Ports used:
-- **5173**: Vite dev server
-- **9222**: Electron CDP endpoint
-- **9333**: CDP HTTP server
+This starts:
+- **Vite dev server** (port 5173)
+- **Electron with CDP** (port 9222)
+- **CDP HTTP server** (port 9333)
 
 These commands are excluded from sandbox mode in `.claude/settings.local.json` since Electron requires macOS bootstrap permissions.
 
