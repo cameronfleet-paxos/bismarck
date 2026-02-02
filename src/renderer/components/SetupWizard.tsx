@@ -185,14 +185,16 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     Suggested locations
                   </Label>
                   <div className="flex flex-wrap gap-2">
-                    {suggestedPaths.map((path) => (
+                    {suggestedPaths.map((suggestedPath) => (
                       <Button
-                        key={path}
-                        onClick={() => handleSelectSuggestedPath(path)}
-                        variant={selectedPath === path ? 'default' : 'outline'}
+                        key={suggestedPath}
+                        onClick={() => handleSelectSuggestedPath(suggestedPath)}
+                        variant={selectedPath === suggestedPath ? 'default' : 'outline'}
                         size="sm"
                       >
-                        {path.replace(process.env.HOME || '', '~')}
+                        {suggestedPath.startsWith('/home/') || suggestedPath.startsWith('/Users/')
+                          ? suggestedPath.replace(/^\/home\/[^\/]+|^\/Users\/[^\/]+/, '~')
+                          : suggestedPath}
                       </Button>
                     ))}
                   </div>
