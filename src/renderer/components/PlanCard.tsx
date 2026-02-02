@@ -152,33 +152,22 @@ export function PlanCard({
     <div
       className={`rounded-lg border p-3 transition-all cursor-pointer ${
         isSelected
-          ? 'ring-2 ring-blue-500 bg-blue-500/10'
+          ? 'ring-2 ring-white'
           : isActive
             ? 'ring-2 ring-primary'
             : 'hover:border-primary/50'
       }`}
-      onClick={onClick}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey) {
+          e.stopPropagation()
+          onToggleSelect?.()
+        } else {
+          onClick()
+        }
+      }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Selection checkbox */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleSelect?.()
-            }}
-            className={`p-0.5 rounded border ${
-              isSelected
-                ? 'bg-blue-500 border-blue-500'
-                : 'border-muted-foreground/40 hover:border-primary'
-            }`}
-          >
-            {isSelected ? (
-              <Check className="h-3 w-3 text-white" />
-            ) : (
-              <div className="h-3 w-3" />
-            )}
-          </button>
           <button
             onClick={(e) => {
               e.stopPropagation()
