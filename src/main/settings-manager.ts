@@ -35,6 +35,9 @@ export interface AppSettings {
       memory: string       // e.g., "4g"
     }
     proxiedTools: ProxiedTool[]
+    sshAgent: {
+      enabled: boolean     // Enable SSH agent forwarding to containers
+    }
   }
 }
 
@@ -84,6 +87,9 @@ export function getDefaultSettings(): AppSettings {
           description: 'Beads task manager',
         },
       ],
+      sshAgent: {
+        enabled: true,
+      },
     },
   }
 }
@@ -136,6 +142,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...(updates.docker?.resourceLimits || {}),
       },
       proxiedTools: updates.docker?.proxiedTools || currentSettings.docker.proxiedTools,
+      sshAgent: {
+        ...currentSettings.docker.sshAgent,
+        ...(updates.docker?.sshAgent || {}),
+      },
     },
   }
   await saveSettings(updatedSettings)
@@ -257,6 +267,18 @@ export async function updateToolPaths(paths: Partial<AppSettings['paths']>): Pro
   settings.paths = {
     ...settings.paths,
     ...paths,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Update Docker SSH agent settings
+ */
+export async function updateDockerSshSettings(sshSettings: { enabled?: boolean }): Promise<void> {
+  const settings = await loadSettings()
+  settings.docker.sshAgent = {
+    ...settings.docker.sshAgent,
+    ...sshSettings,
   }
   await saveSettings(settings)
 }

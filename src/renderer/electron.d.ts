@@ -83,7 +83,7 @@ export interface ElectronAPI {
   // Git repository management
   detectGitRepository: (directory: string) => Promise<Repository | null>
   getRepositories: () => Promise<Repository[]>
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name'>>) => Promise<Repository | undefined>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
 
   // Settings management
   getSettings: () => Promise<AppSettings>
@@ -93,6 +93,7 @@ export interface ElectronAPI {
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
   removeProxiedTool: (id: string) => Promise<boolean>
+  updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
 
   // Terminal events
   onTerminalData: (

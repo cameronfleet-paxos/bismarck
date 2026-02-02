@@ -211,7 +211,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
 
   // Settings management
@@ -228,6 +228,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('add-proxied-tool', tool),
   removeProxiedTool: (id: string) =>
     ipcRenderer.invoke('remove-proxied-tool', id),
+  updateDockerSshSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-ssh-settings', settings),
 
   // External URL handling
   openExternal: (url: string): Promise<void> =>

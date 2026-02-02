@@ -58,6 +58,7 @@ function App() {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
+    gridSize: '2x2',
   })
 
   // Team mode state

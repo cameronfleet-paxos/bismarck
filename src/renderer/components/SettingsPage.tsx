@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, X, Save, Check } from 'lucide-react'
+import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
+import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
+import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
+import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
+import type { Repository } from '@/shared/types'
 
-type SettingsSection = 'docker' | 'paths' | 'tools'
+type SettingsSection = 'general' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories'
 
 interface SidebarItem {
   id: SettingsSection
@@ -14,6 +18,11 @@ interface SidebarItem {
 }
 
 const sidebarItems: SidebarItem[] = [
+  {
+    id: 'general',
+    label: 'General',
+    description: 'Display and attention preferences',
+  },
   {
     id: 'docker',
     label: 'Docker',
@@ -28,6 +37,16 @@ const sidebarItems: SidebarItem[] = [
     id: 'tools',
     label: 'Proxied Tools',
     description: 'Tools available in containers',
+  },
+  {
+    id: 'plans',
+    label: 'Plans',
+    description: 'Agent model and operating mode',
+  },
+  {
+    id: 'repositories',
+    label: 'Repositories',
+    description: 'View and edit repository settings',
   },
 ]
 
@@ -44,6 +63,9 @@ interface AppSettings {
       memory: string
     }
     proxiedTools: ProxiedTool[]
+    sshAgent?: {
+      enabled: boolean
+    }
   }
 }
 
@@ -59,7 +81,7 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('docker')
+  const [activeSection, setActiveSection] = useState<SettingsSection>('general')
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -80,6 +102,14 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [newToolPath, setNewToolPath] = useState('')
   const [newToolDescription, setNewToolDescription] = useState('')
 
+  // Repositories state
+  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [expandedRepoId, setExpandedRepoId] = useState<string | null>(null)
+  const [editingRepoId, setEditingRepoId] = useState<string | null>(null)
+  const [editPurpose, setEditPurpose] = useState('')
+  const [editCompletionCriteria, setEditCompletionCriteria] = useState('')
+  const [editProtectedBranches, setEditProtectedBranches] = useState('')
+
   useEffect(() => {
     loadSettings()
   }, [])
@@ -96,6 +126,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       setBdPath(loaded.paths.bd || '')
       setGhPath(loaded.paths.gh || '')
       setGitPath(loaded.paths.git || '')
+
+      // Load repositories
+      const repos = await window.electronAPI.getRepositories()
+      setRepositories(repos)
     } catch (error) {
       console.error('Failed to load settings:', error)
     } finally {
@@ -139,6 +173,18 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       console.error('Failed to save resource limits:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSshAgentToggle = async (enabled: boolean) => {
+    try {
+      await window.electronAPI.updateDockerSshSettings({ enabled })
+      await loadSettings()
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update SSH agent settings:', error)
     }
   }
 
@@ -188,6 +234,45 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     }
   }
 
+  const startEditingRepo = (repo: Repository) => {
+    setEditingRepoId(repo.id)
+    setEditPurpose(repo.purpose || '')
+    setEditCompletionCriteria(repo.completionCriteria || '')
+    setEditProtectedBranches(repo.protectedBranches?.join(', ') || '')
+  }
+
+  const cancelEditingRepo = () => {
+    setEditingRepoId(null)
+    setEditPurpose('')
+    setEditCompletionCriteria('')
+    setEditProtectedBranches('')
+  }
+
+  const handleSaveRepo = async (repoId: string) => {
+    setSaving(true)
+    try {
+      const protectedBranches = editProtectedBranches
+        .split(',')
+        .map((b) => b.trim())
+        .filter((b) => b.length > 0)
+
+      await window.electronAPI.updateRepository(repoId, {
+        purpose: editPurpose || undefined,
+        completionCriteria: editCompletionCriteria || undefined,
+        protectedBranches: protectedBranches.length > 0 ? protectedBranches : undefined,
+      })
+      await loadSettings()
+      cancelEditingRepo()
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to save repository:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-screen bg-background flex items-center justify-center">
@@ -206,6 +291,13 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
   const renderContent = () => {
     switch (activeSection) {
+      case 'general':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <GeneralSettings onPreferencesChange={() => {}} />
+          </div>
+        )
+
       case 'docker':
         return (
           <div className="space-y-6">
@@ -295,6 +387,28 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   <Save className="h-4 w-4 mr-2" />
                   {saving ? 'Saving...' : 'Save Resource Limits'}
                 </Button>
+              </div>
+            </div>
+
+            {/* SSH Agent Forwarding */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-2">SSH Agent Forwarding</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Forward your SSH agent to containers for private repository access (Bazel, Go modules)
+              </p>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="ssh-agent-enabled">Enable SSH Agent Forwarding</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allows containers to authenticate with GitHub using your SSH keys
+                  </p>
+                </div>
+                <Switch
+                  id="ssh-agent-enabled"
+                  checked={settings.docker.sshAgent?.enabled ?? true}
+                  onCheckedChange={handleSshAgentToggle}
+                />
               </div>
             </div>
           </div>
@@ -428,6 +542,176 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 Add Tool
               </Button>
             </div>
+          </div>
+        )
+
+      case 'plans':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <PlansSettings onPreferencesChange={() => {}} />
+          </div>
+        )
+
+      case 'repositories':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-2">Repositories</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Git repositories that have been detected from your agent workspaces
+            </p>
+
+            {repositories.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No repositories found.</p>
+                <p className="text-sm mt-2">
+                  Repositories are detected when you create agents with git-initialized directories.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {repositories.map((repo) => {
+                  const isExpanded = expandedRepoId === repo.id
+                  const isEditing = editingRepoId === repo.id
+
+                  return (
+                    <div
+                      key={repo.id}
+                      className="border rounded-lg overflow-hidden"
+                    >
+                      {/* Header - always visible */}
+                      <button
+                        onClick={() => setExpandedRepoId(isExpanded ? null : repo.id)}
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <div>
+                            <div className="font-medium">{repo.name}</div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {repo.rootPath}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {repo.defaultBranch}
+                        </div>
+                      </button>
+
+                      {/* Expanded content */}
+                      {isExpanded && (
+                        <div className="border-t p-4 bg-muted/30">
+                          {/* Read-only fields */}
+                          <div className="space-y-3 mb-4">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Path</Label>
+                              <div className="font-mono text-sm">{repo.rootPath}</div>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Default Branch</Label>
+                              <div className="text-sm">{repo.defaultBranch}</div>
+                            </div>
+                            {repo.remoteUrl && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Remote URL</Label>
+                                <div className="font-mono text-sm break-all">{repo.remoteUrl}</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Editable fields */}
+                          {isEditing ? (
+                            <div className="space-y-4 pt-4 border-t">
+                              <div className="space-y-2">
+                                <Label htmlFor={`purpose-${repo.id}`}>Purpose</Label>
+                                <Input
+                                  id={`purpose-${repo.id}`}
+                                  placeholder="What is this repository for?"
+                                  value={editPurpose}
+                                  onChange={(e) => setEditPurpose(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`completion-${repo.id}`}>Completion Criteria</Label>
+                                <Input
+                                  id={`completion-${repo.id}`}
+                                  placeholder="What does 'done' look like?"
+                                  value={editCompletionCriteria}
+                                  onChange={(e) => setEditCompletionCriteria(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`protected-${repo.id}`}>Protected Branches</Label>
+                                <Input
+                                  id={`protected-${repo.id}`}
+                                  placeholder="main, master, production (comma-separated)"
+                                  value={editProtectedBranches}
+                                  onChange={(e) => setEditProtectedBranches(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Branches that agents should not modify directly
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveRepo(repo.id)}
+                                  disabled={saving}
+                                >
+                                  <Save className="h-4 w-4 mr-2" />
+                                  {saving ? 'Saving...' : 'Save'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={cancelEditingRepo}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 pt-4 border-t">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Purpose</Label>
+                                <div className="text-sm">
+                                  {repo.purpose || <span className="text-muted-foreground italic">Not set</span>}
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Completion Criteria</Label>
+                                <div className="text-sm">
+                                  {repo.completionCriteria || <span className="text-muted-foreground italic">Not set</span>}
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Protected Branches</Label>
+                                <div className="text-sm">
+                                  {repo.protectedBranches && repo.protectedBranches.length > 0
+                                    ? repo.protectedBranches.join(', ')
+                                    : <span className="text-muted-foreground italic">None</span>}
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startEditingRepo(repo)}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )
     }

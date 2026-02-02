@@ -97,6 +97,7 @@ import {
   updateToolPaths,
   addProxiedTool,
   removeProxiedTool,
+  updateDockerSshSettings,
 } from './settings-manager'
 import { bdList } from './bd-client'
 import { initializeDockerEnvironment } from './docker-sandbox'
@@ -546,6 +547,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
     return removeProxiedTool(id)
+  })
+
+  ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
+    return updateDockerSshSettings(settings)
   })
 
   // Dev test harness (development mode only)

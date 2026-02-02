@@ -82,6 +82,9 @@ export interface AgentTab {
 // Attention mode determines how waiting agents are displayed
 export type AttentionMode = 'focus' | 'expand'
 
+// Grid size for agent display
+export type GridSize = '1x1' | '2x2' | '2x3' | '3x3'
+
 // Operating mode determines how agents work together
 export type OperatingMode = 'solo' | 'team'
 
@@ -93,6 +96,7 @@ export interface AppPreferences {
   attentionMode: AttentionMode
   operatingMode: OperatingMode
   agentModel: AgentModel
+  gridSize: GridSize
 }
 
 // App state (stored in ~/.bismarck/state.json)

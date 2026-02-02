@@ -12,13 +12,44 @@ RUN apt-get update && apt-get install -y \
     curl \
     jq \
     git \
+    openssh-client \
     python3 \
     python3-pip \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Playwright browser dependencies (Chromium)
+# These are the system libraries Chromium needs to run headlessly
+RUN apt-get update && apt-get install -y \
+    # X11/display libraries for headless browser
+    xvfb \
+    libgtk-3-0 \
+    libnotify-dev \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    libgbm1 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxkbcommon0 \
+    # Electron CDP support
+    lsof \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bazelisk (manages Bazel versions automatically)
+# Use dpkg --print-architecture to detect arm64 vs amd64
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-${ARCH}" \
+    -o /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
+
 # Install Go (for Go projects)
-RUN curl -fsSL https://go.dev/dl/go1.22.0.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
+# Use dpkg --print-architecture to detect arm64 vs amd64
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then GOARCH="arm64"; else GOARCH="amd64"; fi && \
+    curl -fsSL "https://go.dev/dl/go1.22.0.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf - \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
@@ -49,6 +80,20 @@ WORKDIR /workspace
 
 # Switch to non-root user
 USER agent
+
+# Configure git to use SSH for GitHub (enables private repo access via SSH agent)
+# The SSH agent socket is forwarded from the host at runtime
+# Each insteadOf entry needs to be added separately with --add to allow multiple values
+RUN /usr/bin/git config --global url."ssh://git@github.com/".insteadOf "https://github.com/" && \
+    /usr/bin/git config --global --add url."ssh://git@github.com/".insteadOf "git://github.com/"
+
+# Add GitHub's SSH host keys to known_hosts (prevents "Host key verification failed")
+RUN mkdir -p ~/.ssh && \
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+# Install Playwright Chromium browser as agent user
+# This ensures the browser is available when running as non-root
+RUN npx playwright install chromium
 
 # Environment variables
 # TOOL_PROXY_URL is set at runtime via docker run -e
