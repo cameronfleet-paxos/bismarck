@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, X, Save } from 'lucide-react'
+import { ArrowLeft, Plus, X, Save, Check } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -63,6 +63,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showSaved, setShowSaved] = useState(false)
 
   // Docker settings local state
   const [newImage, setNewImage] = useState('')
@@ -131,6 +132,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         memory: memoryLimit,
       })
       await loadSettings()
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to save resource limits:', error)
     } finally {
@@ -147,6 +151,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         git: gitPath || null,
       })
       await loadSettings()
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to save paths:', error)
     } finally {
@@ -433,6 +440,12 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         <div className="flex items-center gap-3">
           <Logo />
           <span className="text-lg font-medium">Settings</span>
+          {showSaved && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+              <Check className="h-3.5 w-3.5" />
+              Saved
+            </div>
+          )}
         </div>
         <Button size="sm" variant="ghost" onClick={onBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />

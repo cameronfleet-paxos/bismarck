@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Check } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
 import type { OperatingMode, AgentModel } from '@/shared/types'
 
@@ -12,6 +13,7 @@ interface PlansSettingsProps {
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
   const [operatingMode, setOperatingMode] = useState<OperatingMode>('solo')
   const [agentModel, setAgentModel] = useState<AgentModel>('sonnet')
+  const [showSaved, setShowSaved] = useState(false)
 
   // Load preferences on mount
   useEffect(() => {
@@ -33,6 +35,9 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     const update = { operatingMode: mode }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
+    // Show saved indicator
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
   }
 
   const handleAgentModelChange = (model: AgentModel) => {
@@ -40,12 +45,23 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     const update = { agentModel: model }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
+    // Show saved indicator
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium mb-1">Plans Settings</h3>
+        <div className="flex items-center gap-3 mb-1">
+          <h3 className="text-lg font-medium">Plans Settings</h3>
+          {showSaved && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+              <Check className="h-3.5 w-3.5" />
+              Saved
+            </div>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           Configure how plan execution and agents work together
         </p>
