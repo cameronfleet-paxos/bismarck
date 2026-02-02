@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil, ExternalLink } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -8,6 +8,19 @@ import { Logo } from '@/renderer/components/Logo'
 import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
 import type { Repository } from '@/shared/types'
+
+// Convert git remote URL to GitHub web URL
+function getGitHubUrlFromRemote(remoteUrl: string): string | null {
+  // Handle SSH URLs: git@github.com:owner/repo.git
+  const sshMatch = remoteUrl.match(/git@github\.com:(.+?)(?:\.git)?$/)
+  if (sshMatch) return `https://github.com/${sshMatch[1]}`
+
+  // Handle HTTPS URLs: https://github.com/owner/repo.git
+  const httpsMatch = remoteUrl.match(/https:\/\/github\.com\/(.+?)(?:\.git)?$/)
+  if (httpsMatch) return `https://github.com/${httpsMatch[1]}`
+
+  return null
+}
 
 type SettingsSection = 'general' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories'
 
@@ -705,7 +718,20 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                           <div>
-                            <div className="font-medium">{repo.name}</div>
+                            {repo.remoteUrl && getGitHubUrlFromRemote(repo.remoteUrl) ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  window.electronAPI.openExternal(getGitHubUrlFromRemote(repo.remoteUrl!)!)
+                                }}
+                                className="font-medium text-blue-500 hover:text-blue-400 hover:underline flex items-center gap-1"
+                              >
+                                {repo.name}
+                                <ExternalLink className="h-3 w-3" />
+                              </button>
+                            ) : (
+                              <div className="font-medium">{repo.name}</div>
+                            )}
                             <div className="text-xs text-muted-foreground font-mono">
                               {repo.rootPath}
                             </div>
