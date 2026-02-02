@@ -1141,7 +1141,7 @@ function App() {
         activeTabId={activeTabId}
         onTabSelect={handleTabSelect}
         onTabRename={handleTabRename}
-        onTabDelete={handleTabDelete}
+        onTabDelete={handleTabDeleteRequest}
         onTabCreate={handleTabCreate}
         draggedWorkspaceId={draggedWorkspaceId}
         dropTargetTabId={dropTargetTabId}
@@ -1922,6 +1922,40 @@ function App() {
               }}
             >
               Stop Agent
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Tab Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmTabId !== null}
+        onOpenChange={(open) => !open && setDeleteConfirmTabId(null)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Close Tab</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to close this tab? All workspaces in this tab will be closed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmTabId(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteConfirmTabId) {
+                  handleTabDelete(deleteConfirmTabId)
+                  setDeleteConfirmTabId(null)
+                }
+              }}
+            >
+              Close Tab
             </Button>
           </DialogFooter>
         </DialogContent>
