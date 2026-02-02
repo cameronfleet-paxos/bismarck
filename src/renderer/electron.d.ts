@@ -77,6 +77,8 @@ export interface ElectronAPI {
   startStandaloneHeadlessAgent: (agentId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
+  standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
 
   // OAuth token management
   getOAuthToken: () => Promise<string | null>

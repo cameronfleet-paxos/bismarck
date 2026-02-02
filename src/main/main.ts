@@ -112,6 +112,9 @@ import {
   stopStandaloneHeadlessAgent,
   setMainWindowForStandaloneHeadless,
   initStandaloneHeadless,
+  confirmStandaloneAgentDone,
+  startFollowUpAgent,
+  cleanupStandaloneWorktree,
 } from './standalone-headless'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
@@ -215,7 +218,14 @@ function registerIpcHandlers() {
     return saveWorkspace(workspace)
   })
 
-  ipcMain.handle('delete-workspace', (_event, id: string) => {
+  ipcMain.handle('delete-workspace', async (_event, id: string) => {
+    // Check if this is a standalone headless workspace that needs worktree cleanup
+    const workspace = getWorkspaces().find(w => w.id === id)
+    if (workspace?.isStandaloneHeadless && workspace.taskId) {
+      // Clean up the worktree before deleting
+      await cleanupStandaloneWorktree(workspace.taskId)
+    }
+
     // Close terminal first to ensure PTY process is killed
     const terminalId = getTerminalForWorkspace(id)
     if (terminalId) {
@@ -481,6 +491,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('stop-standalone-headless-agent', async (_event, headlessId: string) => {
     return stopStandaloneHeadlessAgent(headlessId)
+  })
+
+  ipcMain.handle('standalone-headless:confirm-done', async (_event, headlessId: string) => {
+    return confirmStandaloneAgentDone(headlessId)
+  })
+
+  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string) => {
+    return startFollowUpAgent(headlessId, prompt)
   })
 
   // OAuth token management

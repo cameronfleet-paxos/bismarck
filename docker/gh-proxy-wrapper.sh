@@ -18,8 +18,64 @@ set -e
 PROXY_URL="${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
 HOST_WORKTREE_PATH="${BISMARCK_HOST_WORKTREE_PATH:-}"
 
-# Build JSON payload with all arguments
-ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+# Translate /workspace paths to host paths in arguments
+# This is needed because file arguments like --body-file reference container paths
+# but the command runs on the host where /workspace doesn't exist
+translate_path() {
+  local arg="$1"
+  if [[ "$arg" == /workspace/* ]]; then
+    # Replace /workspace with the host worktree path
+    echo "${HOST_WORKTREE_PATH}${arg#/workspace}"
+  elif [[ "$arg" == /workspace ]]; then
+    echo "${HOST_WORKTREE_PATH}"
+  else
+    echo "$arg"
+  fi
+}
+
+# Process arguments, translating file paths for flags that take file arguments
+TRANSLATED_ARGS=()
+SKIP_NEXT=false
+TRANSLATE_NEXT=false
+
+for i in "$@"; do
+  if $SKIP_NEXT; then
+    SKIP_NEXT=false
+    continue
+  fi
+
+  if $TRANSLATE_NEXT; then
+    # This argument is a file path that needs translation
+    TRANSLATED_ARGS+=("$(translate_path "$i")")
+    TRANSLATE_NEXT=false
+    continue
+  fi
+
+  case "$i" in
+    # Flags that take file path arguments (next arg is the path)
+    -F|--body-file|-T|--template)
+      TRANSLATED_ARGS+=("$i")
+      TRANSLATE_NEXT=true
+      ;;
+    # Combined form: --body-file=path or -F=path
+    --body-file=*|--template=*)
+      FLAG="${i%%=*}"
+      VALUE="${i#*=}"
+      TRANSLATED_ARGS+=("${FLAG}=$(translate_path "$VALUE")")
+      ;;
+    -F=*|-T=*)
+      FLAG="${i%%=*}"
+      VALUE="${i#*=}"
+      TRANSLATED_ARGS+=("${FLAG}=$(translate_path "$VALUE")")
+      ;;
+    *)
+      TRANSLATED_ARGS+=("$i")
+      ;;
+  esac
+done
+
+# Build JSON payload with translated arguments
+ARGS_JSON=$(printf '%s\n' "${TRANSLATED_ARGS[@]}" | jq -R . | jq -s .)
 
 # Determine the endpoint based on first argument
 ENDPOINT="/gh"

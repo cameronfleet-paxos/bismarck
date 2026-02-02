@@ -126,6 +126,14 @@ export function getStandaloneHeadlessAgentInfoPath(): string {
   return path.join(getStandaloneHeadlessDir(), 'headless-agents.json')
 }
 
+export function getStandaloneWorktreesPath(): string {
+  return path.join(getStandaloneHeadlessDir(), 'worktrees')
+}
+
+export function getStandaloneWorktreePath(repoName: string, branchName: string): string {
+  return path.join(getStandaloneWorktreesPath(), repoName, branchName)
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [

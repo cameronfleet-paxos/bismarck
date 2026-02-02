@@ -699,6 +699,42 @@ function App() {
     }
   }
 
+  const handleStandaloneConfirmDone = async (headlessId: string) => {
+    await window.electronAPI?.standaloneHeadlessConfirmDone?.(headlessId)
+    // Remove from headless agents map
+    setHeadlessAgents((prev) => {
+      const newMap = new Map(prev)
+      newMap.delete(headlessId)
+      return newMap
+    })
+    // Reload agents to pick up workspace deletion
+    await loadAgents()
+    // Refresh tabs
+    const state = await window.electronAPI.getState()
+    setTabs(state.tabs || [])
+  }
+
+  const handleStandaloneStartFollowup = async (headlessId: string) => {
+    // Show a simple prompt for follow-up task
+    const prompt = window.prompt('Enter the follow-up task:')
+    if (!prompt) return
+
+    const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt)
+    if (result) {
+      // Remove old agent info from map
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        newMap.delete(headlessId)
+        return newMap
+      })
+      // Reload agents to pick up the new workspace
+      await loadAgents()
+      // Refresh tabs
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+    }
+  }
+
   const handleAddAgent = () => {
     setEditingAgent(undefined)
     setModalOpen(true)
@@ -1797,6 +1833,9 @@ function App() {
                               theme={agent.theme}
                               status={info.status}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              isStandalone={true}
+                              onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
+                              onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                             />
                           </div>
                         </div>

@@ -12,8 +12,10 @@ import { randomUUID } from 'crypto'
 import {
   getStandaloneHeadlessDir,
   getStandaloneHeadlessAgentInfoPath,
+  getStandaloneWorktreePath,
   getWorkspaceById,
   saveWorkspace,
+  deleteWorkspace,
   writeConfigAtomic,
   getRandomUniqueIcon,
   getWorkspaces,
@@ -21,7 +23,45 @@ import {
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
-import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent } from '../shared/types'
+import {
+  getMainRepoRoot,
+  getCurrentBranch,
+  createWorktree,
+  removeWorktree,
+  deleteLocalBranch,
+  deleteRemoteBranch,
+  remoteBranchExists,
+} from './git-utils'
+import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
+
+// Word lists for fun random names
+const ADJECTIVES = [
+  'fluffy', 'happy', 'brave', 'swift', 'clever', 'gentle', 'mighty', 'calm',
+  'wild', 'eager', 'jolly', 'lucky', 'plucky', 'zesty', 'snappy', 'peppy'
+]
+
+const NOUNS = [
+  'bunny', 'panda', 'koala', 'otter', 'falcon', 'dolphin', 'fox', 'owl',
+  'tiger', 'eagle', 'wolf', 'bear', 'hawk', 'lynx', 'raven', 'seal'
+]
+
+/**
+ * Generate a fun, memorable random phrase for a standalone agent
+ * Format: {adjective}-{noun} (e.g., "plucky-otter")
+ */
+function generateRandomPhrase(): string {
+  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  return `${adjective}-${noun}`
+}
+
+/**
+ * Generate the display name for a standalone agent
+ * Format: {repoName}: {phrase} (e.g., "bismarck: plucky-otter")
+ */
+function generateDisplayName(repoName: string, phrase: string): string {
+  return `${repoName}: ${phrase}`
+}
 
 // Track standalone headless agents
 const standaloneHeadlessAgents: Map<string, HeadlessAgent> = new Map()
@@ -100,10 +140,11 @@ function emitStateUpdate(): void {
 /**
  * Build enhanced prompt for standalone headless agents with PR instructions
  */
-function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string): string {
+function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string): string {
   return `[STANDALONE HEADLESS AGENT]
 
 Working Directory: ${workingDir}
+Branch: ${branchName}
 
 === YOUR TASK ===
 ${userPrompt}
@@ -111,11 +152,11 @@ ${userPrompt}
 === COMPLETION REQUIREMENTS ===
 When you complete your work:
 
-1. Create a new branch for your changes
-2. Commit your changes with a clear, descriptive message
-3. Push your branch and create a PR:
+1. Commit your changes with a clear, descriptive message
+2. Push your branch and create a PR:
+   git push -u origin ${branchName}
    gh pr create --fill
-4. Report the PR URL in your final message
+3. Report the PR URL in your final message
 
 Type /exit when finished.`
 }
@@ -141,18 +182,50 @@ export async function startStandaloneHeadlessAgent(
   const headlessId = `standalone-headless-${Date.now()}`
   const workspaceId = randomUUID()
 
+  // Get repository info from reference agent's directory
+  const repoPath = await getMainRepoRoot(referenceAgent.directory)
+  if (!repoPath) {
+    throw new Error(`Reference agent directory is not in a git repository: ${referenceAgent.directory}`)
+  }
+  const repoName = path.basename(repoPath)
+
+  // Get current branch as base for worktree
+  const baseBranch = await getCurrentBranch(repoPath) || 'main'
+
+  // Generate fun random phrase for this agent (e.g., "plucky-otter")
+  const randomPhrase = generateRandomPhrase()
+
+  // Use random phrase for branch and worktree
+  const branchName = `standalone/${repoName}-${randomPhrase}`
+  const worktreePath = getStandaloneWorktreePath(repoName, randomPhrase)
+
+  // Ensure standalone headless directory exists
+  ensureStandaloneHeadlessDir()
+
+  // Create the worktree
+  console.log(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
+  await createWorktree(repoPath, worktreePath, branchName, baseBranch)
+
+  // Store worktree info for cleanup
+  const worktreeInfo: StandaloneWorktreeInfo = {
+    path: worktreePath,
+    branch: branchName,
+    repoPath: repoPath,
+  }
+
   // Create a new Agent workspace for the headless agent
   const existingWorkspaces = getWorkspaces()
   const newAgent: Agent = {
     id: workspaceId,
-    name: `Headless (${referenceAgent.name})`,
-    directory: referenceAgent.directory,
+    name: generateDisplayName(repoName, randomPhrase), // e.g., "bismarck: plucky-otter"
+    directory: worktreePath, // Use worktree path instead of reference directory
     purpose: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
     theme: referenceAgent.theme,
     icon: getRandomUniqueIcon(existingWorkspaces),
     isHeadless: true,
     isStandaloneHeadless: true,
     taskId: headlessId,
+    worktreePath: worktreePath,
   }
 
   // Save the workspace
@@ -172,9 +245,10 @@ export async function startStandaloneHeadlessAgent(
     taskId: headlessId,
     planId: 'standalone', // Special marker for standalone agents
     status: 'starting',
-    worktreePath: referenceAgent.directory,
+    worktreePath: worktreePath,
     events: [],
     startedAt: new Date().toISOString(),
+    worktreeInfo: worktreeInfo,
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
 
@@ -186,7 +260,7 @@ export async function startStandaloneHeadlessAgent(
     mainWindow.webContents.send('headless-agent-started', {
       taskId: headlessId,
       planId: 'standalone',
-      worktreePath: referenceAgent.directory,
+      worktreePath: worktreePath,
     })
   }
 
@@ -225,12 +299,11 @@ export async function startStandaloneHeadlessAgent(
   })
 
   // Start the agent
-  ensureStandaloneHeadlessDir()
   const selectedImage = await getSelectedDockerImage()
-  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, referenceAgent.directory)
+  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName)
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
-    worktreePath: referenceAgent.directory,
+    worktreePath: worktreePath,
     planDir: getStandaloneHeadlessDir(),
     taskId: headlessId,
     image: selectedImage,
@@ -245,6 +318,13 @@ export async function startStandaloneHeadlessAgent(
 
     standaloneHeadlessAgents.delete(headlessId)
     standaloneHeadlessAgentInfo.delete(headlessId)
+
+    // Clean up worktree on failure
+    try {
+      await removeWorktree(repoPath, worktreePath, true)
+    } catch (cleanupError) {
+      console.error(`[StandaloneHeadless] Failed to clean up worktree on error:`, cleanupError)
+    }
 
     throw error
   }
@@ -296,4 +376,223 @@ export function initStandaloneHeadless(): void {
     }
   }
   console.log(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
+}
+
+/**
+ * Clean up a standalone agent's worktree and branch
+ * Called when user clicks "Confirm Done" or when workspace is deleted
+ */
+export async function cleanupStandaloneWorktree(headlessId: string): Promise<void> {
+  const agentInfo = standaloneHeadlessAgentInfo.get(headlessId)
+  if (!agentInfo?.worktreeInfo) {
+    console.log(`[StandaloneHeadless] No worktree info for agent ${headlessId}`)
+    return
+  }
+
+  const { path: worktreePath, branch, repoPath } = agentInfo.worktreeInfo
+
+  console.log(`[StandaloneHeadless] Cleaning up worktree for agent ${headlessId}`)
+
+  // Remove the worktree
+  try {
+    await removeWorktree(repoPath, worktreePath, true)
+    console.log(`[StandaloneHeadless] Removed worktree at ${worktreePath}`)
+  } catch (error) {
+    console.error(`[StandaloneHeadless] Failed to remove worktree:`, error)
+  }
+
+  // Delete the local branch
+  try {
+    await deleteLocalBranch(repoPath, branch)
+    console.log(`[StandaloneHeadless] Deleted local branch ${branch}`)
+  } catch (error) {
+    // Branch may not exist if worktree removal already deleted it
+    console.log(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
+  }
+
+  // Delete the remote branch if it exists
+  try {
+    if (await remoteBranchExists(repoPath, branch)) {
+      await deleteRemoteBranch(repoPath, branch)
+      console.log(`[StandaloneHeadless] Deleted remote branch ${branch}`)
+    }
+  } catch (error) {
+    console.error(`[StandaloneHeadless] Failed to delete remote branch:`, error)
+  }
+
+  // Remove agent info
+  standaloneHeadlessAgentInfo.delete(headlessId)
+  saveStandaloneHeadlessAgentInfo()
+}
+
+/**
+ * Confirm that a standalone agent is done - cleans up worktree and removes workspace
+ */
+export async function confirmStandaloneAgentDone(headlessId: string): Promise<void> {
+  console.log(`[StandaloneHeadless] Confirming done for agent ${headlessId}`)
+
+  // Find the workspace associated with this headless agent
+  const workspaces = getWorkspaces()
+  const workspace = workspaces.find(w => w.taskId === headlessId && w.isStandaloneHeadless)
+
+  // Clean up worktree and branch
+  await cleanupStandaloneWorktree(headlessId)
+
+  // Delete the workspace
+  if (workspace) {
+    deleteWorkspace(workspace.id)
+    console.log(`[StandaloneHeadless] Deleted workspace ${workspace.id}`)
+  }
+
+  // Emit state update
+  emitStateUpdate()
+}
+
+/**
+ * Start a follow-up agent in the same worktree
+ * @returns The new headless agent ID and workspace ID
+ */
+export async function startFollowUpAgent(
+  headlessId: string,
+  prompt: string
+): Promise<{ headlessId: string; workspaceId: string }> {
+  const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
+  if (!existingInfo?.worktreeInfo) {
+    throw new Error(`No worktree info for agent ${headlessId}`)
+  }
+
+  // Find the existing workspace
+  const workspaces = getWorkspaces()
+  const existingWorkspace = workspaces.find(w => w.taskId === headlessId && w.isStandaloneHeadless)
+
+  const { path: worktreePath, branch, repoPath } = existingInfo.worktreeInfo
+
+  // Extract repo name and phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "bismarck", "plucky-otter")
+  const repoName = path.basename(repoPath)
+  const branchSuffix = branch.replace('standalone/', '') // e.g., "bismarck-plucky-otter"
+  const phrase = branchSuffix.replace(`${repoName}-`, '') // e.g., "plucky-otter"
+
+  // Generate new headless ID
+  const newHeadlessId = `standalone-headless-${Date.now()}`
+  const workspaceId = randomUUID()
+
+  // Create worktree info (same worktree, new agent)
+  const worktreeInfo: StandaloneWorktreeInfo = {
+    path: worktreePath,
+    branch: branch,
+    repoPath: repoPath,
+  }
+
+  // Create a new Agent workspace for the follow-up agent
+  const newAgent: Agent = {
+    id: workspaceId,
+    name: `${generateDisplayName(repoName, phrase)} (follow-up)`, // e.g., "bismarck: plucky-otter (follow-up)"
+    directory: worktreePath,
+    purpose: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
+    theme: existingWorkspace?.theme || 'blue',
+    icon: getRandomUniqueIcon(workspaces),
+    isHeadless: true,
+    isStandaloneHeadless: true,
+    taskId: newHeadlessId,
+    worktreePath: worktreePath,
+  }
+
+  // Save the workspace
+  saveWorkspace(newAgent)
+
+  // Place agent in next available grid slot
+  const tab = getOrCreateTabForWorkspace(workspaceId)
+  addWorkspaceToTab(workspaceId, tab.id)
+  setActiveTab(tab.id)
+
+  // Emit state update
+  emitStateUpdate()
+
+  // Create headless agent info for tracking
+  const agentInfo: HeadlessAgentInfo = {
+    id: newHeadlessId,
+    taskId: newHeadlessId,
+    planId: 'standalone',
+    status: 'starting',
+    worktreePath: worktreePath,
+    events: [],
+    startedAt: new Date().toISOString(),
+    worktreeInfo: worktreeInfo,
+  }
+  standaloneHeadlessAgentInfo.set(newHeadlessId, agentInfo)
+
+  // Remove old agent info (worktree is now owned by new agent)
+  standaloneHeadlessAgentInfo.delete(headlessId)
+
+  // Emit initial state
+  emitHeadlessAgentUpdate(agentInfo)
+
+  // Emit started event
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('headless-agent-started', {
+      taskId: newHeadlessId,
+      planId: 'standalone',
+      worktreePath: worktreePath,
+    })
+  }
+
+  // Create and start headless agent
+  const agent = new HeadlessAgent()
+  standaloneHeadlessAgents.set(newHeadlessId, agent)
+
+  // Set up event listeners
+  agent.on('status', (status: HeadlessAgentStatus) => {
+    agentInfo.status = status
+    emitHeadlessAgentUpdate(agentInfo)
+  })
+
+  agent.on('event', (event: StreamEvent) => {
+    agentInfo.events.push(event)
+    emitHeadlessAgentEvent(newHeadlessId, event)
+  })
+
+  agent.on('complete', (result) => {
+    agentInfo.status = result.success ? 'completed' : 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    agentInfo.result = result
+    emitHeadlessAgentUpdate(agentInfo)
+
+    // Clean up agent instance (but keep info for display)
+    standaloneHeadlessAgents.delete(newHeadlessId)
+  })
+
+  agent.on('error', (error: Error) => {
+    agentInfo.status = 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    emitHeadlessAgentUpdate(agentInfo)
+
+    standaloneHeadlessAgents.delete(newHeadlessId)
+    console.error(`[StandaloneHeadless] Agent ${newHeadlessId} error:`, error)
+  })
+
+  // Start the agent
+  const selectedImage = await getSelectedDockerImage()
+  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, worktreePath, branch)
+  const options: HeadlessAgentOptions = {
+    prompt: enhancedPrompt,
+    worktreePath: worktreePath,
+    planDir: getStandaloneHeadlessDir(),
+    taskId: newHeadlessId,
+    image: selectedImage,
+  }
+
+  try {
+    await agent.start(options)
+  } catch (error) {
+    agentInfo.status = 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    emitHeadlessAgentUpdate(agentInfo)
+
+    standaloneHeadlessAgents.delete(newHeadlessId)
+    standaloneHeadlessAgentInfo.delete(newHeadlessId)
+
+    throw error
+  }
+
+  return { headlessId: newHeadlessId, workspaceId }
 }

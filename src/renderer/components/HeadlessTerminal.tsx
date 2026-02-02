@@ -27,6 +27,9 @@ interface HeadlessTerminalProps {
   theme: ThemeName
   status: HeadlessAgentStatus
   isVisible?: boolean
+  isStandalone?: boolean           // True for standalone headless agents
+  onConfirmDone?: () => void       // Called when user clicks "Confirm Done"
+  onStartFollowUp?: () => void     // Called when user clicks "Start Follow-up"
 }
 
 interface CollapsedState {
@@ -70,6 +73,9 @@ export function HeadlessTerminal({
   theme,
   status,
   isVisible = true,
+  isStandalone = false,
+  onConfirmDone,
+  onStartFollowUp,
 }: HeadlessTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<CollapsedState>({})
@@ -370,14 +376,56 @@ export function HeadlessTerminal({
         )
       case 'completed':
         return (
-          <div className="flex items-center gap-2 text-green-500">
-            <span>✓</span> Completed
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-green-500">
+              <span>✓</span> Completed
+            </div>
+            {isStandalone && (onConfirmDone || onStartFollowUp) && (
+              <div className="flex items-center gap-2">
+                {onStartFollowUp && (
+                  <button
+                    onClick={onStartFollowUp}
+                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                  >
+                    Start Follow-up
+                  </button>
+                )}
+                {onConfirmDone && (
+                  <button
+                    onClick={onConfirmDone}
+                    className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
+                  >
+                    Confirm Done
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )
       case 'failed':
         return (
-          <div className="flex items-center gap-2 text-red-500">
-            <span>✗</span> Failed
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-red-500">
+              <span>✗</span> Failed
+            </div>
+            {isStandalone && onConfirmDone && (
+              <div className="flex items-center gap-2">
+                {onStartFollowUp && (
+                  <button
+                    onClick={onStartFollowUp}
+                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+                <button
+                  onClick={onConfirmDone}
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
+                >
+                  Confirm Done
+                </button>
+              </div>
+            )}
           </div>
         )
       default:

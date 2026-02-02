@@ -378,6 +378,13 @@ export type StreamEvent =
 // Headless Agent Tracking
 // ============================================
 
+// Worktree info for standalone headless agents
+export interface StandaloneWorktreeInfo {
+  path: string           // Full worktree path
+  branch: string         // Branch name
+  repoPath: string       // Original repo path (for cleanup)
+}
+
 // Tracks a headless agent instance (for UI state)
 export interface HeadlessAgentInfo {
   id: string
@@ -389,6 +396,7 @@ export interface HeadlessAgentInfo {
   startedAt: string
   completedAt?: string
   result?: HeadlessAgentResult
+  worktreeInfo?: StandaloneWorktreeInfo  // For standalone headless agents
 }
 
 // Extended Agent type to support both execution modes
