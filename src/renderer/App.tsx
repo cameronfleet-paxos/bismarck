@@ -18,6 +18,7 @@ import { Terminal } from '@/renderer/components/Terminal'
 import { TabBar } from '@/renderer/components/TabBar'
 import { Logo } from '@/renderer/components/Logo'
 import { SettingsModal } from '@/renderer/components/SettingsModal'
+import { SettingsPage } from '@/renderer/components/SettingsPage'
 import { PlanSidebar } from '@/renderer/components/PlanSidebar'
 import { PlanCreator } from '@/renderer/components/PlanCreator'
 import { HeadlessTerminal } from '@/renderer/components/HeadlessTerminal'
@@ -960,52 +961,9 @@ function App() {
     )
   }
 
-  // Settings view placeholder (to be replaced with SettingsPage component in Task 2)
+  // Settings view
   if (currentView === 'settings') {
-    return (
-      <div className="h-screen bg-background flex flex-col">
-        {/* Header */}
-        <header className="border-b px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <Breadcrumb
-              items={[
-                { label: 'Settings' }
-              ]}
-            />
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setCurrentView('main')}
-          >
-            Back to Workspace
-          </Button>
-        </header>
-
-        {/* Settings content placeholder */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Settings className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h2 className="text-xl font-semibold mb-2">Settings View</h2>
-            <p className="text-muted-foreground mb-4">
-              Settings page component will be implemented here
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Press <kbd className="px-2 py-1 bg-muted rounded">Esc</kbd> to return to workspace
-            </p>
-          </div>
-        </div>
-
-        {/* Keep modals available in settings view */}
-        <AgentModal
-          open={modalOpen}
-          onOpenChange={setModalOpen}
-          agent={editingAgent}
-          onSave={handleSaveAgent}
-        />
-      </div>
-    )
+    return <SettingsPage onBack={() => setCurrentView('main')} />
   }
 
   // Main workspace view

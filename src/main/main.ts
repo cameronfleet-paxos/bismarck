@@ -89,6 +89,15 @@ import {
   getAllRepositories,
   updateRepository,
 } from './repository-manager'
+import {
+  getSettings,
+  updateDockerResourceLimits,
+  addDockerImage,
+  removeDockerImage,
+  updateToolPaths,
+  addProxiedTool,
+  removeProxiedTool,
+} from './settings-manager'
 import { bdList } from './bd-client'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
@@ -508,6 +517,35 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => {
     return updateRepository(id, updates)
+  })
+
+  // Settings management
+  ipcMain.handle('get-settings', async () => {
+    return getSettings()
+  })
+
+  ipcMain.handle('update-docker-resource-limits', async (_event, limits: { cpu?: string; memory?: string }) => {
+    return updateDockerResourceLimits(limits)
+  })
+
+  ipcMain.handle('add-docker-image', async (_event, image: string) => {
+    return addDockerImage(image)
+  })
+
+  ipcMain.handle('remove-docker-image', async (_event, image: string) => {
+    return removeDockerImage(image)
+  })
+
+  ipcMain.handle('update-tool-paths', async (_event, paths: { bd?: string | null; gh?: string | null; git?: string | null }) => {
+    return updateToolPaths(paths)
+  })
+
+  ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string }) => {
+    return addProxiedTool(tool)
+  })
+
+  ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
+    return removeProxiedTool(id)
   })
 
   // Dev test harness (development mode only)

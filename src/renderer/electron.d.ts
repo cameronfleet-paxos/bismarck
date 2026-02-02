@@ -1,4 +1,5 @@
 import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask } from '../shared/types'
+import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 export interface ElectronAPI {
   // Workspace management
@@ -83,6 +84,15 @@ export interface ElectronAPI {
   detectGitRepository: (directory: string) => Promise<Repository | null>
   getRepositories: () => Promise<Repository[]>
   updateRepository: (id: string, updates: Partial<Pick<Repository, 'name'>>) => Promise<Repository | undefined>
+
+  // Settings management
+  getSettings: () => Promise<AppSettings>
+  updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) => Promise<void>
+  addDockerImage: (image: string) => Promise<void>
+  removeDockerImage: (image: string) => Promise<boolean>
+  updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
+  removeProxiedTool: (id: string) => Promise<boolean>
 
   // Terminal events
   onTerminalData: (
