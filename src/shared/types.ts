@@ -1,5 +1,15 @@
 import type { AgentIconName } from './constants'
 
+// Prompt type for custom prompt configuration
+export type PromptType = 'orchestrator' | 'planner' | 'discussion'
+
+// Custom prompt configuration
+export interface CustomPrompt {
+  type: PromptType
+  template: string
+  isCustom: boolean
+}
+
 // Branch strategy for plan execution
 export type BranchStrategy = 'feature_branch' | 'raise_prs'
 

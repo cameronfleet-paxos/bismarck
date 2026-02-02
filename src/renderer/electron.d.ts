@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 export interface ElectronAPI {
@@ -96,6 +96,11 @@ export interface ElectronAPI {
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
   removeProxiedTool: (id: string) => Promise<boolean>
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
+
+  // Prompt management
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }>
+  setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
+  getDefaultPrompt: (type: PromptType) => Promise<string>
 
   // Terminal events
   onTerminalData: (

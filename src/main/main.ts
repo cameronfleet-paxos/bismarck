@@ -99,7 +99,10 @@ import {
   addProxiedTool,
   removeProxiedTool,
   updateDockerSshSettings,
+  getCustomPrompts,
+  setCustomPrompt,
 } from './settings-manager'
+import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
@@ -558,6 +561,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSshSettings(settings)
+  })
+
+  // Prompt management
+  ipcMain.handle('get-custom-prompts', async () => {
+    return getCustomPrompts()
+  })
+
+  ipcMain.handle('set-custom-prompt', async (_event, type: 'orchestrator' | 'planner' | 'discussion', template: string | null) => {
+    return setCustomPrompt(type, template)
+  })
+
+  ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion') => {
+    return getDefaultPrompt(type)
   })
 
   // Dev test harness (development mode only)

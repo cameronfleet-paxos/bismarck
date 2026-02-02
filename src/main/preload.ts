@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -234,6 +234,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('remove-proxied-tool', id),
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
+
+  // Prompt management
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }> =>
+    ipcRenderer.invoke('get-custom-prompts'),
+  setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
+    ipcRenderer.invoke('set-custom-prompt', type, template),
+  getDefaultPrompt: (type: PromptType): Promise<string> =>
+    ipcRenderer.invoke('get-default-prompt', type),
 
   // External URL handling
   openExternal: (url: string): Promise<void> =>

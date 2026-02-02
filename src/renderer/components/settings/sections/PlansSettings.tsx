@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ChevronRight, Pencil, RotateCcw } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
-import type { OperatingMode, AgentModel } from '@/shared/types'
+import { Switch } from '@/renderer/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/renderer/components/ui/select'
+import { Button } from '@/renderer/components/ui/button'
+import { PromptEditor } from './PromptEditor'
+import type { OperatingMode, AgentModel, PromptType } from '@/shared/types'
 
 interface PlansSettingsProps {
   onPreferencesChange: (preferences: {
@@ -10,18 +20,51 @@ interface PlansSettingsProps {
   }) => void
 }
 
+interface PromptStatus {
+  orchestrator: boolean
+  planner: boolean
+  discussion: boolean
+}
+
+const PROMPT_LABELS: Record<PromptType, string> = {
+  orchestrator: 'Orchestrator',
+  planner: 'Planner',
+  discussion: 'Discussion',
+}
+
+const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
+  orchestrator: 'Coordinates task assignment and monitors progress',
+  planner: 'Creates tasks and sets up dependencies',
+  discussion: 'Facilitates design discussions before implementation',
+}
+
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
-  const [operatingMode, setOperatingMode] = useState<OperatingMode>('solo')
+  const [plansEnabled, setPlansEnabled] = useState(false)
   const [agentModel, setAgentModel] = useState<AgentModel>('sonnet')
   const [showSaved, setShowSaved] = useState(false)
+  const [promptsExpanded, setPromptsExpanded] = useState(false)
+  const [promptStatus, setPromptStatus] = useState<PromptStatus>({
+    orchestrator: false,
+    planner: false,
+    discussion: false,
+  })
+  const [editingPrompt, setEditingPrompt] = useState<PromptType | null>(null)
 
   // Load preferences on mount
   useEffect(() => {
     const loadPreferences = async () => {
       try {
         const prefs = await window.electronAPI.getPreferences()
-        setOperatingMode(prefs.operatingMode)
+        setPlansEnabled(prefs.operatingMode === 'team')
         setAgentModel(prefs.agentModel)
+
+        // Load custom prompt status
+        const customPrompts = await window.electronAPI.getCustomPrompts()
+        setPromptStatus({
+          orchestrator: !!customPrompts.orchestrator,
+          planner: !!customPrompts.planner,
+          discussion: !!customPrompts.discussion,
+        })
       } catch (error) {
         console.error('Failed to load preferences:', error)
       }
@@ -30,14 +73,18 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     loadPreferences()
   }, [])
 
-  const handleOperatingModeChange = (mode: OperatingMode) => {
-    setOperatingMode(mode)
+  const showSavedIndicator = () => {
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
+  }
+
+  const handlePlansEnabledChange = (enabled: boolean) => {
+    setPlansEnabled(enabled)
+    const mode: OperatingMode = enabled ? 'team' : 'solo'
     const update = { operatingMode: mode }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
-    // Show saved indicator
-    setShowSaved(true)
-    setTimeout(() => setShowSaved(false), 2000)
+    showSavedIndicator()
   }
 
   const handleAgentModelChange = (model: AgentModel) => {
@@ -45,13 +92,38 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     const update = { agentModel: model }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
-    // Show saved indicator
-    setShowSaved(true)
-    setTimeout(() => setShowSaved(false), 2000)
+    showSavedIndicator()
+  }
+
+  const handlePromptSave = async (type: PromptType, template: string | null) => {
+    try {
+      await window.electronAPI.setCustomPrompt(type, template)
+      setPromptStatus((prev) => ({
+        ...prev,
+        [type]: !!template,
+      }))
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to save prompt:', error)
+    }
+  }
+
+  const handlePromptReset = async (type: PromptType) => {
+    try {
+      await window.electronAPI.setCustomPrompt(type, null)
+      setPromptStatus((prev) => ({
+        ...prev,
+        [type]: false,
+      }))
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to reset prompt:', error)
+    }
   }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h3 className="text-lg font-medium">Plans Settings</h3>
@@ -63,109 +135,122 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure how plan execution and agents work together
+          Configure plan execution and agent behavior
         </p>
       </div>
 
+      {/* Main settings */}
       <div className="space-y-4">
-        <div className="grid gap-3">
-          <Label className="text-base font-medium">Operating Mode</Label>
-          <p className="text-sm text-muted-foreground">
-            How agents work together
-          </p>
-          <div className="grid gap-2">
-            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-              <input
-                type="radio"
-                name="operatingMode"
-                value="solo"
-                checked={operatingMode === 'solo'}
-                onChange={() => handleOperatingModeChange('solo')}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-medium">Solo</div>
-                <div className="text-sm text-muted-foreground">
-                  Independent agent workspaces
-                </div>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-              <input
-                type="radio"
-                name="operatingMode"
-                value="team"
-                checked={operatingMode === 'team'}
-                onChange={() => handleOperatingModeChange('team')}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-medium">Team</div>
-                <div className="text-sm text-muted-foreground">
-                  Coordinated via bd with plan sidebar
-                </div>
-              </div>
-            </label>
+        {/* Plans Enabled Toggle */}
+        <div className="flex items-center justify-between py-2">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Plans Enabled</Label>
+            <p className="text-sm text-muted-foreground">
+              Enable coordinated task orchestration
+            </p>
           </div>
+          <Switch
+            checked={plansEnabled}
+            onCheckedChange={handlePlansEnabledChange}
+          />
         </div>
 
-        <div className="grid gap-3">
-          <Label className="text-base font-medium">Agent Model</Label>
-          <p className="text-sm text-muted-foreground">
-            Model used for headless task agents in plan execution
-          </p>
-          <div className="grid gap-2">
-            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-              <input
-                type="radio"
-                name="agentModel"
-                value="sonnet"
-                checked={agentModel === 'sonnet'}
-                onChange={() => handleAgentModelChange('sonnet')}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-medium">Sonnet</div>
-                <div className="text-sm text-muted-foreground">
-                  Best balance of speed, cost, and capability
-                </div>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-              <input
-                type="radio"
-                name="agentModel"
-                value="opus"
-                checked={agentModel === 'opus'}
-                onChange={() => handleAgentModelChange('opus')}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-medium">Opus</div>
-                <div className="text-sm text-muted-foreground">
-                  Most capable model, higher cost
-                </div>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-              <input
-                type="radio"
-                name="agentModel"
-                value="haiku"
-                checked={agentModel === 'haiku'}
-                onChange={() => handleAgentModelChange('haiku')}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-medium">Haiku</div>
-                <div className="text-sm text-muted-foreground">
-                  Fastest and most affordable, good for simpler tasks
-                </div>
-              </div>
-            </label>
+        {/* Agent Model Dropdown */}
+        <div className="flex items-center justify-between py-2">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Agent Model</Label>
+            <p className="text-sm text-muted-foreground">
+              Model for headless task agents
+            </p>
           </div>
+          <Select value={agentModel} onValueChange={(v) => handleAgentModelChange(v as AgentModel)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sonnet">Sonnet</SelectItem>
+              <SelectItem value="opus">Opus</SelectItem>
+              <SelectItem value="haiku">Haiku</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
+
+      {/* Prompts Section */}
+      <div className="border-t pt-4">
+        <button
+          onClick={() => setPromptsExpanded(!promptsExpanded)}
+          className="flex items-center gap-2 w-full text-left hover:text-foreground transition-colors"
+        >
+          <ChevronRight
+            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
+              promptsExpanded ? 'rotate-90' : ''
+            }`}
+          />
+          <span className="text-base font-medium">Agent Prompts</span>
+        </button>
+
+        {promptsExpanded && (
+          <div className="mt-4 space-y-3 pl-6">
+            {(['orchestrator', 'planner', 'discussion'] as PromptType[]).map((type) => (
+              <div
+                key={type}
+                className="flex items-center justify-between py-2 px-3 rounded-lg border bg-muted/20"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{PROMPT_LABELS[type]}</span>
+                    {promptStatus[type] ? (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        Custom
+                      </span>
+                    ) : (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {PROMPT_DESCRIPTIONS[type]}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingPrompt(type)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span className="sr-only">Edit</span>
+                  </Button>
+                  {promptStatus[type] && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handlePromptReset(type)}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      <span className="sr-only">Reset</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Prompt Editor Dialog */}
+      {editingPrompt && (
+        <PromptEditor
+          type={editingPrompt}
+          isOpen={true}
+          onClose={() => setEditingPrompt(null)}
+          onSave={(template) => handlePromptSave(editingPrompt, template)}
+        />
+      )}
     </div>
   )
 }

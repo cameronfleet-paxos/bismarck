@@ -40,6 +40,11 @@ export interface AppSettings {
       enabled: boolean     // Enable SSH agent forwarding to containers
     }
   }
+  prompts: {
+    orchestrator: string | null  // null = use default
+    planner: string | null
+    discussion: string | null
+  }
 }
 
 // In-memory cache of settings
@@ -93,6 +98,11 @@ export function getDefaultSettings(): AppSettings {
         enabled: true,
       },
     },
+    prompts: {
+      orchestrator: null,
+      planner: null,
+      discussion: null,
+    },
   }
 }
 
@@ -131,6 +141,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
  */
 export async function updateSettings(updates: Partial<AppSettings>): Promise<AppSettings> {
   const currentSettings = await loadSettings()
+  const defaults = getDefaultSettings()
   const updatedSettings: AppSettings = {
     ...currentSettings,
     ...updates,
@@ -148,6 +159,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...currentSettings.docker.sshAgent,
         ...(updates.docker?.sshAgent || {}),
       },
+    },
+    prompts: {
+      ...(currentSettings.prompts || defaults.prompts),
+      ...(updates.prompts || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -316,6 +331,38 @@ export async function updateDockerSshSettings(sshSettings: { enabled?: boolean }
  */
 export function clearSettingsCache(): void {
   settingsCache = null
+}
+
+/**
+ * Get custom prompt for a specific type
+ */
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion'): Promise<string | null> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const prompts = settings.prompts || defaults.prompts
+  return prompts[type]
+}
+
+/**
+ * Set custom prompt for a specific type (null to reset to default)
+ */
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion', template: string | null): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.prompts = {
+    ...(settings.prompts || defaults.prompts),
+    [type]: template,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Get all custom prompts
+ */
+export async function getCustomPrompts(): Promise<AppSettings['prompts']> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  return settings.prompts || defaults.prompts
 }
 
 /**
