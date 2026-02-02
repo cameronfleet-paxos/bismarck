@@ -92,6 +92,14 @@ import {
   removeRepository,
 } from './repository-manager'
 import {
+  showFolderPicker,
+  getCommonRepoPaths,
+  scanForRepositories,
+  bulkCreateAgents,
+  saveDefaultReposPath,
+  getDefaultReposPath,
+} from './setup-wizard'
+import {
   getSettings,
   saveSettings,
   updateDockerResourceLimits,
@@ -130,7 +138,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import type { Workspace, AppPreferences, Repository } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -589,6 +597,31 @@ function registerIpcHandlers() {
 
   ipcMain.handle('remove-repository', async (_event, id: string) => {
     return removeRepository(id)
+  })
+
+  // Setup wizard
+  ipcMain.handle('setup-wizard:show-folder-picker', async () => {
+    return showFolderPicker()
+  })
+
+  ipcMain.handle('setup-wizard:get-common-repo-paths', async () => {
+    return getCommonRepoPaths()
+  })
+
+  ipcMain.handle('setup-wizard:scan-for-repositories', async (_event, parentPath: string, depth?: number) => {
+    return scanForRepositories(parentPath, depth)
+  })
+
+  ipcMain.handle('setup-wizard:bulk-create-agents', async (_event, repos: DiscoveredRepo[]) => {
+    return bulkCreateAgents(repos)
+  })
+
+  ipcMain.handle('setup-wizard:save-default-repos-path', async (_event, reposPath: string) => {
+    return saveDefaultReposPath(reposPath)
+  })
+
+  ipcMain.handle('setup-wizard:get-default-repos-path', async () => {
+    return getDefaultReposPath()
   })
 
   // Settings management

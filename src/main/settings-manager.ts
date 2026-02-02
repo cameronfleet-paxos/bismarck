@@ -27,6 +27,7 @@ export interface AppSettings {
     bd: string | null      // null = use auto-detected
     gh: string | null
     git: string | null
+    defaultReposPath?: string  // Default path for scanning repositories in setup wizard
   }
   docker: {
     images: string[]
