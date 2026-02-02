@@ -35,6 +35,7 @@ Use the unified command that starts all services:
 ```bash
 npm run dev:cdp        # Start Vite, Electron+CDP, and CDP server
 npm run dev:cdp:clean  # Kill existing processes first, then start
+npm run dev:cdp:wait   # Start services and wait until ready (preferred for automation)
 npm run dev:check      # Check if all services are running
 ```
 
@@ -59,7 +60,7 @@ This compiles both the main process TypeScript and the Vite renderer.
 
 **When making UI changes, always self-test before asking the user for feedback.** Use the testing skills to verify your changes work correctly:
 
-1. **Start the test environment**: `/bismarck:start-test` (runs `npm run dev:cdp:clean`)
+1. **Start the test environment**: `/bismarck:start-test` (runs `npm run dev:cdp:wait`)
 2. **Take screenshots to verify UI state**: `/bismarck:screenshot`
 3. **Run interactive tests**: `/bismarck:test <scenario>`
 
@@ -73,7 +74,8 @@ Only ask the user/operator for input if:
 The easiest way to start with CDP is the unified command:
 
 ```bash
-npm run dev:cdp:clean  # Start all services with cleanup
+npm run dev:cdp:wait   # Start all services and wait until ready (recommended)
+npm run dev:cdp:clean  # Start all services with cleanup (stays running)
 npm run dev:check      # Verify services are running
 ```
 
@@ -116,6 +118,7 @@ These skills are the primary way to test changes:
 Located in `scripts/test/`:
 
 - `dev-with-cdp.js` - **Unified startup script** - starts Vite, Electron+CDP, and CDP server
+- `wait-for-ready.js` - Polls health endpoints until all services are ready
 - `cdp-server.js` - HTTP server for fast CDP interactions (started automatically by dev-with-cdp.js)
 - `cdp-helper.js` - Shared CDP connection module (used by cdp-server.js)
 

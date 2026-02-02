@@ -16,6 +16,7 @@
     "test:server": "node scripts/test/cdp-server.js",
     "dev:cdp": "node scripts/test/dev-with-cdp.js",
     "dev:cdp:clean": "node scripts/test/dev-with-cdp.js --clean",
+    "dev:cdp:wait": "node scripts/test/dev-with-cdp.js --clean & node scripts/test/wait-for-ready.js",
     "dev:check": "node scripts/test/dev-with-cdp.js --check",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"

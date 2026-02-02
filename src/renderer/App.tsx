@@ -975,14 +975,16 @@ function App() {
     )
   }
 
-  // Settings view
-  if (currentView === 'settings') {
-    return <SettingsPage onBack={() => setCurrentView('main')} />
-  }
-
-  // Main workspace view
+  // Render both views but show only one - prevents terminal unmount/remount
   return (
-    <div className="h-screen bg-background flex flex-col">
+    <>
+      {/* Settings view - rendered on top when active */}
+      {currentView === 'settings' && (
+        <SettingsPage onBack={() => setCurrentView('main')} />
+      )}
+
+      {/* Main workspace view - always rendered to preserve terminal state */}
+      <div className={`h-screen bg-background flex flex-col ${currentView === 'settings' ? 'hidden' : ''}`}>
       {/* Header */}
       <header className="border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -1366,7 +1368,7 @@ function App() {
                                 terminalId={terminal.terminalId}
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
-                                isVisible={!!shouldShowTab && (!expandedAgentId || isExpanded)}
+                                isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 registerWriter={registerWriter}
                                 unregisterWriter={unregisterWriter}
                               />
@@ -1410,7 +1412,7 @@ function App() {
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
-                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} isVisible={!!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
                           </div>
                         </div>
                       )
@@ -1572,7 +1574,7 @@ function App() {
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
-                              isVisible={!!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               registerWriter={registerWriter}
                               unregisterWriter={unregisterWriter}
                             />
@@ -1719,6 +1721,7 @@ function App() {
         onClose={() => setDevConsoleOpen(false)}
       />
     </div>
+    </>
   )
 }
 

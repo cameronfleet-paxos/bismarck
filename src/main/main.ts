@@ -152,6 +152,10 @@ function createWindow() {
     },
   })
 
+  // Bring app to foreground on macOS
+  app.focus({ steal: true })
+  mainWindow.focus()
+
   // Set the main window reference for socket server, plan manager, dev harness, and queue
   setMainWindow(mainWindow)
   setPlanManagerWindow(mainWindow)
@@ -535,10 +539,6 @@ function registerIpcHandlers() {
 
   ipcMain.handle('remove-docker-image', async (_event, image: string) => {
     return removeDockerImage(image)
-  })
-
-  ipcMain.handle('update-tool-paths', async (_event, paths: { bd?: string | null; gh?: string | null; git?: string | null }) => {
-    return updateToolPaths(paths)
   })
 
   ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string }) => {
