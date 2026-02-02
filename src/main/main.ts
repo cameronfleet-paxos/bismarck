@@ -231,6 +231,7 @@ function registerIpcHandlers() {
     if (terminalId) {
       closeTerminal(terminalId)
     }
+    removeWorkspaceFromTab(id)
     deleteWorkspace(id)
     removeActiveWorkspace(id)
     closeSocketServer(id)
