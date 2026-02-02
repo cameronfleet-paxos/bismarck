@@ -153,11 +153,22 @@ ${userPrompt}
 === COMPLETION REQUIREMENTS ===
 When you complete your work:
 
-1. Commit your changes with a clear, descriptive message
-2. Push your branch to origin:
+1. Commit your changes using multiple -m flags (avoids shell escaping issues with HEREDOCs):
+   git add <files>
+   git commit -m "Title line" -m "Detail 1" -m "Detail 2" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+2. Push your branch:
    git push -u origin ${branchName}
-3. Create a PR using the GitHub API (gh pr create has issues in worktrees):
-   gh api repos/OWNER/REPO/pulls -f head="${branchName}" -f base="main" -f title="..." -f body="..."
+
+3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
+   echo '{"head":"${branchName}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
+
+   IMPORTANT for PR body:
+   - Keep body simple, single line, no markdown formatting
+   - Escape quotes with backslash: \\"quoted\\"
+   - Use \\n for newlines if absolutely needed
+   - If gh api hangs for >30s, cancel and retry with simpler body
+
 4. Report the PR URL in your final message
 
 Type /exit when finished.`
@@ -189,10 +200,19 @@ ${userPrompt}
 
 === COMPLETION REQUIREMENTS ===
 1. Review the previous commits above to understand what was done
-2. Make your changes and commit with clear messages
-3. Push your changes: git push origin ${branchName}
-4. Update the existing PR if needed:
-   - gh pr edit --title "new title" --body "new body"
+
+2. Make your changes and commit using multiple -m flags (avoids shell escaping issues):
+   git add <files>
+   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+3. Push your changes:
+   git push origin ${branchName}
+
+4. Update the existing PR if needed using echo piped JSON:
+   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
+
+   IMPORTANT: Keep body simple, single line, escape quotes with backslash
+
 5. Report the PR URL in your final message
 
 Type /exit when finished.`
