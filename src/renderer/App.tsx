@@ -23,6 +23,7 @@ import { PlanSidebar } from '@/renderer/components/PlanSidebar'
 import { PlanCreator } from '@/renderer/components/PlanCreator'
 import { HeadlessTerminal } from '@/renderer/components/HeadlessTerminal'
 import { DevConsole } from '@/renderer/components/DevConsole'
+import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
@@ -93,6 +94,9 @@ function App() {
 
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
+
+  // Command search state (CMD-K)
+  const [commandSearchOpen, setCommandSearchOpen] = useState(false)
 
   // Collapsed plan groups in sidebar
   const [collapsedPlanGroups, setCollapsedPlanGroups] = useState<Set<string>>(new Set())
@@ -186,6 +190,13 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
         e.preventDefault()
         setDevConsoleOpen(prev => !prev)
+        return
+      }
+
+      // Cmd/Ctrl+K to open command search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCommandSearchOpen(true)
         return
       }
 
@@ -684,6 +695,25 @@ function App() {
       // (it stays in queue so expand mode shows it)
       setFocusedAgentId(nextAgentId)
       window.electronAPI?.setFocusedWorkspace?.(nextAgentId)
+    }
+  }
+
+  // Command search handler
+  const handleCommandSearchSelect = async (agentId: string) => {
+    // Find the tab containing this agent
+    const tab = tabs.find(t => t.workspaceIds.includes(agentId))
+    if (tab && tab.id !== activeTabId) {
+      setActiveTabId(tab.id)
+      await window.electronAPI?.setActiveTab?.(tab.id)
+    }
+
+    // Focus the agent
+    handleFocusAgent(agentId)
+
+    // If agent is not running, launch it
+    const isActive = activeTerminals.some(t => t.workspaceId === agentId)
+    if (!isActive) {
+      handleLaunchAgent(agentId)
     }
   }
 
@@ -1733,6 +1763,18 @@ function App() {
       <DevConsole
         open={devConsoleOpen}
         onClose={() => setDevConsoleOpen(false)}
+      />
+
+      {/* Command Search (CMD-K) */}
+      <CommandSearch
+        open={commandSearchOpen}
+        onOpenChange={setCommandSearchOpen}
+        agents={agents}
+        activeTerminals={activeTerminals}
+        waitingQueue={waitingQueue}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectAgent={handleCommandSearchSelect}
       />
     </div>
     </>
