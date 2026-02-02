@@ -21,6 +21,7 @@ import type {
   HeadlessAgentStatus,
 } from '@/shared/types'
 import { themes } from '@/shared/constants'
+import { extractPRUrl } from '@/shared/pr-utils'
 
 interface HeadlessTerminalProps {
   events: StreamEvent[]
@@ -81,6 +82,9 @@ export function HeadlessTerminal({
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [events, isVisible])
+
+  // Extract PR URL from events
+  const prUrl = extractPRUrl(events)
 
   // Toggle collapse state for a tool
   const toggleCollapse = (toolId: string) => {
@@ -349,6 +353,12 @@ export function HeadlessTerminal({
 
   // Status indicator
   const getStatusIndicator = () => {
+    const handleOpenPR = () => {
+      if (prUrl) {
+        window.electronAPI?.openExternal?.(prUrl)
+      }
+    }
+
     switch (status) {
       case 'starting':
         return (
@@ -370,8 +380,18 @@ export function HeadlessTerminal({
         )
       case 'completed':
         return (
-          <div className="flex items-center gap-2 text-green-500">
-            <span>✓</span> Completed
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-green-500">
+              <span>✓</span> Completed
+            </div>
+            {prUrl && (
+              <button
+                onClick={handleOpenPR}
+                className="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+              >
+                View PR
+              </button>
+            )}
           </div>
         )
       case 'failed':
