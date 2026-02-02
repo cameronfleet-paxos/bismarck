@@ -24,7 +24,7 @@ import {
   withPlanLock,
   withGitPushLock,
 } from './config'
-import { bdCreate, bdList, bdUpdate, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
+import { bdCreate, bdList, bdUpdate, bdClose, bdAddDependency, bdGetDependents, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
 import { injectTextToTerminal, injectPromptToTerminal, getTerminalForWorkspace, waitForTerminalOutput, closeTerminal, getTerminalEmitter } from './terminal'
 import { queueTerminalCreation } from './terminal-queue'
 import { createTab, addWorkspaceToTab, addActiveWorkspace, removeActiveWorkspace, removeWorkspaceFromTab, setActiveTab, deleteTab, getState, setFocusedWorkspace, getPreferences } from './state-manager'
@@ -2710,6 +2710,15 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
     return false
   }
 
+  // Check for worktrees with merge agents already running (mergeTaskId set but not yet merged)
+  const worktreesWithMergeInProgress = blockerWorktrees.filter(w => !w.mergedIntoFeatureBranch && w.mergeTaskId)
+  if (worktreesWithMergeInProgress.length > 0) {
+    logger.debug('plan', 'Merge agents still running, blocking dependent task', logCtx, {
+      mergeInProgress: worktreesWithMergeInProgress.map(w => ({ taskId: w.taskId, mergeTaskId: w.mergeTaskId })),
+    })
+    return true // Block dependent task until merge agents complete
+  }
+
   // Check which blocker worktrees haven't been merged into the feature branch yet
   const unmergedWorktrees = blockerWorktrees.filter(w => !w.mergedIntoFeatureBranch)
 
@@ -2748,6 +2757,9 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
   // Prefer repository's detected defaultBranch over plan's potentially incorrect default
   const baseBranch = repository.defaultBranch || 'main'
 
+  // Track if any merge agent was spawned - if so, we must block the dependent task
+  let mergeAgentSpawned = false
+
   for (const worktree of unmergedWorktrees) {
     const worktreeLogCtx: LogContext = { planId: plan.id, taskId: worktree.taskId }
 
@@ -2758,6 +2770,7 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
       if (!pushSucceeded) {
         // Merge agent was spawned to resolve conflicts
         // It will handle the push after resolving
+        mergeAgentSpawned = true
         addPlanActivity(
           plan.id,
           'info',
@@ -2820,9 +2833,9 @@ async function maybeSpawnMergeAgent(plan: Plan, dependentTask: BeadTask): Promis
   await savePlan(plan)
   emitPlanUpdate(plan)
 
-  // Return false to indicate the dependent task can now proceed
-  // (we handled the merge synchronously rather than spawning an async agent)
-  return false
+  // Return true if a merge agent was spawned - dependent task must wait
+  // Return false if all merges completed synchronously - dependent task can proceed
+  return mergeAgentSpawned
 }
 
 /**
@@ -2861,8 +2874,36 @@ async function spawnMergeResolutionAgent(
     error: conflictError.message.substring(0, 200),
   })
 
-  // Create merge task ID for tracking
-  const mergeTaskId = `${worktree.taskId}-merge`
+  // Create merge task in beads FIRST (synchronously, before agent starts)
+  // This ensures dependent tasks are blocked before the merge agent runs async
+  let mergeTaskId: string
+  try {
+    mergeTaskId = await bdCreate(plan.id, {
+      title: `Merge ${worktree.taskId} into feature branch`,
+      labels: ['merge', 'bismarck-internal'],
+    })
+    worktree.mergeTaskId = mergeTaskId
+    logger.info('plan', 'Created merge task in beads', logCtx, { mergeTaskId })
+
+    // Find ALL tasks that depend on the original task and add merge as blocker
+    const dependentTaskIds = await bdGetDependents(plan.id, worktree.taskId)
+    for (const depTaskId of dependentTaskIds) {
+      await bdAddDependency(plan.id, depTaskId, mergeTaskId)
+      logger.info('plan', 'Added merge dependency', logCtx, {
+        mergeTaskId,
+        dependentTaskId: depTaskId
+      })
+    }
+
+    // Save the plan with the mergeTaskId
+    await savePlan(plan)
+  } catch (err) {
+    logger.warn('plan', 'Failed to create merge task in beads', logCtx, {
+      error: err instanceof Error ? err.message : 'Unknown error'
+    })
+    // Fall back to the old ID format if beads task creation fails
+    mergeTaskId = `${worktree.taskId}-merge`
+  }
 
   // Build the merge resolution prompt
   const prompt = `You are resolving a merge conflict for task ${worktree.taskId}.
@@ -2929,6 +2970,20 @@ ${conflictError.message}
     headlessAgents.delete(mergeTaskId)
 
     if (result.success) {
+      // Close the merge task in beads FIRST to unblock dependent tasks
+      if (worktree.mergeTaskId) {
+        try {
+          await bdClose(plan.id, worktree.mergeTaskId)
+          logger.info('plan', 'Closed merge task in beads', logCtx, {
+            mergeTaskId: worktree.mergeTaskId
+          })
+        } catch (err) {
+          logger.warn('plan', 'Failed to close merge task', logCtx, {
+            error: err instanceof Error ? err.message : 'Unknown error'
+          })
+        }
+      }
+
       addPlanActivity(plan.id, 'success', `Merge resolved for ${worktree.taskId}`)
       // Mark the worktree as merged
       worktree.mergedAt = new Date().toISOString()
@@ -2939,6 +2994,7 @@ ${conflictError.message}
       emitPlanUpdate(plan)
     } else {
       addPlanActivity(plan.id, 'error', `Merge resolution failed for ${worktree.taskId}`, result.error)
+      // Note: merge task stays open - user/dependent tasks remain blocked until manual intervention
     }
   })
 

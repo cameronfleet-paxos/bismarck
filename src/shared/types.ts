@@ -189,6 +189,7 @@ export interface PlanWorktree {
   // Merge tracking for feature_branch strategy
   mergedAt?: string             // When commits were merged into feature branch
   mergedIntoFeatureBranch?: boolean  // True if commits have been pushed to feature branch
+  mergeTaskId?: string          // ID of the merge task in beads (if merge agent was spawned)
   // Task dependency tracking
   blockedBy?: string[]          // Task IDs this task depends on
 }
