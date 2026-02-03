@@ -9,12 +9,22 @@ import { setClaudeOAuthToken } from './config'
 import { spawnWithPath } from './exec-utils'
 
 // Regex to match OAuth tokens from claude setup-token output
-const TOKEN_REGEX = /sk-ant-oat01-[A-Za-z0-9_-]+/
+// Tokens are ~108 chars and end with 'AA'
+const TOKEN_REGEX = /sk-ant-oat01-[A-Za-z0-9_-]+AA/
 
-// Strip ANSI escape sequences from output
+// Strip ANSI escape sequences and control characters from output
+// This handles color codes, cursor movement, and other terminal control sequences
 function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
-  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+  return (
+    str
+      // Remove all ANSI escape sequences (colors, cursor movement, etc.)
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
+      // Remove carriage returns
+      .replace(/\r/g, '')
+      // Remove newlines to handle tokens split across lines
+      .replace(/\n/g, '')
+  )
 }
 
 /**
@@ -55,7 +65,8 @@ export async function runSetupToken(): Promise<string> {
       if (match && !tokenFound) {
         tokenFound = true
         const token = match[0]
-        console.log('[OAuthSetup] Token found, storing...')
+        console.log('[OAuthSetup] Token found, length:', token.length)
+        console.log('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
         setClaudeOAuthToken(token)
         // Kill the process since we have the token
         proc.kill()
@@ -81,7 +92,8 @@ export async function runSetupToken(): Promise<string> {
       const match = cleanOutput.match(TOKEN_REGEX)
       if (match) {
         const token = match[0]
-        console.log('[OAuthSetup] Token found on close, storing...')
+        console.log('[OAuthSetup] Token found on close, length:', token.length)
+        console.log('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
         setClaudeOAuthToken(token)
         resolve(token)
         return

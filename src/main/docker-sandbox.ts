@@ -115,7 +115,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
+  console.log('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')
   if (oauthToken) {
+    // Validate token length - valid tokens are ~108 chars, truncated tokens are shorter
+    if (oauthToken.length < 100) {
+      console.warn('[DockerSandbox] WARNING: OAuth token appears truncated (length:', oauthToken.length, '), expected ~108 chars')
+    }
     args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
   }
 
