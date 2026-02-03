@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -245,8 +245,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:save-default-repos-path', reposPath),
   setupWizardGetDefaultReposPath: (): Promise<string | null> =>
     ipcRenderer.invoke('setup-wizard:get-default-repos-path'),
-  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]): Promise<Array<{ repoPath: string; purpose: string; error?: string }>> =>
+  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]): Promise<Array<{ repoPath: string; purpose: string; completionCriteria: string; protectedBranches: string[]; error?: string }>> =>
     ipcRenderer.invoke('setup-wizard:generate-descriptions', repos),
+  setupWizardCheckPlanModeDeps: (): Promise<PlanModeDependencies> =>
+    ipcRenderer.invoke('setup-wizard:check-plan-mode-deps'),
+  setupWizardEnablePlanMode: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('setup-wizard:enable-plan-mode', enabled),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),

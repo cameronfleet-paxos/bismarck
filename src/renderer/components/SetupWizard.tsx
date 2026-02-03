@@ -3,8 +3,8 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock } from 'lucide-react'
-import type { DiscoveredRepo, Agent } from '@/shared/types'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy } from 'lucide-react'
+import type { DiscoveredRepo, Agent, PlanModeDependencies } from '@/shared/types'
 
 // German/Bismarck-related fun facts for the loading screen
 const BISMARCK_FACTS = [
@@ -41,7 +41,7 @@ interface SetupWizardProps {
   onSkip: () => void
 }
 
-type WizardStep = 'path' | 'repos' | 'descriptions'
+type WizardStep = 'path' | 'repos' | 'descriptions' | 'plan-mode'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('path')
@@ -55,9 +55,16 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [error, setError] = useState<string | null>(null)
   // Descriptions step state
   const [repoPurposes, setRepoPurposes] = useState<Map<string, string>>(new Map())
+  const [repoCompletionCriteria, setRepoCompletionCriteria] = useState<Map<string, string>>(new Map())
+  const [repoProtectedBranches, setRepoProtectedBranches] = useState<Map<string, string[]>>(new Map())
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentFactIndex, setCurrentFactIndex] = useState(0)
   const factIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // Plan mode step state
+  const [planModeEnabled, setPlanModeEnabled] = useState(false)
+  const [dependencies, setDependencies] = useState<PlanModeDependencies | null>(null)
+  const [isCheckingDeps, setIsCheckingDeps] = useState(false)
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
 
   // Load suggested paths on mount
   useEffect(() => {
@@ -183,20 +190,32 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       const reposToGenerate = discoveredRepos.filter(r => selectedRepos.has(r.path))
       const results = await window.electronAPI.setupWizardGenerateDescriptions(reposToGenerate)
 
-      // Convert results to a Map
+      // Convert results to Maps
       const purposeMap = new Map<string, string>()
+      const criteriaMap = new Map<string, string>()
+      const branchesMap = new Map<string, string[]>()
       for (const result of results) {
         purposeMap.set(result.repoPath, result.purpose)
+        criteriaMap.set(result.repoPath, result.completionCriteria)
+        branchesMap.set(result.repoPath, result.protectedBranches)
       }
       setRepoPurposes(purposeMap)
+      setRepoCompletionCriteria(criteriaMap)
+      setRepoProtectedBranches(branchesMap)
     } catch (err) {
       console.error('Failed to generate descriptions:', err)
-      // On error, just set empty purposes - user can edit manually
-      const emptyMap = new Map<string, string>()
+      // On error, just set empty values - user can edit manually
+      const emptyPurposeMap = new Map<string, string>()
+      const emptyCriteriaMap = new Map<string, string>()
+      const emptyBranchesMap = new Map<string, string[]>()
       for (const repoPath of selectedRepos) {
-        emptyMap.set(repoPath, '')
+        emptyPurposeMap.set(repoPath, '')
+        emptyCriteriaMap.set(repoPath, '')
+        emptyBranchesMap.set(repoPath, [])
       }
-      setRepoPurposes(emptyMap)
+      setRepoPurposes(emptyPurposeMap)
+      setRepoCompletionCriteria(emptyCriteriaMap)
+      setRepoProtectedBranches(emptyBranchesMap)
     } finally {
       setIsGenerating(false)
       if (factIntervalRef.current) {
@@ -206,18 +225,20 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
-  // Final agent creation with purposes
+  // Final agent creation with purposes, completion criteria, and protected branches
   const handleCreateAgents = async () => {
     setIsCreating(true)
     setError(null)
 
     try {
-      // Build repos with purposes
+      // Build repos with all details
       const reposToCreate = discoveredRepos
         .filter(r => selectedRepos.has(r.path))
         .map(r => ({
           ...r,
           purpose: repoPurposes.get(r.path) || '',
+          completionCriteria: repoCompletionCriteria.get(r.path) || '',
+          protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
       onComplete(agents)
@@ -238,8 +259,88 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     })
   }
 
+  // Update a single repo's completion criteria
+  const handleUpdateCompletionCriteria = (repoPath: string, criteria: string) => {
+    setRepoCompletionCriteria(prev => {
+      const next = new Map(prev)
+      next.set(repoPath, criteria)
+      return next
+    })
+  }
+
+  // Update a single repo's protected branches (comma-separated string -> array)
+  const handleUpdateProtectedBranches = (repoPath: string, branchesStr: string) => {
+    setRepoProtectedBranches(prev => {
+      const next = new Map(prev)
+      const branches = branchesStr.split(',').map(b => b.trim()).filter(b => b.length > 0)
+      next.set(repoPath, branches)
+      return next
+    })
+  }
+
+  // Navigate from descriptions to plan-mode step
+  const handleContinueToPlanMode = async () => {
+    setError(null)
+    setStep('plan-mode')
+    // Check dependencies when entering plan-mode step
+    setIsCheckingDeps(true)
+    try {
+      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+      setDependencies(deps)
+      // Auto-enable plan mode if all required deps are installed
+      if (deps.allRequiredInstalled) {
+        setPlanModeEnabled(true)
+      }
+    } catch (err) {
+      console.error('Failed to check dependencies:', err)
+    } finally {
+      setIsCheckingDeps(false)
+    }
+  }
+
+  // Final step: save plan mode preference and create agents
+  const handleContinueFromPlanMode = async () => {
+    setIsCreating(true)
+    setError(null)
+
+    try {
+      // Save plan mode preference
+      await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
+
+      // Build repos with all details
+      const reposToCreate = discoveredRepos
+        .filter(r => selectedRepos.has(r.path))
+        .map(r => ({
+          ...r,
+          purpose: repoPurposes.get(r.path) || '',
+          completionCriteria: repoCompletionCriteria.get(r.path) || '',
+          protectedBranches: repoProtectedBranches.get(r.path) || [],
+        }))
+      const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
+      onComplete(agents)
+    } catch (err) {
+      console.error('Failed to create agents:', err)
+      setError('Failed to create agents')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // Copy install command to clipboard
+  const handleCopyCommand = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopiedCommand(command)
+      setTimeout(() => setCopiedCommand(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err)
+    }
+  }
+
   const handleGoBack = () => {
-    if (step === 'descriptions') {
+    if (step === 'plan-mode') {
+      setStep('descriptions')
+    } else if (step === 'descriptions') {
       setStep('repos')
     } else {
       setStep('path')
@@ -536,19 +637,57 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     {discoveredRepos
                       .filter(r => selectedRepos.has(r.path))
                       .map((repo) => (
-                        <div key={repo.path} className="border border-border rounded-lg p-4">
-                          <Label className="text-sm font-medium text-foreground block mb-2">
-                            {repo.name}
-                          </Label>
-                          <textarea
-                            className="w-full min-h-[80px] p-3 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                            placeholder="Enter a purpose description for this repository..."
-                            value={repoPurposes.get(repo.path) || ''}
-                            onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
-                          />
-                          <p className="text-xs text-muted-foreground mt-1 truncate" title={repo.path}>
-                            {repo.path}
-                          </p>
+                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-4">
+                          <div>
+                            <Label className="text-sm font-medium text-foreground block mb-1">
+                              {repo.name}
+                            </Label>
+                            <p className="text-xs text-muted-foreground truncate" title={repo.path}>
+                              {repo.path}
+                            </p>
+                          </div>
+
+                          {/* Purpose */}
+                          <div>
+                            <Label className="text-xs text-muted-foreground block mb-1">
+                              Purpose
+                            </Label>
+                            <textarea
+                              className="w-full min-h-[60px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                              placeholder="What does this repository do?"
+                              value={repoPurposes.get(repo.path) || ''}
+                              onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
+                            />
+                          </div>
+
+                          {/* Completion Criteria */}
+                          <div>
+                            <Label className="text-xs text-muted-foreground block mb-1">
+                              Completion Criteria
+                            </Label>
+                            <textarea
+                              className="w-full min-h-[60px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
+                              placeholder="- Tests pass&#10;- Code is linted&#10;- Build succeeds"
+                              value={repoCompletionCriteria.get(repo.path) || ''}
+                              onChange={(e) => handleUpdateCompletionCriteria(repo.path, e.target.value)}
+                            />
+                          </div>
+
+                          {/* Protected Branches */}
+                          <div>
+                            <Label className="text-xs text-muted-foreground block mb-1">
+                              Protected Branches
+                            </Label>
+                            <Input
+                              className="text-sm"
+                              placeholder="main, master, release/*"
+                              value={(repoProtectedBranches.get(repo.path) || []).join(', ')}
+                              onChange={(e) => handleUpdateProtectedBranches(repo.path, e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Comma-separated list of branches that should not be modified directly
+                            </p>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -570,23 +709,170 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                       Back
                     </Button>
                     <Button
-                      onClick={handleCreateAgents}
-                      disabled={isCreating}
+                      onClick={handleContinueToPlanMode}
                     >
-                      {isCreating ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Creating Agents...
-                        </>
-                      ) : (
-                        <>
-                          Create {selectedRepos.size} {selectedRepos.size === 1 ? 'Agent' : 'Agents'}
-                        </>
-                      )}
+                      Continue
+                      <ChevronRight className="h-4 w-4 ml-2" />
                     </Button>
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Step 4: Plan Mode */}
+          {step === 'plan-mode' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Enable Plan Mode
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Plan mode allows multiple AI agents to work on tasks in parallel using Docker containers.
+                </p>
+              </div>
+
+              {/* Plan Mode Toggle */}
+              <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
+                <div className="flex-1">
+                  <Label htmlFor="plan-mode-toggle" className="text-sm font-medium text-foreground">
+                    Enable Plan Mode
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Run parallel agents in isolated Docker containers
+                  </p>
+                </div>
+                <button
+                  id="plan-mode-toggle"
+                  role="switch"
+                  aria-checked={planModeEnabled}
+                  onClick={() => setPlanModeEnabled(!planModeEnabled)}
+                  className={`
+                    relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+                    transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+                    ${planModeEnabled ? 'bg-primary' : 'bg-muted'}
+                  `}
+                >
+                  <span
+                    className={`
+                      pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0
+                      transition duration-200 ease-in-out
+                      ${planModeEnabled ? 'translate-x-5' : 'translate-x-0'}
+                    `}
+                  />
+                </button>
+              </div>
+
+              {/* Dependencies Section */}
+              {planModeEnabled && (
+                <div className="space-y-3">
+                  <Label className="text-sm text-muted-foreground">
+                    Required Dependencies
+                  </Label>
+
+                  {isCheckingDeps ? (
+                    <div className="flex items-center justify-center p-8 border border-border rounded-lg">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-sm text-muted-foreground">Checking dependencies...</span>
+                    </div>
+                  ) : dependencies ? (
+                    <div className="border border-border rounded-lg divide-y divide-border">
+                      {[dependencies.docker, dependencies.git, dependencies.bd, dependencies.gh].map((dep) => (
+                        <div key={dep.name} className="flex items-start justify-between p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5">
+                              {dep.installed ? (
+                                <Check className="h-5 w-5 text-green-500" />
+                              ) : (
+                                <X className="h-5 w-5 text-red-500" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-foreground">{dep.name}</span>
+                                {!dep.required && (
+                                  <span className="text-xs text-muted-foreground">(optional)</span>
+                                )}
+                              </div>
+                              {dep.installed ? (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {dep.path}
+                                  {dep.version && ` (v${dep.version})`}
+                                </p>
+                              ) : dep.installCommand ? (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                                    {dep.installCommand}
+                                  </code>
+                                  <button
+                                    onClick={() => handleCopyCommand(dep.installCommand!)}
+                                    className="p-1 hover:bg-muted rounded transition-colors"
+                                    title="Copy to clipboard"
+                                  >
+                                    {copiedCommand === dep.installCommand ? (
+                                      <Check className="h-3 w-3 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground mt-0.5">Not installed</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Warning if missing required deps */}
+                  {dependencies && !dependencies.allRequiredInstalled && (
+                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                      <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-foreground font-medium">Missing required dependencies</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Install the missing dependencies above to use plan mode, or disable plan mode to continue.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
+                  onClick={handleContinueFromPlanMode}
+                  disabled={isCreating || (planModeEnabled && dependencies && !dependencies.allRequiredInstalled)}
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating Agents...
+                    </>
+                  ) : (
+                    <>
+                      Create {selectedRepos.size} {selectedRepos.size === 1 ? 'Agent' : 'Agents'}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           )}
         </div>

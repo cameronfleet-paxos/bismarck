@@ -13,8 +13,35 @@ import type { DiscoveredRepo, Agent, ThemeName } from '../shared/types'
 import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-utils'
 import { saveWorkspace, getWorkspaces } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
-import { detectRepository } from './repository-manager'
+import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings } from './settings-manager'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
+
+/**
+ * Status of a single dependency for plan mode
+ */
+export interface DependencyStatus {
+  name: string
+  required: boolean
+  installed: boolean
+  path: string | null
+  version: string | null
+  installCommand?: string  // e.g., "brew install docker"
+}
+
+/**
+ * Collection of all plan mode dependencies
+ */
+export interface PlanModeDependencies {
+  docker: DependencyStatus
+  bd: DependencyStatus
+  gh: DependencyStatus
+  git: DependencyStatus
+  allRequiredInstalled: boolean  // true if all required deps are installed
+}
 
 /**
  * Show native folder picker dialog
@@ -146,18 +173,21 @@ export async function scanForRepositories(
 }
 
 /**
- * Extended DiscoveredRepo with optional purpose field for bulk creation
+ * Extended DiscoveredRepo with optional fields for bulk creation
  */
-interface DiscoveredRepoWithPurpose extends DiscoveredRepo {
+interface DiscoveredRepoWithDetails extends DiscoveredRepo {
   purpose?: string
+  completionCriteria?: string
+  protectedBranches?: string[]
 }
 
 /**
  * Bulk create agents from discovered repositories
  * Auto-generates names from folder names, random themes/icons
- * Uses provided purpose if available, otherwise empty string
+ * Uses provided purpose, completionCriteria, and protectedBranches if available
+ * Persists all fields to both Agent and Repository records
  */
-export async function bulkCreateAgents(repos: DiscoveredRepoWithPurpose[]): Promise<Agent[]> {
+export async function bulkCreateAgents(repos: DiscoveredRepoWithDetails[]): Promise<Agent[]> {
   const createdAgents: Agent[] = []
   const themes: ThemeName[] = ['brown', 'blue', 'red', 'gray', 'green', 'purple', 'teal', 'orange', 'pink']
   const icons = Object.keys(agentIcons) as AgentIconName[]
@@ -165,6 +195,15 @@ export async function bulkCreateAgents(repos: DiscoveredRepoWithPurpose[]): Prom
   for (const repo of repos) {
     // Detect/register the repository first
     const repository = await detectRepository(repo.path)
+
+    // Update the repository with purpose, completionCriteria, and protectedBranches
+    if (repository) {
+      await updateRepository(repository.id, {
+        purpose: repo.purpose || undefined,
+        completionCriteria: repo.completionCriteria || undefined,
+        protectedBranches: repo.protectedBranches || undefined,
+      })
+    }
 
     // Generate random theme and icon
     const theme = themes[Math.floor(Math.random() * themes.length)]
@@ -209,4 +248,138 @@ export async function saveDefaultReposPath(reposPath: string): Promise<void> {
 export async function getDefaultReposPath(): Promise<string | null> {
   const settings = await loadSettings()
   return (settings.paths as any).defaultReposPath || null
+}
+
+/**
+ * Check if a command exists and get its version
+ */
+async function checkCommand(
+  command: string,
+  versionArgs: string[] = ['--version']
+): Promise<{ path: string | null; version: string | null }> {
+  try {
+    // Find the command path
+    const { stdout: pathOutput } = await execFileAsync('which', [command])
+    const commandPath = pathOutput.trim()
+
+    if (!commandPath) {
+      return { path: null, version: null }
+    }
+
+    // Get version
+    try {
+      const { stdout: versionOutput } = await execFileAsync(command, versionArgs)
+      // Extract version - typically first line contains version info
+      const version = versionOutput.split('\n')[0].trim()
+      return { path: commandPath, version }
+    } catch {
+      // Command exists but version check failed
+      return { path: commandPath, version: null }
+    }
+  } catch {
+    return { path: null, version: null }
+  }
+}
+
+/**
+ * Check Docker specifically (uses 'docker version' for better output)
+ */
+async function checkDocker(): Promise<{ path: string | null; version: string | null }> {
+  try {
+    const { stdout: pathOutput } = await execFileAsync('which', ['docker'])
+    const dockerPath = pathOutput.trim()
+
+    if (!dockerPath) {
+      return { path: null, version: null }
+    }
+
+    // Use 'docker version --format' for clean version output
+    try {
+      const { stdout } = await execFileAsync('docker', ['version', '--format', '{{.Client.Version}}'])
+      return { path: dockerPath, version: stdout.trim() }
+    } catch {
+      // Docker exists but might not be running - try just getting client version
+      try {
+        const { stdout } = await execFileAsync('docker', ['--version'])
+        // Parse "Docker version 24.0.7, build afdd53b"
+        const match = stdout.match(/Docker version ([^\s,]+)/)
+        return { path: dockerPath, version: match ? match[1] : null }
+      } catch {
+        return { path: dockerPath, version: null }
+      }
+    }
+  } catch {
+    return { path: null, version: null }
+  }
+}
+
+/**
+ * Check all dependencies required for plan mode
+ */
+export async function checkPlanModeDependencies(): Promise<PlanModeDependencies> {
+  // Check all dependencies in parallel
+  const [dockerResult, bdResult, ghResult, gitResult] = await Promise.all([
+    checkDocker(),
+    checkCommand('bd'),
+    checkCommand('gh'),
+    checkCommand('git'),
+  ])
+
+  const docker: DependencyStatus = {
+    name: 'Docker',
+    required: true,
+    installed: dockerResult.path !== null,
+    path: dockerResult.path,
+    version: dockerResult.version,
+    installCommand: 'brew install --cask docker',
+  }
+
+  const bd: DependencyStatus = {
+    name: 'Beads (bd)',
+    required: true,
+    installed: bdResult.path !== null,
+    path: bdResult.path,
+    version: bdResult.version,
+    installCommand: 'npm install -g @paxos/beads-cli',
+  }
+
+  const gh: DependencyStatus = {
+    name: 'GitHub CLI (gh)',
+    required: false,
+    installed: ghResult.path !== null,
+    path: ghResult.path,
+    version: ghResult.version,
+    installCommand: 'brew install gh',
+  }
+
+  const git: DependencyStatus = {
+    name: 'Git',
+    required: true,
+    installed: gitResult.path !== null,
+    path: gitResult.path,
+    version: gitResult.version,
+    installCommand: 'brew install git',
+  }
+
+  // Check if all required dependencies are installed
+  const allRequiredInstalled = [docker, bd, git]
+    .filter(d => d.required)
+    .every(d => d.installed)
+
+  return {
+    docker,
+    bd,
+    gh,
+    git,
+    allRequiredInstalled,
+  }
+}
+
+/**
+ * Enable or disable plan mode in settings
+ */
+export async function enablePlanMode(enabled: boolean): Promise<void> {
+  await updateSettings({
+    planMode: { enabled },
+  })
 }
