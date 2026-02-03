@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronRight, Play, X, Clock, CheckCircle2, AlertCircle, Loader2, Activity, Check, GitBranch, GitPullRequest, Maximize2, GitCommit, ExternalLink, MessageSquare, RotateCcw, Copy } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, X, Clock, CheckCircle2, AlertCircle, Loader2, Activity, Check, GitBranch, GitPullRequest, Maximize2, GitCommit, ExternalLink, MessageSquare, RotateCcw, Copy, Eye } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import type { Plan, TaskAssignment, Agent, PlanActivity } from '@/shared/types'
 
@@ -212,9 +212,13 @@ export function PlanCard({
                 onExpand()
               }}
               className="p-1 hover:bg-muted rounded"
-              title="View details"
+              title={plan.status === 'completed' || plan.status === 'failed' ? 'View execution history' : 'View details'}
             >
-              <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
+              {plan.status === 'completed' || plan.status === 'failed' ? (
+                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
             </button>
           )}
         </div>

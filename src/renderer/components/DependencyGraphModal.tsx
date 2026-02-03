@@ -19,6 +19,10 @@ const HORIZONTAL_GAP = 60
 const VERTICAL_GAP = 24
 const PADDING = 40
 
+// Edge port distribution constants
+const PORT_SPACING = 8          // Pixels between ports
+const MAX_PORT_RANGE = 0.6      // Use 60% of node height for ports
+
 // Status icons and colors - using actual color values for SVG compatibility
 const statusConfig: Record<string, {
   icon: React.ReactNode
@@ -140,6 +144,84 @@ function calculateSvgDimensions(
   return { width: Math.max(width, 400), height: Math.max(height, 200) }
 }
 
+interface EdgePort {
+  sourcePort: number  // Y offset from node center for source
+  targetPort: number  // Y offset from node center for target
+}
+
+/**
+ * Calculate vertical port offsets for edges to prevent overlapping.
+ * Edges are distributed along the vertical edge of nodes, sorted by the Y position
+ * of their counterpart to minimize crossings.
+ */
+function calculateEdgePorts(
+  edges: DependencyGraph['edges'],
+  positions: Map<string, NodePosition>
+): Map<string, EdgePort> {
+  const ports = new Map<string, EdgePort>()
+
+  // Group edges by their source node (outgoing edges)
+  const outgoingByNode = new Map<string, Array<{ to: string; edgeKey: string }>>()
+  // Group edges by their target node (incoming edges)
+  const incomingByNode = new Map<string, Array<{ from: string; edgeKey: string }>>()
+
+  for (const edge of edges) {
+    const edgeKey = `${edge.from}-${edge.to}`
+
+    const outgoing = outgoingByNode.get(edge.from) || []
+    outgoing.push({ to: edge.to, edgeKey })
+    outgoingByNode.set(edge.from, outgoing)
+
+    const incoming = incomingByNode.get(edge.to) || []
+    incoming.push({ from: edge.from, edgeKey })
+    incomingByNode.set(edge.to, incoming)
+  }
+
+  // Calculate source ports (right side of source nodes)
+  for (const [nodeId, outgoing] of outgoingByNode) {
+    // Sort by target Y position for clean routing
+    outgoing.sort((a, b) => {
+      const posA = positions.get(a.to)
+      const posB = positions.get(b.to)
+      return (posA?.y ?? 0) - (posB?.y ?? 0)
+    })
+
+    const count = outgoing.length
+    const maxRange = NODE_HEIGHT * MAX_PORT_RANGE
+    const totalSpan = Math.min((count - 1) * PORT_SPACING, maxRange)
+    const startOffset = -totalSpan / 2
+
+    outgoing.forEach((edge, index) => {
+      const offset = count === 1 ? 0 : startOffset + (index * totalSpan) / (count - 1)
+      const existing = ports.get(edge.edgeKey) || { sourcePort: 0, targetPort: 0 }
+      ports.set(edge.edgeKey, { ...existing, sourcePort: offset })
+    })
+  }
+
+  // Calculate target ports (left side of target nodes)
+  for (const [nodeId, incoming] of incomingByNode) {
+    // Sort by source Y position for clean routing
+    incoming.sort((a, b) => {
+      const posA = positions.get(a.from)
+      const posB = positions.get(b.from)
+      return (posA?.y ?? 0) - (posB?.y ?? 0)
+    })
+
+    const count = incoming.length
+    const maxRange = NODE_HEIGHT * MAX_PORT_RANGE
+    const totalSpan = Math.min((count - 1) * PORT_SPACING, maxRange)
+    const startOffset = -totalSpan / 2
+
+    incoming.forEach((edge, index) => {
+      const offset = count === 1 ? 0 : startOffset + (index * totalSpan) / (count - 1)
+      const existing = ports.get(edge.edgeKey) || { sourcePort: 0, targetPort: 0 }
+      ports.set(edge.edgeKey, { ...existing, targetPort: offset })
+    })
+  }
+
+  return ports
+}
+
 export function DependencyGraphModal({
   isOpen,
   onClose,
@@ -168,6 +250,12 @@ export function DependencyGraphModal({
   const dimensions = useMemo(
     () => calculateSvgDimensions(positions, graph.maxDepth, maxNodesInColumn),
     [positions, graph.maxDepth, maxNodesInColumn]
+  )
+
+  // Calculate edge port offsets for distributed connections
+  const edgePorts = useMemo(
+    () => calculateEdgePorts(graph.edges, positions),
+    [graph.edges, positions]
   )
 
   // Get highlighted nodes (for hover/selection)
@@ -304,31 +392,39 @@ export function DependencyGraphModal({
                   highlightedNodes.has(edge.from) && highlightedNodes.has(edge.to)
                 const opacity = highlightedNodes.size > 0 && !isHighlighted ? 0.2 : 1
 
+                // Get port offsets for this edge
+                const edgeKey = `${edge.from}-${edge.to}`
+                const ports = edgePorts.get(edgeKey) || { sourcePort: 0, targetPort: 0 }
+
                 // Bezier curve from right edge of source to left edge of target
+                // Apply port offsets to distribute edges vertically
                 const startX = fromPos.x + NODE_WIDTH
-                const startY = fromPos.y + NODE_HEIGHT / 2
+                const startY = fromPos.y + NODE_HEIGHT / 2 + ports.sourcePort
                 const endX = toPos.x
-                const endY = toPos.y + NODE_HEIGHT / 2
+                const endY = toPos.y + NODE_HEIGHT / 2 + ports.targetPort
                 const controlOffset = (endX - startX) / 2
 
-                const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`
+                // Add slight curve variation based on port offset to avoid overlapping curves
+                const curveVariation = (ports.sourcePort + ports.targetPort) * 0.3
+                const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startY + curveVariation}, ${endX - controlOffset} ${endY - curveVariation}, ${endX} ${endY}`
+
+                const markerId = edge.isOnCriticalPath ? 'arrowhead-critical' : 'arrowhead'
 
                 return (
                   <path
-                    key={`${edge.from}-${edge.to}`}
+                    key={edgeKey}
                     d={path}
                     fill="none"
                     stroke={edge.isOnCriticalPath ? '#f97316' : '#6b7280'}
                     strokeWidth={edge.isOnCriticalPath ? 3 : 1.5}
                     strokeOpacity={opacity}
-                    strokeDasharray={edge.isOnCriticalPath ? '' : ''}
-                    markerEnd="url(#arrowhead)"
+                    markerEnd={`url(#${markerId})`}
                   />
                 )
               })}
             </g>
 
-            {/* Arrow marker definition */}
+            {/* Arrow marker definitions */}
             <defs>
               <marker
                 id="arrowhead"
@@ -341,6 +437,19 @@ export function DependencyGraphModal({
                 <polygon
                   points="0 0, 10 3.5, 0 7"
                   fill="#6b7280"
+                />
+              </marker>
+              <marker
+                id="arrowhead-critical"
+                markerWidth="10"
+                markerHeight="7"
+                refX="9"
+                refY="3.5"
+                orient="auto"
+              >
+                <polygon
+                  points="0 0, 10 3.5, 0 7"
+                  fill="#f97316"
                 />
               </marker>
             </defs>

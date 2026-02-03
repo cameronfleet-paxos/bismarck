@@ -1710,6 +1710,12 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
   // Get repositories from agents that have them
   const repositories = await getAllRepositories()
 
+  // Find reference agent and its repository
+  const referenceAgent = agents.find(a => a.id === plan.referenceAgentId)
+  const referenceRepo = referenceAgent?.repositoryId
+    ? repositories.find(r => r.id === referenceAgent.repositoryId)
+    : null
+
   // Build repository list with purposes derived from agents
   const repoInfoList: string[] = []
   for (const repo of repositories) {
@@ -1733,6 +1739,9 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
     planTitle: plan.title,
     repoList,
     maxParallel,
+    referenceRepoName: referenceRepo?.name || repositories[0]?.name || 'unknown',
+    referenceRepoPath: referenceRepo?.rootPath || '',
+    referenceAgentName: referenceAgent?.name || 'unknown',
   }
 
   return buildPrompt('orchestrator', variables)

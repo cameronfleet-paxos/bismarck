@@ -24,6 +24,11 @@ export interface PromptVariables {
   // Repository variables
   repoList?: string
 
+  // Reference agent/repository variables
+  referenceRepoName?: string
+  referenceRepoPath?: string
+  referenceAgentName?: string
+
   // Configuration variables
   maxParallel?: number
 
@@ -129,6 +134,12 @@ You are the orchestrator. Your job is to:
 3. Mark first task(s) as ready for execution
 4. Monitor task completion and unblock dependents
 
+=== REFERENCE AGENT ===
+This plan was created from agent: {{referenceAgentName}}
+Primary repository: {{referenceRepoName}} ({{referenceRepoPath}})
+
+Use this repository for most tasks unless they explicitly need a different repo.
+
 === AVAILABLE REPOSITORIES ===
 {{repoList}}
 
@@ -160,7 +171,7 @@ Assign a task to a repository with worktree name:
   bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<descriptive-name>-<task-number>"
 
 Example for task bismarck-abc.3:
-  bd --sandbox update bismarck-abc.3 --add-label "repo:pax" --add-label "worktree:remove-ca-3"
+  bd --sandbox update bismarck-abc.3 --add-label "repo:{{referenceRepoName}}" --add-label "worktree:remove-ca-3"
 
 Mark task ready for pickup:
   bd --sandbox update <task-id> --add-label bismarck-ready
@@ -247,7 +258,7 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'discussion':
       return ['planTitle', 'planDescription', 'codebasePath', 'planDir']
     case 'orchestrator':
-      return ['planId', 'planTitle', 'repoList', 'maxParallel']
+      return ['planId', 'planTitle', 'repoList', 'maxParallel', 'referenceRepoName', 'referenceRepoPath', 'referenceAgentName']
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext']
     default:
