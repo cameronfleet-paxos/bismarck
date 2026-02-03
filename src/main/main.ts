@@ -104,6 +104,7 @@ import {
   detectAndSaveGitHubToken,
 } from './setup-wizard'
 import { generateDescriptions } from './description-generator'
+import { groupAgentsIntoTabs } from './repo-grouper'
 import {
   getSettings,
   saveSettings,
@@ -695,6 +696,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:detect-and-save-github-token', async () => {
     return detectAndSaveGitHubToken()
+  })
+
+  ipcMain.handle('setup-wizard:group-agents-into-tabs', async (_event, agents: Workspace[]) => {
+    return groupAgentsIntoTabs(agents)
   })
 
   // GitHub token management

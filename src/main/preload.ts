@@ -281,6 +281,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:enable-plan-mode', enabled),
   setupWizardDetectAndSaveGitHubToken: (): Promise<{ success: boolean; source: string | null }> =>
     ipcRenderer.invoke('setup-wizard:detect-and-save-github-token'),
+  setupWizardGroupAgentsIntoTabs: (agents: Workspace[]): Promise<AgentTab[]> =>
+    ipcRenderer.invoke('setup-wizard:group-agents-into-tabs', agents),
 
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>

@@ -1382,8 +1382,26 @@ function App() {
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
+            // Group agents into logical tabs using Haiku analysis
+            if (newAgents && newAgents.length > 0) {
+              await window.electronAPI.setupWizardGroupAgentsIntoTabs(newAgents)
+            }
             // Reload agents after wizard creates them
             await loadAgents()
+            // Refresh tabs to get the grouped state
+            const state = await window.electronAPI.getState()
+            setTabs(state.tabs || [])
+            setActiveTabId(state.activeTabId)
+            // Auto-launch all agents to give user a ready-to-go experience
+            if (newAgents && newAgents.length > 0) {
+              for (const agent of newAgents) {
+                // Skip headless agents - they don't use terminals
+                if (!agent.isHeadless && !agent.isStandaloneHeadless) {
+                  const terminalId = await window.electronAPI.createTerminal(agent.id)
+                  setActiveTerminals((prev) => [...prev, { terminalId, workspaceId: agent.id }])
+                }
+              }
+            }
           }}
           onSkip={() => {
             // Open the manual agent creation modal

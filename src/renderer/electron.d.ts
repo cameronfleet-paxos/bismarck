@@ -117,6 +117,7 @@ export interface ElectronAPI {
   setupWizardCheckPlanModeDeps: () => Promise<import('../shared/types').PlanModeDependencies>
   setupWizardEnablePlanMode: (enabled: boolean) => Promise<void>
   setupWizardDetectAndSaveGitHubToken: () => Promise<{ success: boolean; source: string | null; reason?: string }>
+  setupWizardGroupAgentsIntoTabs: (agents: Workspace[]) => Promise<AgentTab[]>
 
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
