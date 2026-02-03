@@ -113,6 +113,40 @@ export interface AppPreferences {
   tutorialCompleted?: boolean
 }
 
+// ============================================
+// Tutorial Types
+// ============================================
+
+// Tutorial step definitions
+export type TutorialStep =
+  | 'welcome'           // Introduction to Bismarck
+  | 'workspace'         // Creating first agent/workspace
+  | 'terminal'          // Understanding terminal interaction
+  | 'tabs'              // Working with tabs and grid layout
+  | 'attention'         // Attention modes and workflow
+  | 'team-mode'         // Team mode and plan execution
+  | 'settings'          // Configuring Bismarck settings
+  | 'complete'          // Tutorial completion
+
+// Tutorial step metadata
+export interface TutorialStepInfo {
+  id: TutorialStep
+  title: string
+  description: string
+  completionCriteria: string
+  order: number
+}
+
+// Tutorial state tracking
+export interface TutorialState {
+  isActive: boolean
+  currentStep: TutorialStep
+  completedSteps: TutorialStep[]
+  startedAt?: string
+  completedAt?: string
+  skipped?: boolean
+}
+
 // App state (stored in ~/.bismarck/state.json)
 export interface AppState {
   activeWorkspaceIds: string[]
@@ -123,6 +157,8 @@ export interface AppState {
   // Team mode state
   planSidebarOpen?: boolean
   activePlanId?: string | null
+  // Tutorial state
+  tutorialState?: TutorialState
 }
 
 // Theme presets
