@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
 import type { TutorialStep, OperatingMode } from '@/shared/types'
 import { tutorialSteps, getAvailableSteps } from './tutorial-steps'
-import type { TutorialStepDefinition } from './tutorial-steps'
+import type { TutorialStepDefinition, TutorialAction } from './tutorial-steps'
 import { TutorialOverlay } from './TutorialOverlay'
 import { TutorialTooltip } from './TutorialTooltip'
 
@@ -36,6 +36,7 @@ interface TutorialProviderProps {
   tutorialCompleted?: boolean
   onTutorialComplete?: () => void
   onTutorialSkip?: () => void
+  onAction?: (action: TutorialAction) => void
 }
 
 export function TutorialProvider({
@@ -44,11 +45,13 @@ export function TutorialProvider({
   tutorialCompleted = false,
   onTutorialComplete,
   onTutorialSkip,
+  onAction,
 }: TutorialProviderProps) {
   const [isActive, setIsActive] = useState(false)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<TutorialStep[]>([])
   const [availableSteps, setAvailableSteps] = useState<TutorialStepDefinition[]>([])
+  const previousStepRef = useRef<TutorialStepDefinition | null>(null)
 
   // Update available steps when operating mode changes
   useEffect(() => {
@@ -67,6 +70,39 @@ export function TutorialProvider({
 
   const currentStep = availableSteps[currentStepIndex] || null
   const totalSteps = availableSteps.length
+
+  // Execute onEnter/onExit actions when step changes
+  useEffect(() => {
+    if (!isActive) {
+      // Tutorial ended - run onExit for previous step if any
+      if (previousStepRef.current?.onExit) {
+        onAction?.(previousStepRef.current.onExit)
+      }
+      previousStepRef.current = null
+      return
+    }
+
+    // Run onExit for previous step
+    if (previousStepRef.current?.onExit) {
+      onAction?.(previousStepRef.current.onExit)
+    }
+
+    // Run onEnter for current step
+    if (currentStep?.onEnter) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        onAction?.(currentStep.onEnter!)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+
+    previousStepRef.current = currentStep
+  }, [isActive, currentStep, onAction])
+
+  // Update previous step ref after effect runs
+  useEffect(() => {
+    previousStepRef.current = currentStep
+  }, [currentStep])
 
   const startTutorial = useCallback(() => {
     if (tutorialCompleted) {

@@ -70,9 +70,24 @@ export function TutorialTooltip({
         </h3>
 
         {/* Description */}
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {step.description}
-        </p>
+        <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+          {step.description.split('\n').map((line, i) => {
+            // Handle bullet points with bold text
+            const boldMatch = line.match(/^(•\s*)\*\*(.+?)\*\*(.*)$/)
+            if (boldMatch) {
+              return (
+                <p key={i} className={i > 0 ? 'mt-1' : ''}>
+                  {boldMatch[1]}<strong className="text-foreground">{boldMatch[2]}</strong>{boldMatch[3]}
+                </p>
+              )
+            }
+            // Empty lines create spacing
+            if (line.trim() === '') {
+              return <div key={i} className="h-2" />
+            }
+            return <p key={i} className={i > 0 ? 'mt-1' : ''}>{line}</p>
+          })}
+        </div>
 
         {/* Navigation buttons */}
         <div className="flex items-center justify-between pt-2">

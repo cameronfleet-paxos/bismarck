@@ -36,6 +36,8 @@ interface AgentCardProps {
   onDragOver?: () => void
   onDragLeave?: () => void
   onDrop?: () => void
+  // Tutorial
+  dataTutorial?: string
 }
 
 export function AgentCard({
@@ -61,6 +63,7 @@ export function AgentCard({
   onDragOver,
   onDragLeave,
   onDrop,
+  dataTutorial,
 }: AgentCardProps) {
   // Only enable drag when both draggable and isEditMode are true
   const canDrag = draggable && isEditMode
@@ -68,6 +71,7 @@ export function AgentCard({
 
   return (
     <div
+      data-tutorial={dataTutorial}
       draggable={canDrag}
       className={`
         relative rounded-lg p-4 cursor-pointer transition-all

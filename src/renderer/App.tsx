@@ -31,6 +31,7 @@ import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
+import type { TutorialAction } from '@/renderer/components/tutorial'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -51,6 +52,13 @@ type TerminalWriter = (data: string) => void
 function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; onTriggered: () => void }) {
   const { startTutorial, isActive } = useTutorial()
   const hasTriggeredRef = useRef(false)
+
+  // Reset trigger flag when shouldStart becomes true (enables restart tutorial)
+  useEffect(() => {
+    if (shouldStart) {
+      hasTriggeredRef.current = false
+    }
+  }, [shouldStart])
 
   useEffect(() => {
     if (shouldStart && !isActive && !hasTriggeredRef.current) {
@@ -80,6 +88,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingAgent, setEditingAgent] = useState<Agent | undefined>()
   const [waitingQueue, setWaitingQueue] = useState<string[]>([])
+  const [simulatedAttentionAgentId, setSimulatedAttentionAgentId] = useState<string | null>(null)
   const [preferences, setPreferences] = useState<AppPreferences>({
     attentionMode: 'focus',
     operatingMode: 'solo',
@@ -162,6 +171,14 @@ function App() {
   // Tutorial state - trigger after setup wizard completes
   const [shouldStartTutorial, setShouldStartTutorial] = useState(false)
   const tutorialStartTriggeredRef = useRef(false)
+
+  // Trigger tutorial on load if setup is done but tutorial hasn't been completed
+  // This handles the "Restart Tutorial" flow where page reloads with tutorialCompleted: false
+  useEffect(() => {
+    if (agents.length > 0 && !preferences.tutorialCompleted && !tutorialStartTriggeredRef.current) {
+      setShouldStartTutorial(true)
+    }
+  }, [agents.length, preferences.tutorialCompleted])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -387,6 +404,31 @@ function App() {
     await handlePreferencesChange({ tutorialCompleted: true })
     setShouldStartTutorial(false)
   }
+
+  const handleTutorialAction = useCallback((action: TutorialAction) => {
+    switch (action) {
+      case 'openCommandPalette':
+        setCommandSearchOpen(true)
+        break
+      case 'closeCommandPalette':
+        setCommandSearchOpen(false)
+        break
+      case 'simulateAttention':
+        // Find an agent to simulate attention for (prefer first non-headless agent)
+        const availableAgent = agents.find(a => !a.isHeadless && !a.isStandaloneHeadless && !a.isPlanAgent)
+        if (availableAgent) {
+          setSimulatedAttentionAgentId(availableAgent.id)
+          setWaitingQueue(prev => prev.includes(availableAgent.id) ? prev : [...prev, availableAgent.id])
+        }
+        break
+      case 'clearSimulatedAttention':
+        if (simulatedAttentionAgentId) {
+          setWaitingQueue(prev => prev.filter(id => id !== simulatedAttentionAgentId))
+          setSimulatedAttentionAgentId(null)
+        }
+        break
+    }
+  }, [agents, simulatedAttentionAgentId])
 
   const setupEventListeners = () => {
     // Listen for initial state from main process
@@ -1464,6 +1506,7 @@ function App() {
       tutorialCompleted={preferences.tutorialCompleted}
       onTutorialComplete={handleTutorialComplete}
       onTutorialSkip={handleTutorialSkip}
+      onAction={handleTutorialAction}
     >
       <TutorialTrigger
         shouldStart={shouldStartTutorial}
@@ -1514,6 +1557,7 @@ function App() {
           </Button>
           {preferences.operatingMode === 'team' && (
             <Button
+              data-tutorial="plan-mode"
               size="sm"
               variant={planSidebarOpen ? 'secondary' : 'ghost'}
               onClick={handleTogglePlanSidebar}
@@ -1528,6 +1572,7 @@ function App() {
             </Button>
           )}
           <Button
+            data-tutorial="settings-button"
             size="sm"
             variant="ghost"
             onClick={() => setCurrentView('settings')}
@@ -1695,6 +1740,7 @@ function App() {
                           isFocused={focusedAgentId === agent.id}
                           tabs={tabs}
                           currentTabId={agentTab?.id}
+                          dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
                           onClick={() => {
                             if (activeTerminals.some((t) => t.workspaceId === agent.id)) {
                               if (agentTab && agentTab.id !== activeTabId) {
