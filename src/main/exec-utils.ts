@@ -6,11 +6,13 @@
 
 import * as os from 'os'
 import * as fs from 'fs'
+import * as fsPromises from 'fs/promises'
 import * as path from 'path'
-import { exec as execCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
+import { exec as execCallback, execFile as execFileCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
 import { promisify } from 'util'
 
 const execRaw = promisify(execCallback)
+const execFileAsync = promisify(execFileCallback)
 
 /**
  * Get extended PATH that includes common user bin directories
@@ -161,4 +163,67 @@ export function getEnvWithPath(additionalEnv?: Record<string, string>): NodeJS.P
     ...additionalEnv,
     PATH: getExtendedPath(),
   }
+}
+
+/**
+ * Detect paths for all standard tools using findBinary
+ * This works in production Electron builds where 'which' doesn't find tools
+ */
+export function detectToolPaths(): { bd: string | null; gh: string | null; git: string | null } {
+  return {
+    bd: findBinary('bd'),
+    gh: findBinary('gh'),
+    git: findBinary('git'),
+  }
+}
+
+/**
+ * Detect GitHub token from gh CLI or config files
+ * Returns token and source, or null if not found
+ *
+ * Checks in priority order:
+ * 1. gh auth token command (using full path from findBinary)
+ * 2. ~/.config/gh/hosts.yml file
+ * 3. Environment variables: GITHUB_TOKEN, GH_TOKEN, GITHUB_API_TOKEN
+ */
+export async function detectGitHubToken(): Promise<{ token: string; source: string } | null> {
+  // 1. Try gh auth token command using full path
+  const ghPath = findBinary('gh')
+  if (ghPath) {
+    try {
+      const { stdout } = await execFileAsync(ghPath, ['auth', 'token'])
+      const token = stdout.trim()
+      if (token && token.length > 0) {
+        return { token, source: 'gh auth' }
+      }
+    } catch {
+      // gh auth token failed, continue to next method
+    }
+  }
+
+  // 2. Try ~/.config/gh/hosts.yml
+  try {
+    const configPath = path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
+    const content = await fsPromises.readFile(configPath, 'utf-8')
+    // Simple YAML parsing for oauth_token - look for the pattern
+    // github.com:
+    //   oauth_token: <token>
+    const tokenMatch = content.match(/oauth_token:\s*([^\s\n]+)/)
+    if (tokenMatch && tokenMatch[1]) {
+      return { token: tokenMatch[1], source: '~/.config/gh/hosts.yml' }
+    }
+  } catch {
+    // File doesn't exist or can't be read
+  }
+
+  // 3. Check environment variables
+  const envVars = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN']
+  for (const envVar of envVars) {
+    const token = process.env[envVar]
+    if (token && token.length > 0) {
+      return { token, source: `${envVar} env` }
+    }
+  }
+
+  return null
 }

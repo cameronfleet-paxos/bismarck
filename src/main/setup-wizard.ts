@@ -15,11 +15,7 @@ import { saveWorkspace, getWorkspaces } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import * as os from 'os'
-
-const execFileAsync = promisify(execFile)
+import { findBinary, detectGitHubToken } from './exec-utils'
 
 /**
  * Status of a single dependency for plan mode
@@ -264,117 +260,71 @@ export async function getDefaultReposPath(): Promise<string | null> {
 
 /**
  * Check if a command exists and get its version
+ * Uses findBinary to locate commands in extended PATH (works in production Electron)
  */
 async function checkCommand(
   command: string,
   versionArgs: string[] = ['--version']
 ): Promise<{ path: string | null; version: string | null }> {
-  try {
-    // Find the command path
-    const { stdout: pathOutput } = await execFileAsync('which', [command])
-    const commandPath = pathOutput.trim()
+  const { execFile } = await import('child_process')
+  const { promisify } = await import('util')
+  const execFileAsync = promisify(execFile)
 
-    if (!commandPath) {
-      return { path: null, version: null }
-    }
+  // Find the command path using findBinary (searches extended PATH)
+  const commandPath = findBinary(command)
 
-    // Get version
-    try {
-      const { stdout: versionOutput } = await execFileAsync(command, versionArgs)
-      // Extract version - typically first line contains version info
-      const version = versionOutput.split('\n')[0].trim()
-      return { path: commandPath, version }
-    } catch {
-      // Command exists but version check failed
-      return { path: commandPath, version: null }
-    }
-  } catch {
+  if (!commandPath) {
     return { path: null, version: null }
+  }
+
+  // Get version using the full path
+  try {
+    const { stdout: versionOutput } = await execFileAsync(commandPath, versionArgs)
+    // Extract version - typically first line contains version info
+    const version = versionOutput.split('\n')[0].trim()
+    return { path: commandPath, version }
+  } catch {
+    // Command exists but version check failed
+    return { path: commandPath, version: null }
   }
 }
 
 /**
  * Check Docker specifically (uses 'docker version' for better output)
+ * Uses findBinary to locate docker in extended PATH (works in production Electron)
  */
 async function checkDocker(): Promise<{ path: string | null; version: string | null }> {
-  try {
-    const { stdout: pathOutput } = await execFileAsync('which', ['docker'])
-    const dockerPath = pathOutput.trim()
+  const { execFile } = await import('child_process')
+  const { promisify } = await import('util')
+  const execFileAsync = promisify(execFile)
 
-    if (!dockerPath) {
-      return { path: null, version: null }
-    }
+  // Find docker using findBinary (searches extended PATH)
+  const dockerPath = findBinary('docker')
 
-    // Use 'docker version --format' for clean version output
-    try {
-      const { stdout } = await execFileAsync('docker', ['version', '--format', '{{.Client.Version}}'])
-      return { path: dockerPath, version: stdout.trim() }
-    } catch {
-      // Docker exists but might not be running - try just getting client version
-      try {
-        const { stdout } = await execFileAsync('docker', ['--version'])
-        // Parse "Docker version 24.0.7, build afdd53b"
-        const match = stdout.match(/Docker version ([^\s,]+)/)
-        return { path: dockerPath, version: match ? match[1] : null }
-      } catch {
-        return { path: dockerPath, version: null }
-      }
-    }
-  } catch {
+  if (!dockerPath) {
     return { path: null, version: null }
   }
-}
 
-/**
- * Detect GitHub token from various sources (internal - never returns token over IPC)
- * Checks in priority order:
- * 1. gh auth token command
- * 2. ~/.config/gh/hosts.yml file
- * 3. Environment variables: GITHUB_TOKEN, GH_TOKEN, GITHUB_API_TOKEN
- *
- * Returns the token and source, or null if not found
- */
-async function detectGitHubTokenInternal(): Promise<{ token: string; source: string } | null> {
-  // 1. Try gh auth token command
+  // Use 'docker version --format' for clean version output
   try {
-    const { stdout } = await execFileAsync('gh', ['auth', 'token'])
-    const token = stdout.trim()
-    if (token && token.length > 0) {
-      return { token, source: 'gh auth' }
-    }
+    const { stdout } = await execFileAsync(dockerPath, ['version', '--format', '{{.Client.Version}}'])
+    return { path: dockerPath, version: stdout.trim() }
   } catch {
-    // gh auth token failed, continue to next method
-  }
-
-  // 2. Try ~/.config/gh/hosts.yml
-  try {
-    const configPath = path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
-    const content = await fs.readFile(configPath, 'utf-8')
-    // Simple YAML parsing for oauth_token - look for the pattern
-    // github.com:
-    //   oauth_token: <token>
-    const tokenMatch = content.match(/oauth_token:\s*([^\s\n]+)/)
-    if (tokenMatch && tokenMatch[1]) {
-      return { token: tokenMatch[1], source: '~/.config/gh/hosts.yml' }
-    }
-  } catch {
-    // File doesn't exist or can't be read
-  }
-
-  // 3. Check environment variables
-  const envVars = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN']
-  for (const envVar of envVars) {
-    const token = process.env[envVar]
-    if (token && token.length > 0) {
-      return { token, source: `${envVar} env` }
+    // Docker exists but might not be running - try just getting client version
+    try {
+      const { stdout } = await execFileAsync(dockerPath, ['--version'])
+      // Parse "Docker version 24.0.7, build afdd53b"
+      const match = stdout.match(/Docker version ([^\s,]+)/)
+      return { path: dockerPath, version: match ? match[1] : null }
+    } catch {
+      return { path: dockerPath, version: null }
     }
   }
-
-  return null
 }
 
 /**
  * Detect GitHub token status (for UI display - never returns actual token)
+ * Uses the shared detectGitHubToken from exec-utils
  */
 async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
   const configured = await hasGitHubToken()
@@ -383,7 +333,7 @@ async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
     return { detected: false, source: null, configured: true }
   }
 
-  const result = await detectGitHubTokenInternal()
+  const result = await detectGitHubToken()
   return {
     detected: result !== null,
     source: result?.source ?? null,
@@ -394,9 +344,10 @@ async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
 /**
  * Detect and save GitHub token directly (token never crosses IPC)
  * Returns success status and source
+ * Uses the shared detectGitHubToken from exec-utils
  */
 export async function detectAndSaveGitHubToken(): Promise<{ success: boolean; source: string | null }> {
-  const result = await detectGitHubTokenInternal()
+  const result = await detectGitHubToken()
   if (result) {
     await setGitHubToken(result.token)
     return { success: true, source: result.source }

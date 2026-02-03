@@ -393,32 +393,8 @@ function generateToolId(): string {
   return `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
 
-/**
- * Detect tool paths on the system using 'which' command
- */
-export async function detectToolPaths(): Promise<AppSettings['paths']> {
-  const { execFile } = require('child_process')
-  const { promisify } = require('util')
-  const execFileAsync = promisify(execFile)
-
-  const detectPath = async (toolName: string): Promise<string | null> => {
-    try {
-      const { stdout } = await execFileAsync('which', [toolName])
-      const path = stdout.trim()
-      return path || null
-    } catch (error) {
-      return null
-    }
-  }
-
-  const [bd, gh, git] = await Promise.all([
-    detectPath('bd'),
-    detectPath('gh'),
-    detectPath('git'),
-  ])
-
-  return { bd, gh, git }
-}
+// Re-export detectToolPaths from exec-utils for backwards compatibility
+export { detectToolPaths } from './exec-utils'
 
 /**
  * Get tool paths (with auto-detected fallback)
@@ -429,10 +405,27 @@ export async function getToolPaths(): Promise<AppSettings['paths']> {
 }
 
 /**
- * Get the configured GitHub token
- * Returns null if not configured
+ * Get the GitHub token to use
+ * Priority:
+ * 1. Environment variables (GITHUB_TOKEN, GH_TOKEN) - always takes precedence
+ * 2. Configured token in settings
+ *
+ * Environment variables take precedence because they are typically managed
+ * by external tools (direnv, shell profiles) and reflect the current session's
+ * intended token. This avoids stale token issues where a saved token no longer
+ * has the right permissions (e.g., SAML authorization).
  */
 export async function getGitHubToken(): Promise<string | null> {
+  // Check environment variables first (takes precedence)
+  const envVars = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN']
+  for (const envVar of envVars) {
+    const token = process.env[envVar]
+    if (token && token.length > 0) {
+      return token
+    }
+  }
+
+  // Fall back to configured token in settings
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   return settings.tools?.githubToken ?? defaults.tools.githubToken
