@@ -66,7 +66,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [isCheckingDeps, setIsCheckingDeps] = useState(false)
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isDetectingToken, setIsDetectingToken] = useState(false)
-  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null } | null>(null)
+  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
 
   // Load suggested paths and check dependencies on mount
   useEffect(() => {
@@ -924,7 +924,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                         {dependencies.githubToken.configured ? (
                           <Check className="h-5 w-5 text-green-500" />
                         ) : dependencies.githubToken.detected ? (
-                          <AlertTriangle className="h-5 w-5 text-amber-500" />
+                          <Check className="h-5 w-5 text-green-500" />
                         ) : (
                           <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                         )}
@@ -968,7 +968,10 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                         ) : (
                           <div className="mt-1">
                             <p className="text-xs text-muted-foreground">
-                              No token found. Configure in Settings &gt; Tools if needed for SAML SSO orgs.
+                              No token found in environment or shell profile.
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Configure in Settings &gt; Tools if needed for SAML SSO organizations.
                             </p>
                           </div>
                         )}

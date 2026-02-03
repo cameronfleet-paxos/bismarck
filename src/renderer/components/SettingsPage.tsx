@@ -122,7 +122,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [newToken, setNewToken] = useState('')
   const [savingToken, setSavingToken] = useState(false)
   const [detectingToken, setDetectingToken] = useState(false)
-  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null } | null>(null)
+  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
 
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -708,15 +708,28 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                         Detecting...
                       </>
                     ) : (
-                      'Auto-detect from gh CLI'
+                      'Auto-detect from environment'
                     )}
                   </Button>
                   {tokenDetectResult && (
-                    <p className={`text-sm mt-2 ${tokenDetectResult.success ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                      {tokenDetectResult.success
-                        ? `Token detected from ${tokenDetectResult.source} and saved`
-                        : 'No token found. You can enter one manually below.'}
-                    </p>
+                    tokenDetectResult.success ? (
+                      <p className="text-sm mt-2 text-green-600 dark:text-green-400">
+                        Token detected from {tokenDetectResult.source} and saved
+                      </p>
+                    ) : (
+                      <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                        <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">No token found</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          To enable auto-detection, add to your shell profile (<code className="bg-muted px-1 rounded">~/.zshrc</code> or <code className="bg-muted px-1 rounded">~/.bashrc</code>):
+                        </p>
+                        <pre className="bg-zinc-800 text-zinc-100 p-2 rounded mt-2 text-xs font-mono overflow-x-auto">
+                          export GITHUB_TOKEN="ghp_your_token_here"
+                        </pre>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Then click "Auto-detect" again, or paste your token below.
+                        </p>
+                      </div>
+                    )
                   )}
                 </div>
 

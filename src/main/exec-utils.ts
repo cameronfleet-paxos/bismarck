@@ -6,13 +6,11 @@
 
 import * as os from 'os'
 import * as fs from 'fs'
-import * as fsPromises from 'fs/promises'
 import * as path from 'path'
-import { exec as execCallback, execFile as execFileCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
+import { exec as execCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
 import { promisify } from 'util'
 
 const execRaw = promisify(execCallback)
-const execFileAsync = promisify(execFileCallback)
 
 /**
  * Get extended PATH that includes common user bin directories
@@ -178,52 +176,136 @@ export function detectToolPaths(): { bd: string | null; gh: string | null; git: 
 }
 
 /**
- * Detect GitHub token from gh CLI or config files
+ * Detect GitHub token from environment variables or shell profile
  * Returns token and source, or null if not found
  *
- * Checks in priority order:
- * 1. gh auth token command (using full path from findBinary)
- * 2. ~/.config/gh/hosts.yml file
- * 3. Environment variables: GITHUB_TOKEN, GH_TOKEN, GITHUB_API_TOKEN
+ * Checks in order:
+ * 1. Current process environment variables (works when launched from terminal)
+ * 2. Shell profile via login shell (works when launched from Finder/Spotlight)
+ *
+ * Note: We intentionally do NOT check `gh auth token` or ~/.config/gh/hosts.yml
+ * because those return OAuth tokens that don't work with SAML SSO organizations.
+ * Users need to provide a PAT (Personal Access Token) that has been authorized
+ * for SAML SSO via the GITHUB_TOKEN environment variable.
  */
 export async function detectGitHubToken(): Promise<{ token: string; source: string } | null> {
-  // 1. Try gh auth token command using full path
-  const ghPath = findBinary('gh')
-  if (ghPath) {
-    try {
-      const { stdout } = await execFileAsync(ghPath, ['auth', 'token'])
-      const token = stdout.trim()
-      if (token && token.length > 0) {
-        return { token, source: 'gh auth' }
-      }
-    } catch {
-      // gh auth token failed, continue to next method
-    }
-  }
-
-  // 2. Try ~/.config/gh/hosts.yml
-  try {
-    const configPath = path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
-    const content = await fsPromises.readFile(configPath, 'utf-8')
-    // Simple YAML parsing for oauth_token - look for the pattern
-    // github.com:
-    //   oauth_token: <token>
-    const tokenMatch = content.match(/oauth_token:\s*([^\s\n]+)/)
-    if (tokenMatch && tokenMatch[1]) {
-      return { token: tokenMatch[1], source: '~/.config/gh/hosts.yml' }
-    }
-  } catch {
-    // File doesn't exist or can't be read
-  }
-
-  // 3. Check environment variables
   const envVars = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN']
+
+  // 1. Check current process environment (works when launched from terminal)
   for (const envVar of envVars) {
     const token = process.env[envVar]
     if (token && token.length > 0) {
-      return { token, source: `${envVar} env` }
+      return { token, source: `${envVar} environment variable` }
+    }
+  }
+
+  // 2. Try to get from shell profile by spawning a login shell
+  // This works for GUI apps launched from Finder that don't inherit shell env vars
+  for (const envVar of envVars) {
+    const token = await getEnvFromShellProfile(envVar)
+    if (token && token.length > 0) {
+      return { token, source: `${envVar} from shell profile` }
     }
   }
 
   return null
+}
+
+/**
+ * Get an environment variable value from shell profile files
+ *
+ * Security considerations:
+ * - We parse the files directly rather than executing them to avoid running arbitrary code
+ * - We only look for simple `export VAR=value` patterns
+ * - The token is only used within this process, never logged or exposed
+ *
+ * This approach is safer than spawning a shell but may miss complex configurations
+ * (e.g., tokens set via scripts or conditionals). For those cases, users should
+ * manually configure the token in Settings.
+ */
+async function getEnvFromShellProfile(varName: string): Promise<string | null> {
+  const home = os.homedir()
+
+  // Shell profile files to check, in order of priority
+  const profileFiles = [
+    path.join(home, '.zshrc'),
+    path.join(home, '.zshenv'),        // zsh sources this for all shells
+    path.join(home, '.zprofile'),
+    path.join(home, '.bashrc'),
+    path.join(home, '.bash_profile'),
+    path.join(home, '.profile'),
+  ]
+
+  for (const profilePath of profileFiles) {
+    try {
+      const content = fs.readFileSync(profilePath, 'utf-8')
+      const token = parseExportFromContent(content, varName)
+      if (token) {
+        return token
+      }
+    } catch {
+      // File doesn't exist or can't be read, continue to next
+    }
+  }
+
+  return null
+}
+
+/**
+ * Parse an export statement from shell profile content
+ * Handles common patterns:
+ * - export VAR=value
+ * - export VAR="value"
+ * - export VAR='value'
+ *
+ * Does NOT handle:
+ * - Command substitution: export VAR=$(command)
+ * - Variable references: export VAR=$OTHER_VAR
+ * - Conditional exports or exports inside functions
+ */
+function parseExportFromContent(content: string, varName: string): string | null {
+  // Match: export VARNAME=value or export VARNAME="value" or export VARNAME='value'
+  // The value can be:
+  // - Unquoted: sequence of non-whitespace, non-special chars
+  // - Double-quoted: anything between double quotes (may contain escaped chars)
+  // - Single-quoted: anything between single quotes (literal)
+
+  const patterns = [
+    // export VAR="value" (double-quoted)
+    new RegExp(`^\\s*export\\s+${varName}="([^"]*)"`, 'm'),
+    // export VAR='value' (single-quoted)
+    new RegExp(`^\\s*export\\s+${varName}='([^']*)'`, 'm'),
+    // export VAR=value (unquoted - be conservative, only allow token-like chars)
+    new RegExp(`^\\s*export\\s+${varName}=([a-zA-Z0-9_]+)`, 'm'),
+  ]
+
+  for (const pattern of patterns) {
+    const match = content.match(pattern)
+    if (match && match[1]) {
+      const value = match[1]
+      // Validate it looks like a GitHub token (starts with ghp_, gho_, ghs_, ghu_, or github_pat_)
+      // This prevents accidentally picking up placeholder values
+      if (isValidGitHubToken(value)) {
+        return value
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Check if a value looks like a valid GitHub token
+ * GitHub tokens have specific prefixes:
+ * - ghp_ : Personal access tokens (classic)
+ * - gho_ : OAuth tokens
+ * - ghs_ : Server-to-server tokens
+ * - ghu_ : User-to-server tokens
+ * - github_pat_ : Fine-grained personal access tokens
+ */
+function isValidGitHubToken(value: string): boolean {
+  if (!value || value.length < 10) return false
+
+  const validPrefixes = ['ghp_', 'gho_', 'ghs_', 'ghu_', 'github_pat_']
+  return validPrefixes.some(prefix => value.startsWith(prefix))
 }

@@ -343,16 +343,24 @@ async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
 
 /**
  * Detect and save GitHub token directly (token never crosses IPC)
- * Returns success status and source
+ * Returns success status, source, and reason for failure
  * Uses the shared detectGitHubToken from exec-utils
  */
-export async function detectAndSaveGitHubToken(): Promise<{ success: boolean; source: string | null }> {
+export async function detectAndSaveGitHubToken(): Promise<{
+  success: boolean
+  source: string | null
+  reason?: string  // Why detection failed - used by UI to show appropriate message
+}> {
   const result = await detectGitHubToken()
   if (result) {
     await setGitHubToken(result.token)
     return { success: true, source: result.source }
   }
-  return { success: false, source: null }
+  return {
+    success: false,
+    source: null,
+    reason: 'no_env_var',  // Environment variable not found (GITHUB_TOKEN, GH_TOKEN, etc.)
+  }
 }
 
 /**

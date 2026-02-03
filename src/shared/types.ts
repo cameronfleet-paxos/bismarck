@@ -492,7 +492,7 @@ export interface DependencyStatus {
 // GitHub token status (never includes actual token value)
 export interface GitHubTokenStatus {
   detected: boolean       // true if a token was found via detection
-  source: string | null   // e.g., "gh auth", "~/.config/gh/hosts.yml", "GITHUB_TOKEN env"
+  source: string | null   // e.g., "GITHUB_TOKEN environment variable", "GH_TOKEN environment variable"
   configured: boolean     // true if a token is saved in settings
 }
 
