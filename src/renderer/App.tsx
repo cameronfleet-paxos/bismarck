@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -80,6 +80,7 @@ function App() {
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarEditMode, setSidebarEditMode] = useState(false)
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
   const [planCreatorOpen, setPlanCreatorOpen] = useState(false)
 
@@ -1505,7 +1506,20 @@ function App() {
         <aside className={`${sidebarCollapsed ? 'w-12' : 'w-64'} border-r flex flex-col overflow-hidden transition-all duration-200`}>
           {/* Header with toggle */}
           <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} p-2 border-b`}>
-            {!sidebarCollapsed && <span className="text-sm font-medium">Agents</span>}
+            {!sidebarCollapsed && (
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-medium">Agents</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidebarEditMode(!sidebarEditMode)}
+                  className={`h-5 w-5 ${sidebarEditMode ? 'bg-primary/20 text-primary' : ''}`}
+                  title={sidebarEditMode ? 'Exit reorder mode' : 'Reorder agents'}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -1647,6 +1661,7 @@ function App() {
                           draggable={true}
                           isDragging={sidebarDraggedAgentId === agent.id}
                           isDropTarget={sidebarDropTargetAgentId === agent.id}
+                          isEditMode={sidebarEditMode}
                           onDragStart={() => setSidebarDraggedAgentId(agent.id)}
                           onDragEnd={() => {
                             setSidebarDraggedAgentId(null)

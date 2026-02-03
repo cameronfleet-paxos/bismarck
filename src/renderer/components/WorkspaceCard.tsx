@@ -30,6 +30,7 @@ interface AgentCardProps {
   draggable?: boolean
   isDragging?: boolean
   isDropTarget?: boolean
+  isEditMode?: boolean
   onDragStart?: () => void
   onDragEnd?: () => void
   onDragOver?: () => void
@@ -54,17 +55,20 @@ export function AgentCard({
   draggable,
   isDragging,
   isDropTarget,
+  isEditMode,
   onDragStart,
   onDragEnd,
   onDragOver,
   onDragLeave,
   onDrop,
 }: AgentCardProps) {
+  // Only enable drag when both draggable and isEditMode are true
+  const canDrag = draggable && isEditMode
   const themeColors = themes[agent.theme]
 
   return (
     <div
-      draggable={draggable}
+      draggable={canDrag}
       className={`
         relative rounded-lg p-4 cursor-pointer transition-all
         ${isActive && isFocused ? 'ring-2 ring-primary' : ''}
@@ -86,7 +90,7 @@ export function AgentCard({
       }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
-        if (draggable) {
+        if (canDrag) {
           e.preventDefault()
           onDragOver?.()
         }
@@ -99,7 +103,7 @@ export function AgentCard({
     >
       {/* Top: Icon + title */}
       <div className="flex items-center gap-2 mb-1">
-        {draggable && (
+        {canDrag && (
           <GripVertical className="w-4 h-4 text-muted-foreground/50 cursor-grab flex-shrink-0" />
         )}
         <div
