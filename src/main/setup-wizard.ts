@@ -392,7 +392,7 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     installed: bdResult.path !== null,
     path: bdResult.path,
     version: bdResult.version,
-    installCommand: 'npm install -g @paxos/beads-cli',
+    installCommand: 'See https://github.com/steveyegge/beads',
   }
 
   const gh: DependencyStatus = {
