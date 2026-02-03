@@ -232,8 +232,16 @@ async function handleGhRequest(
 
 /**
  * Get the plan-specific directory path
+ *
+ * If planId is an absolute path (e.g., reference agent directory for Ralph Loops),
+ * use it directly. Otherwise, treat it as a plan name and construct the path.
  */
 function getPlanDir(planId: string): string {
+  // If planId is an absolute path, use it directly
+  if (path.isAbsolute(planId)) {
+    return planId
+  }
+  // Otherwise, treat as a plan name under ~/.bismarck/plans/
   return path.join(getConfigDir(), 'plans', planId)
 }
 

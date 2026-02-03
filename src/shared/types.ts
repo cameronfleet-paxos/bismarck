@@ -558,4 +558,5 @@ export interface RalphLoopState {
   workspaceId: string         // Base workspace ID (first iteration)
   tabId: string               // Dedicated tab for all iterations
   phrase: string              // Random phrase for naming (e.g., "plucky-otter")
+  referenceAgentDirectory: string  // Reference agent's directory (for bd proxy planId)
 }

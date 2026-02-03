@@ -148,6 +148,27 @@ function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, b
 Working Directory: ${workingDir}
 Branch: ${branchName}
 
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+1. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+2. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work
+
+3. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically
+
 === YOUR TASK ===
 ${userPrompt}
 
@@ -192,6 +213,27 @@ function buildFollowUpPrompt(
 
 Working Directory: ${workingDir}
 Branch: ${branchName}
+
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+1. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+2. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work
+
+3. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically
 
 === PREVIOUS WORK (review these commits for context) ===
 ${commitHistory || '(No prior commits on this branch)'}
@@ -376,6 +418,7 @@ export async function startStandaloneHeadlessAgent(
     prompt: enhancedPrompt,
     worktreePath: worktreePath,
     planDir: getStandaloneHeadlessDir(),
+    planId: referenceAgent.directory, // Use reference agent directory for bd proxy
     taskId: headlessId,
     image: selectedImage,
     claudeFlags: ['--model', model],
@@ -737,6 +780,7 @@ export async function startFollowUpAgent(
     prompt: enhancedPrompt,
     worktreePath: worktreePath,
     planDir: getStandaloneHeadlessDir(),
+    planId: repoPath, // Use repo path for bd proxy (where .beads/ directory lives)
     taskId: newHeadlessId,
     image: selectedImage,
   }

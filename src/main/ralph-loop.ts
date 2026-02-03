@@ -173,6 +173,27 @@ function buildRalphLoopPrompt(
 Working Directory: ${workingDir}
 Branch: ${branchName}
 
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+1. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+2. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work
+
+3. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically
+
 === YOUR TASK ===
 ${userPrompt}
 
@@ -293,6 +314,7 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
     workspaceId: '', // Will be set when first iteration starts
     tabId: tab.id,
     phrase,
+    referenceAgentDirectory: referenceAgent.directory, // For bd proxy planId
   }
 
   // Store state
@@ -450,6 +472,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       prompt: enhancedPrompt,
       worktreePath: state.worktreeInfo.path,
       planDir: getRalphLoopDir(),
+      planId: state.referenceAgentDirectory, // Use reference agent directory for bd proxy
       taskId: `${state.id}-iter-${iterationNumber}`,
       image: selectedImage,
       claudeFlags: ['--model', state.config.model],

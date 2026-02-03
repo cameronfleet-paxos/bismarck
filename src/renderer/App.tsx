@@ -1171,12 +1171,10 @@ function App() {
     for (const [, loopState] of ralphLoops) {
       console.log('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
       if (loopState.tabId === tab.id) {
-        // Get the current running or most recent iteration
-        const currentIteration = loopState.iterations.find(iter => iter.status === 'running')
-          || loopState.iterations[loopState.iterations.length - 1]
-        if (currentIteration) {
-          const agent = agents.find(a => a.id === currentIteration.workspaceId)
-          results.push({ loopState, iteration: currentIteration, agent })
+        // Return ALL iterations, not just the running/most recent one
+        for (const iteration of loopState.iterations) {
+          const agent = agents.find(a => a.id === iteration.workspaceId)
+          results.push({ loopState, iteration, agent })
         }
       }
     }
