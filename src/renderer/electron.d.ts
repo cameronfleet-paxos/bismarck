@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 export interface ElectronAPI {
@@ -94,6 +94,14 @@ export interface ElectronAPI {
   updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
+
+  // Setup wizard
+  setupWizardShowFolderPicker: () => Promise<string | null>
+  setupWizardGetCommonRepoPaths: () => Promise<string[]>
+  setupWizardScanForRepositories: (parentPath: string, depth?: number) => Promise<DiscoveredRepo[]>
+  setupWizardBulkCreateAgents: (repos: DiscoveredRepo[]) => Promise<Workspace[]>
+  setupWizardSaveDefaultReposPath: (reposPath: string) => Promise<void>
+  setupWizardGetDefaultReposPath: () => Promise<string | null>
 
   // Settings management
   getSettings: () => Promise<AppSettings>

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -231,6 +231,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('add-repository', path),
   removeRepository: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('remove-repository', id),
+
+  // Setup wizard
+  setupWizardShowFolderPicker: (): Promise<string | null> =>
+    ipcRenderer.invoke('setup-wizard:show-folder-picker'),
+  setupWizardGetCommonRepoPaths: (): Promise<string[]> =>
+    ipcRenderer.invoke('setup-wizard:get-common-repo-paths'),
+  setupWizardScanForRepositories: (parentPath: string, depth?: number): Promise<DiscoveredRepo[]> =>
+    ipcRenderer.invoke('setup-wizard:scan-for-repositories', parentPath, depth),
+  setupWizardBulkCreateAgents: (repos: DiscoveredRepo[]): Promise<Workspace[]> =>
+    ipcRenderer.invoke('setup-wizard:bulk-create-agents', repos),
+  setupWizardSaveDefaultReposPath: (reposPath: string): Promise<void> =>
+    ipcRenderer.invoke('setup-wizard:save-default-repos-path', reposPath),
+  setupWizardGetDefaultReposPath: (): Promise<string | null> =>
+    ipcRenderer.invoke('setup-wizard:get-default-repos-path'),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
