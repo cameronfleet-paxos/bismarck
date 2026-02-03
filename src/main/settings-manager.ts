@@ -109,7 +109,7 @@ export function getDefaultSettings(): AppSettings {
         enabled: true,
       },
       dockerSocket: {
-        enabled: false,  // Opt-in for security
+        enabled: true,   // Enabled by default for testcontainers support
         path: '/var/run/docker.sock',
       },
     },
