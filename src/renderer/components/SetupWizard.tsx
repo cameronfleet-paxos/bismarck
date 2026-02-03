@@ -95,8 +95,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       }
 
       setDiscoveredRepos(repos)
-      // Auto-select all repos
-      setSelectedRepos(new Set(repos.map(r => r.path)))
+      // Don't auto-select - let users choose their most used repos
       // Save the selected path
       await window.electronAPI.setupWizardSaveDefaultReposPath(pathToScan)
       setStep('repos')
@@ -278,7 +277,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   Select Repositories
                 </h2>
                 <p className="text-muted-foreground text-sm">
-                  Found {discoveredRepos.length} {discoveredRepos.length === 1 ? 'repository' : 'repositories'}. Select which ones to add as agents.
+                  Found {discoveredRepos.length} {discoveredRepos.length === 1 ? 'repository' : 'repositories'}.
+                  We recommend starting with your <span className="text-foreground font-medium">3-5 most active</span> repositories.
                 </p>
               </div>
 
