@@ -11,6 +11,12 @@ import { spawnWithPath } from './exec-utils'
 // Regex to match OAuth tokens from claude setup-token output
 const TOKEN_REGEX = /sk-ant-oat01-[A-Za-z0-9_-]+/
 
+// Strip ANSI escape sequences from output
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+}
+
 /**
  * Run `claude setup-token` to interactively get an OAuth token
  *
@@ -26,6 +32,8 @@ const TOKEN_REGEX = /sk-ant-oat01-[A-Za-z0-9_-]+/
  */
 export async function runSetupToken(): Promise<string> {
   return new Promise((resolve, reject) => {
+    console.log('[OAuthSetup] Starting claude setup-token...')
+
     // Use `script` to allocate a PTY for the interactive command
     // This is necessary on macOS/Linux for the OAuth flow to work
     // Use spawnWithPath to ensure claude is found in user paths
@@ -41,13 +49,16 @@ export async function runSetupToken(): Promise<string> {
       const chunk = data.toString()
       stdout += chunk
 
-      // Check for token in output
-      const match = stdout.match(TOKEN_REGEX)
+      // Strip ANSI codes and check for token in output
+      const cleanOutput = stripAnsi(stdout)
+      const match = cleanOutput.match(TOKEN_REGEX)
       if (match && !tokenFound) {
         tokenFound = true
         const token = match[0]
         console.log('[OAuthSetup] Token found, storing...')
         setClaudeOAuthToken(token)
+        // Kill the process since we have the token
+        proc.kill()
         resolve(token)
       }
     })
@@ -62,6 +73,20 @@ export async function runSetupToken(): Promise<string> {
         return
       }
 
+      console.log('[OAuthSetup] Process closed with code:', code)
+      console.log('[OAuthSetup] stdout length:', stdout.length)
+
+      // Try one more time to find token in accumulated output
+      const cleanOutput = stripAnsi(stdout)
+      const match = cleanOutput.match(TOKEN_REGEX)
+      if (match) {
+        const token = match[0]
+        console.log('[OAuthSetup] Token found on close, storing...')
+        setClaudeOAuthToken(token)
+        resolve(token)
+        return
+      }
+
       if (code !== 0) {
         reject(new Error(`setup-token exited with code ${code}: ${stderr}`))
       } else {
@@ -71,6 +96,7 @@ export async function runSetupToken(): Promise<string> {
     })
 
     proc.on('error', (err) => {
+      console.log('[OAuthSetup] Process error:', err.message)
       reject(new Error(`Failed to run setup-token: ${err.message}`))
     })
   })

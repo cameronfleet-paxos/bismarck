@@ -8,6 +8,7 @@ import { Logo } from '@/renderer/components/Logo'
 import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
 import { RawJsonSettings } from '@/renderer/components/settings/sections/RawJsonSettings'
+import { AuthenticationSettings } from '@/renderer/components/settings/sections/AuthenticationSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -23,7 +24,7 @@ function getGitHubUrlFromRemote(remoteUrl: string): string | null {
   return null
 }
 
-type SettingsSection = 'general' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
+type SettingsSection = 'general' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -36,6 +37,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'general',
     label: 'General',
     description: 'Display and attention preferences',
+  },
+  {
+    id: 'authentication',
+    label: 'Authentication',
+    description: 'Claude API credentials for agents',
   },
   {
     id: 'docker',
@@ -416,6 +422,13 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         return (
           <div className="bg-card border rounded-lg p-6">
             <GeneralSettings onPreferencesChange={() => {}} />
+          </div>
+        )
+
+      case 'authentication':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <AuthenticationSettings />
           </div>
         )
 

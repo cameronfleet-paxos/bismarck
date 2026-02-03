@@ -30,7 +30,7 @@ import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicat
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -1071,6 +1071,23 @@ function App() {
     return results
   }, [agents, headlessAgents])
 
+  // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
+  const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
+    const results: Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> = []
+    for (const [, loopState] of ralphLoops) {
+      if (loopState.tabId === tab.id) {
+        // Get the current running or most recent iteration
+        const currentIteration = loopState.iterations.find(iter => iter.status === 'running')
+          || loopState.iterations[loopState.iterations.length - 1]
+        if (currentIteration) {
+          const agent = agents.find(a => a.id === currentIteration.workspaceId)
+          results.push({ loopState, iteration: currentIteration, agent })
+        }
+      }
+    }
+    return results
+  }, [ralphLoops, agents])
+
   // Debug: Log headlessAgents state changes
   useEffect(() => {
     console.log('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
@@ -1808,6 +1825,117 @@ function App() {
                           </div>
                           <div className="h-[calc(100%-2rem)]">
                             <HeadlessTerminal events={info.events} theme="teal" status={info.status} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
+                    {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
+                      const isExpanded = expandedAgentId === info.id
+                      return (
+                        <div
+                          key={`standalone-${info.id}-${tab.id}`}
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                        >
+                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
+                              <span>{agent.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => window.electronAPI.openDockerDesktop()}
+                                className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                title="Open Docker Desktop"
+                              >
+                                <Container className="h-3 w-3" />
+                                <span>Docker</span>
+                              </button>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                                info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                                info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>{info.status}</span>
+                              <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
+                                {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
+                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                                title="Destroy agent"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="h-[calc(100%-2rem)]">
+                            <HeadlessTerminal
+                              events={info.events}
+                              theme={agent.theme}
+                              status={info.status}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              isStandalone={true}
+                              onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
+                              onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
+                              onRestart={() => handleStandaloneRestart(info.taskId!)}
+                              isConfirmingDone={confirmingDoneIds.has(info.taskId!)}
+                              isStartingFollowUp={startingFollowUpIds.has(info.taskId!)}
+                              isRestarting={restartingIds.has(info.taskId!)}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {/* Ralph Loop iterations (stored in ralphLoops state, not headlessAgents) */}
+                    {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
+                      const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
+                      const isExpanded = expandedAgentId === uniqueId
+                      return (
+                        <div
+                          key={uniqueId}
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                        >
+                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
+                              <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => window.electronAPI.openDockerDesktop()}
+                                className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                title="Open Docker Desktop"
+                              >
+                                <Container className="h-3 w-3" />
+                                <span>Docker</span>
+                              </button>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                iteration.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                                iteration.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                                iteration.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>{iteration.status}</span>
+                              <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
+                              <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : uniqueId }))} className="h-6 w-6 p-0">
+                                {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="h-[calc(100%-2rem)]">
+                            <HeadlessTerminal
+                              events={iteration.events}
+                              theme={agent?.theme || 'purple'}
+                              status={iteration.status === 'pending' ? 'starting' : iteration.status}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                            />
                           </div>
                         </div>
                       )
