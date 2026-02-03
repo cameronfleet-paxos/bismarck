@@ -129,6 +129,9 @@ export function getDefaultSettings(): AppSettings {
 
 /**
  * Load settings from disk
+ *
+ * Deep merges loaded settings with defaults to ensure new settings
+ * are always present even in existing installations.
  */
 export async function loadSettings(): Promise<AppSettings> {
   if (settingsCache !== null) {
@@ -136,15 +139,44 @@ export async function loadSettings(): Promise<AppSettings> {
   }
 
   const settingsPath = getSettingsPath()
+  const defaults = getDefaultSettings()
 
   try {
     const data = await fs.readFile(settingsPath, 'utf-8')
-    settingsCache = JSON.parse(data)
-    return settingsCache!
+    const loaded = JSON.parse(data)
+
+    // Deep merge loaded settings with defaults
+    const merged: AppSettings = {
+      ...defaults,
+      ...loaded,
+      paths: { ...defaults.paths, ...loaded.paths },
+      docker: {
+        ...defaults.docker,
+        ...loaded.docker,
+        resourceLimits: {
+          ...defaults.docker.resourceLimits,
+          ...(loaded.docker?.resourceLimits || {}),
+        },
+        proxiedTools: loaded.docker?.proxiedTools || defaults.docker.proxiedTools,
+        sshAgent: {
+          ...defaults.docker.sshAgent,
+          ...(loaded.docker?.sshAgent || {}),
+        },
+        dockerSocket: {
+          ...defaults.docker.dockerSocket,
+          ...(loaded.docker?.dockerSocket || {}),
+        },
+      },
+      prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
+      planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
+      tools: { ...defaults.tools, ...(loaded.tools || {}) },
+    }
+    settingsCache = merged
+    return merged
   } catch (error) {
     // File doesn't exist or is invalid - return defaults
-    settingsCache = getDefaultSettings()
-    return settingsCache
+    settingsCache = defaults
+    return defaults
   }
 }
 
