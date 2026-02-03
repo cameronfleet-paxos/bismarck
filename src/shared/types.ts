@@ -110,6 +110,7 @@ export interface AppPreferences {
   operatingMode: OperatingMode
   agentModel: AgentModel
   gridSize: GridSize
+  tutorialCompleted?: boolean
 }
 
 // App state (stored in ~/.bismarck/state.json)
