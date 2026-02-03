@@ -784,12 +784,12 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     </p>
                   </div>
 
-                  {/* Descriptions list */}
-                  <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                  {/* Descriptions list - 2 column grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto">
                     {discoveredRepos
                       .filter(r => selectedRepos.has(r.path))
                       .map((repo) => (
-                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-4">
+                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-3">
                           <div>
                             <Label className="text-sm font-medium text-foreground block mb-1">
                               {repo.name}
