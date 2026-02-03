@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 export interface ElectronAPI {
@@ -81,6 +81,15 @@ export interface ElectronAPI {
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
 
+  // Ralph Loop management
+  startRalphLoop: (config: RalphLoopConfig) => Promise<RalphLoopState>
+  cancelRalphLoop: (loopId: string) => Promise<void>
+  pauseRalphLoop: (loopId: string) => Promise<void>
+  resumeRalphLoop: (loopId: string) => Promise<void>
+  getRalphLoopState: (loopId: string) => Promise<RalphLoopState | undefined>
+  getAllRalphLoops: () => Promise<RalphLoopState[]>
+  cleanupRalphLoop: (loopId: string) => Promise<void>
+
   // OAuth token management
   getOAuthToken: () => Promise<string | null>
   setOAuthToken: (token: string) => Promise<boolean>
@@ -147,6 +156,10 @@ export interface ElectronAPI {
   onHeadlessAgentStarted: (callback: (data: { taskId: string; planId: string; worktreePath: string }) => void) => void
   onHeadlessAgentUpdate: (callback: (info: HeadlessAgentInfo) => void) => void
   onHeadlessAgentEvent: (callback: (data: { planId: string; taskId: string; event: StreamEvent }) => void) => void
+
+  // Ralph Loop events
+  onRalphLoopUpdate: (callback: (state: RalphLoopState) => void) => void
+  onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void) => void
 
   // Bead task events
   onBeadTasksUpdated: (callback: (planId: string) => void) => void

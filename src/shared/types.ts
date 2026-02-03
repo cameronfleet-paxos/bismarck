@@ -495,3 +495,55 @@ export interface PlanModeDependencies {
   git: DependencyStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
+
+// ============================================
+// Ralph Loop Types
+// ============================================
+
+// Configuration for starting a Ralph Loop
+export interface RalphLoopConfig {
+  prompt: string
+  completionPhrase: string    // e.g., "<promise>COMPLETE</promise>"
+  maxIterations: number       // default: 50
+  model: 'opus' | 'sonnet'
+  referenceAgentId: string
+}
+
+// Ralph Loop execution status
+export type RalphLoopStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'max_iterations'
+  | 'failed'
+  | 'cancelled'
+
+// Single iteration within a Ralph Loop
+export interface RalphLoopIteration {
+  iterationNumber: number
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  workspaceId?: string        // Workspace created for this iteration
+  events: StreamEvent[]
+  startedAt: string
+  completedAt?: string
+  completionPhraseFound: boolean
+  cost?: { input_tokens: number; output_tokens: number; total_cost_usd?: number }
+  duration_ms?: number
+}
+
+// Full Ralph Loop state
+export interface RalphLoopState {
+  id: string
+  config: RalphLoopConfig
+  status: RalphLoopStatus
+  iterations: RalphLoopIteration[]
+  currentIteration: number
+  startedAt: string
+  completedAt?: string
+  totalCost?: { input_tokens: number; output_tokens: number; total_cost_usd?: number }
+  worktreeInfo: StandaloneWorktreeInfo
+  workspaceId: string         // Base workspace ID (first iteration)
+  tabId: string               // Dedicated tab for all iterations
+  phrase: string              // Random phrase for naming (e.g., "plucky-otter")
+}

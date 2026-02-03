@@ -30,7 +30,7 @@ import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicat
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -74,6 +74,9 @@ function App() {
 
   // Headless agent state
   const [headlessAgents, setHeadlessAgents] = useState<Map<string, HeadlessAgentInfo>>(new Map())
+
+  // Ralph Loop state
+  const [ralphLoops, setRalphLoops] = useState<Map<string, RalphLoopState>>(new Map())
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -557,6 +560,40 @@ function App() {
       })
     })
 
+    // Ralph Loop event listeners
+    window.electronAPI?.onRalphLoopUpdate?.((state: RalphLoopState) => {
+      console.log('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
+      setRalphLoops((prev) => {
+        const newMap = new Map(prev)
+        newMap.set(state.id, state)
+        return newMap
+      })
+    })
+
+    window.electronAPI?.onRalphLoopEvent?.((data) => {
+      setRalphLoops((prev) => {
+        const updated = new Map(prev)
+        const existing = updated.get(data.loopId)
+        if (existing) {
+          // Find and update the iteration
+          const updatedIterations = existing.iterations.map((iter) => {
+            if (iter.iterationNumber === data.iterationNumber) {
+              return {
+                ...iter,
+                events: [...iter.events, data.event],
+              }
+            }
+            return iter
+          })
+          updated.set(data.loopId, {
+            ...existing,
+            iterations: updatedIterations,
+          })
+        }
+        return updated
+      })
+    })
+
     // Terminal queue status for boot progress indicator
     window.electronAPI?.onTerminalQueueStatus?.((status) => {
       setTerminalQueueStatus({ queued: status.queued, active: status.active })
@@ -818,6 +855,21 @@ function App() {
       // Reload agents to pick up the new headless agent workspace
       await loadAgents()
       // The workspace will be added to a tab via IPC event, which will trigger state update
+    }
+  }
+
+  // Start Ralph Loop handler
+  const handleStartRalphLoop = async (config: RalphLoopConfig) => {
+    const result = await window.electronAPI?.startRalphLoop?.(config)
+    if (result) {
+      // Store the Ralph Loop state
+      setRalphLoops((prev) => {
+        const newMap = new Map(prev)
+        newMap.set(result.id, result)
+        return newMap
+      })
+      // Reload agents to pick up the new iteration workspaces
+      await loadAgents()
     }
   }
 
@@ -2152,6 +2204,7 @@ function App() {
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartPlan={() => setPlanCreatorOpen(true)}
+        onStartRalphLoop={handleStartRalphLoop}
       />
     </div>
     </>

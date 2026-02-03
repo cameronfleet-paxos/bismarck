@@ -128,6 +128,17 @@ import {
   startFollowUpAgent,
   cleanupStandaloneWorktree,
 } from './standalone-headless'
+import {
+  startRalphLoop,
+  cancelRalphLoop,
+  pauseRalphLoop,
+  resumeRalphLoop,
+  getRalphLoopState,
+  getAllRalphLoops,
+  cleanupRalphLoop,
+  setMainWindowForRalphLoop,
+  initRalphLoop,
+} from './ralph-loop'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
   setDevHarnessWindow,
@@ -141,7 +152,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -186,12 +197,13 @@ function createWindow() {
     mainWindow.focus()
   }
 
-  // Set the main window reference for socket server, plan manager, dev harness, queue, and standalone headless
+  // Set the main window reference for socket server, plan manager, dev harness, queue, standalone headless, and ralph loop
   setMainWindow(mainWindow)
   setPlanManagerWindow(mainWindow)
   setDevHarnessWindow(mainWindow)
   setQueueMainWindow(mainWindow)
   setMainWindowForStandaloneHeadless(mainWindow)
+  setMainWindowForRalphLoop(mainWindow)
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
@@ -524,6 +536,35 @@ function registerIpcHandlers() {
     return startFollowUpAgent(headlessId, prompt)
   })
 
+  // Ralph Loop management
+  ipcMain.handle('start-ralph-loop', async (_event, config: RalphLoopConfig) => {
+    return startRalphLoop(config)
+  })
+
+  ipcMain.handle('cancel-ralph-loop', async (_event, loopId: string) => {
+    return cancelRalphLoop(loopId)
+  })
+
+  ipcMain.handle('pause-ralph-loop', async (_event, loopId: string) => {
+    return pauseRalphLoop(loopId)
+  })
+
+  ipcMain.handle('resume-ralph-loop', async (_event, loopId: string) => {
+    return resumeRalphLoop(loopId)
+  })
+
+  ipcMain.handle('get-ralph-loop-state', (_event, loopId: string) => {
+    return getRalphLoopState(loopId)
+  })
+
+  ipcMain.handle('get-all-ralph-loops', () => {
+    return getAllRalphLoops()
+  })
+
+  ipcMain.handle('cleanup-ralph-loop', async (_event, loopId: string) => {
+    return cleanupRalphLoop(loopId)
+  })
+
   // OAuth token management
   ipcMain.handle('get-oauth-token', () => {
     return getClaudeOAuthToken()
@@ -737,6 +778,9 @@ app.whenReady().then(async () => {
 
   // Initialize standalone headless module
   initStandaloneHeadless()
+
+  // Initialize Ralph Loop module
+  initRalphLoop()
 
   // Create hook script and configure Claude settings
   createHookScript()

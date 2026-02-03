@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -126,6 +126,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt),
 
+  // Ralph Loop management
+  startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
+    ipcRenderer.invoke('start-ralph-loop', config),
+  cancelRalphLoop: (loopId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-ralph-loop', loopId),
+  pauseRalphLoop: (loopId: string): Promise<void> =>
+    ipcRenderer.invoke('pause-ralph-loop', loopId),
+  resumeRalphLoop: (loopId: string): Promise<void> =>
+    ipcRenderer.invoke('resume-ralph-loop', loopId),
+  getRalphLoopState: (loopId: string): Promise<RalphLoopState | undefined> =>
+    ipcRenderer.invoke('get-ralph-loop-state', loopId),
+  getAllRalphLoops: (): Promise<RalphLoopState[]> =>
+    ipcRenderer.invoke('get-all-ralph-loops'),
+  cleanupRalphLoop: (loopId: string): Promise<void> =>
+    ipcRenderer.invoke('cleanup-ralph-loop', loopId),
+
   // OAuth token management
   getOAuthToken: (): Promise<string | null> =>
     ipcRenderer.invoke('get-oauth-token'),
@@ -208,6 +224,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onHeadlessAgentEvent: (callback: (data: { planId: string; taskId: string; event: StreamEvent }) => void): void => {
     ipcRenderer.on('headless-agent-event', (_event, data) => callback(data))
+  },
+
+  // Ralph Loop events
+  onRalphLoopUpdate: (callback: (state: RalphLoopState) => void): void => {
+    ipcRenderer.on('ralph-loop-update', (_event, state) => callback(state))
+  },
+  onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void): void => {
+    ipcRenderer.on('ralph-loop-event', (_event, data) => callback(data))
   },
 
   // Bead task events
@@ -320,6 +344,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('headless-agent-event')
     ipcRenderer.removeAllListeners('terminal-queue-status')
     ipcRenderer.removeAllListeners('bead-tasks-updated')
+    ipcRenderer.removeAllListeners('ralph-loop-update')
+    ipcRenderer.removeAllListeners('ralph-loop-event')
   },
 
   // Dev test harness (development mode only)
