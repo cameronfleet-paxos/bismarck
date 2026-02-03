@@ -209,7 +209,7 @@ export function PlanSidebar({
   const clonePlan = clonePlanId ? plans.find(p => p.id === clonePlanId) : null
 
   return (
-    <aside className="w-[360px] border-l flex flex-col bg-background">
+    <aside data-tutorial="plan-mode" className="w-[360px] border-l flex flex-col bg-background">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         {isSelectionMode ? (

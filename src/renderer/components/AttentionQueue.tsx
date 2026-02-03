@@ -17,7 +17,7 @@ export function AttentionQueue({ waitingQueue, agents, onFocusAgent }: Attention
     .filter((a): a is Agent => a !== undefined)
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div data-tutorial="attention" className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* Queue label */}
       <span className="text-xs text-muted-foreground mr-1">
         {waitingQueue.length} waiting

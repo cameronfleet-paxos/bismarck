@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 export interface ElectronAPI {
@@ -172,6 +172,10 @@ export interface ElectronAPI {
   // Ralph Loop events
   onRalphLoopUpdate: (callback: (state: RalphLoopState) => void) => void
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void) => void
+
+  // Description generation progress events
+  onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void) => void
+  removeDescriptionGenerationProgressListener: () => void
 
   // Bead task events
   onBeadTasksUpdated: (callback: (planId: string) => void) => void

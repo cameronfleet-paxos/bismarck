@@ -354,6 +354,7 @@ export function CommandSearch({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        data-tutorial="cmd-k"
         className="sm:max-w-xl p-0 gap-0 overflow-hidden top-[20%] translate-y-0"
         showCloseButton={false}
       >

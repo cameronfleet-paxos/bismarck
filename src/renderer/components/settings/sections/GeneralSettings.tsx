@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Check } from 'lucide-react'
+import { Check, RotateCcw } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
+import { Button } from '@/renderer/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -14,13 +15,16 @@ interface GeneralSettingsProps {
   onPreferencesChange: (preferences: {
     attentionMode?: AttentionMode
     gridSize?: GridSize
+    tutorialCompleted?: boolean
   }) => void
 }
 
 export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
   const [attentionMode, setAttentionMode] = useState<AttentionMode>('focus')
   const [gridSize, setGridSize] = useState<GridSize>('2x2')
+  const [tutorialCompleted, setTutorialCompleted] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
+  const [restarting, setRestarting] = useState(false)
 
   // Load preferences on mount
   useEffect(() => {
@@ -29,6 +33,7 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
         const prefs = await window.electronAPI.getPreferences()
         setAttentionMode(prefs.attentionMode)
         setGridSize(prefs.gridSize || '2x2')
+        setTutorialCompleted(prefs.tutorialCompleted || false)
       } catch (error) {
         console.error('Failed to load preferences:', error)
       }
@@ -55,6 +60,25 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     // Show saved indicator
     setShowSaved(true)
     setTimeout(() => setShowSaved(false), 2000)
+  }
+
+  const handleRestartTutorial = async () => {
+    setRestarting(true)
+    try {
+      const update = { tutorialCompleted: false }
+      await window.electronAPI.setPreferences(update)
+      setTutorialCompleted(false)
+      onPreferencesChange(update)
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+      // Reload the page to restart the tutorial
+      window.location.reload()
+    } catch (error) {
+      console.error('Failed to restart tutorial:', error)
+    } finally {
+      setRestarting(false)
+    }
   }
 
   return (
@@ -115,6 +139,24 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
               <SelectItem value="3x3">3×3 (9 agents)</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Restart Tutorial Button */}
+        <div className="flex items-center justify-between py-2 border-t pt-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Tutorial</Label>
+            <p className="text-sm text-muted-foreground">
+              {tutorialCompleted ? 'Restart the tutorial walkthrough' : 'Tutorial not yet completed'}
+            </p>
+          </div>
+          <Button
+            onClick={handleRestartTutorial}
+            disabled={restarting}
+            variant="outline"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            {restarting ? 'Restarting...' : 'Restart Tutorial'}
+          </Button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import './index.css'
 import './electron.d.ts'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
@@ -30,6 +30,8 @@ import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicat
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
+import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
+import type { TutorialAction } from '@/renderer/components/tutorial'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -46,6 +48,33 @@ type AppView = 'main' | 'settings'
 // Type for terminal write functions
 type TerminalWriter = (data: string) => void
 
+// Helper component to trigger tutorial when needed
+function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; onTriggered: () => void }) {
+  const { startTutorial, isActive } = useTutorial()
+  const hasTriggeredRef = useRef(false)
+
+  // Reset trigger flag when shouldStart becomes true (enables restart tutorial)
+  useEffect(() => {
+    if (shouldStart) {
+      hasTriggeredRef.current = false
+    }
+  }, [shouldStart])
+
+  useEffect(() => {
+    if (shouldStart && !isActive && !hasTriggeredRef.current) {
+      // Delay to ensure all elements are rendered
+      const timer = setTimeout(() => {
+        startTutorial()
+        hasTriggeredRef.current = true
+        onTriggered()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [shouldStart, isActive, startTutorial, onTriggered])
+
+  return null
+}
+
 function App() {
   // View routing
   const [currentView, setCurrentView] = useState<AppView>('main')
@@ -59,6 +88,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingAgent, setEditingAgent] = useState<Agent | undefined>()
   const [waitingQueue, setWaitingQueue] = useState<string[]>([])
+  const [simulatedAttentionAgentId, setSimulatedAttentionAgentId] = useState<string | null>(null)
   const [preferences, setPreferences] = useState<AppPreferences>({
     attentionMode: 'focus',
     operatingMode: 'solo',
@@ -137,6 +167,18 @@ function App() {
 
   // Plan ID to auto-expand in sidebar (cleared after consumption)
   const [expandPlanId, setExpandPlanId] = useState<string | null>(null)
+
+  // Tutorial state - trigger after setup wizard completes
+  const [shouldStartTutorial, setShouldStartTutorial] = useState(false)
+  const tutorialStartTriggeredRef = useRef(false)
+
+  // Trigger tutorial on load if setup is done but tutorial hasn't been completed
+  // This handles the "Restart Tutorial" flow where page reloads with tutorialCompleted: false
+  useEffect(() => {
+    if (agents.length > 0 && !preferences.tutorialCompleted && !tutorialStartTriggeredRef.current) {
+      setShouldStartTutorial(true)
+    }
+  }, [agents.length, preferences.tutorialCompleted])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -351,6 +393,42 @@ function App() {
       setPreferences(updated)
     }
   }
+
+  // Tutorial completion handlers
+  const handleTutorialComplete = async () => {
+    await handlePreferencesChange({ tutorialCompleted: true })
+    setShouldStartTutorial(false)
+  }
+
+  const handleTutorialSkip = async () => {
+    await handlePreferencesChange({ tutorialCompleted: true })
+    setShouldStartTutorial(false)
+  }
+
+  const handleTutorialAction = useCallback((action: TutorialAction) => {
+    switch (action) {
+      case 'openCommandPalette':
+        setCommandSearchOpen(true)
+        break
+      case 'closeCommandPalette':
+        setCommandSearchOpen(false)
+        break
+      case 'simulateAttention':
+        // Find an agent to simulate attention for (prefer first non-headless agent)
+        const availableAgent = agents.find(a => !a.isHeadless && !a.isStandaloneHeadless && !a.isPlanAgent)
+        if (availableAgent) {
+          setSimulatedAttentionAgentId(availableAgent.id)
+          setWaitingQueue(prev => prev.includes(availableAgent.id) ? prev : [...prev, availableAgent.id])
+        }
+        break
+      case 'clearSimulatedAttention':
+        if (simulatedAttentionAgentId) {
+          setWaitingQueue(prev => prev.filter(id => id !== simulatedAttentionAgentId))
+          setSimulatedAttentionAgentId(null)
+        }
+        break
+    }
+  }, [agents, simulatedAttentionAgentId])
 
   const setupEventListeners = () => {
     // Listen for initial state from main process
@@ -1401,6 +1479,10 @@ function App() {
                 }
               }
             }
+            // Trigger tutorial after setup wizard completes (if not already completed)
+            if (!preferences.tutorialCompleted) {
+              setShouldStartTutorial(true)
+            }
           }}
           onSkip={() => {
             // Open the manual agent creation modal
@@ -1419,7 +1501,20 @@ function App() {
 
   // Render both views but show only one - prevents terminal unmount/remount
   return (
-    <>
+    <TutorialProvider
+      operatingMode={preferences.operatingMode}
+      tutorialCompleted={preferences.tutorialCompleted}
+      onTutorialComplete={handleTutorialComplete}
+      onTutorialSkip={handleTutorialSkip}
+      onAction={handleTutorialAction}
+    >
+      <TutorialTrigger
+        shouldStart={shouldStartTutorial}
+        onTriggered={() => {
+          setShouldStartTutorial(false)
+          tutorialStartTriggeredRef.current = true
+        }}
+      />
       {/* Settings view - rendered on top when active */}
       {currentView === 'settings' && (
         <SettingsPage onBack={() => {
@@ -1462,6 +1557,7 @@ function App() {
           </Button>
           {preferences.operatingMode === 'team' && (
             <Button
+              data-tutorial="plan-mode"
               size="sm"
               variant={planSidebarOpen ? 'secondary' : 'ghost'}
               onClick={handleTogglePlanSidebar}
@@ -1476,6 +1572,7 @@ function App() {
             </Button>
           )}
           <Button
+            data-tutorial="settings-button"
             size="sm"
             variant="ghost"
             onClick={() => setCurrentView('settings')}
@@ -1594,7 +1691,7 @@ function App() {
                   }
                 }
                 return (
-                  <div className="space-y-3">
+                  <div data-tutorial="agents" className="space-y-3">
                     {/* Plan groups */}
                     {planGroups.map(({ plan, agents: planAgents }) => (
                       <PlanAgentGroup
@@ -1643,6 +1740,7 @@ function App() {
                           isFocused={focusedAgentId === agent.id}
                           tabs={tabs}
                           currentTabId={agentTab?.id}
+                          dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
                           onClick={() => {
                             if (activeTerminals.some((t) => t.workspaceId === agent.id)) {
                               if (agentTab && agentTab.id !== activeTabId) {
@@ -2594,7 +2692,7 @@ function App() {
         onStartRalphLoop={handleStartRalphLoop}
       />
     </div>
-    </>
+    </TutorialProvider>
   )
 }
 
