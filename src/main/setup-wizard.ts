@@ -146,10 +146,18 @@ export async function scanForRepositories(
 }
 
 /**
- * Bulk create agents from discovered repositories
- * Auto-generates names from folder names, random themes/icons, and empty purposes
+ * Extended DiscoveredRepo with optional purpose field for bulk creation
  */
-export async function bulkCreateAgents(repos: DiscoveredRepo[]): Promise<Agent[]> {
+interface DiscoveredRepoWithPurpose extends DiscoveredRepo {
+  purpose?: string
+}
+
+/**
+ * Bulk create agents from discovered repositories
+ * Auto-generates names from folder names, random themes/icons
+ * Uses provided purpose if available, otherwise empty string
+ */
+export async function bulkCreateAgents(repos: DiscoveredRepoWithPurpose[]): Promise<Agent[]> {
   const createdAgents: Agent[] = []
   const themes: ThemeName[] = ['brown', 'blue', 'red', 'gray', 'green', 'purple', 'teal', 'orange', 'pink']
   const icons = Object.keys(agentIcons) as AgentIconName[]
@@ -167,7 +175,7 @@ export async function bulkCreateAgents(repos: DiscoveredRepo[]): Promise<Agent[]
       id: randomUUID(),
       name: repo.name,
       directory: repo.path,
-      purpose: '', // Empty purpose as specified
+      purpose: repo.purpose || '', // Use provided purpose or empty string
       theme,
       icon,
       repositoryId: repository?.id, // Link to repository if detected

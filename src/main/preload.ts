@@ -245,6 +245,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:save-default-repos-path', reposPath),
   setupWizardGetDefaultReposPath: (): Promise<string | null> =>
     ipcRenderer.invoke('setup-wizard:get-default-repos-path'),
+  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]): Promise<Array<{ repoPath: string; purpose: string; error?: string }>> =>
+    ipcRenderer.invoke('setup-wizard:generate-descriptions', repos),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),

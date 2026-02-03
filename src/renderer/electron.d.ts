@@ -99,9 +99,10 @@ export interface ElectronAPI {
   setupWizardShowFolderPicker: () => Promise<string | null>
   setupWizardGetCommonRepoPaths: () => Promise<string[]>
   setupWizardScanForRepositories: (parentPath: string, depth?: number) => Promise<DiscoveredRepo[]>
-  setupWizardBulkCreateAgents: (repos: DiscoveredRepo[]) => Promise<Workspace[]>
+  setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string })[]) => Promise<Workspace[]>
   setupWizardSaveDefaultReposPath: (reposPath: string) => Promise<void>
   setupWizardGetDefaultReposPath: () => Promise<string | null>
+  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]) => Promise<Array<{ repoPath: string; purpose: string; error?: string }>>
 
   // Settings management
   getSettings: () => Promise<AppSettings>

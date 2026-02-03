@@ -99,6 +99,7 @@ import {
   saveDefaultReposPath,
   getDefaultReposPath,
 } from './setup-wizard'
+import { generateDescriptions } from './description-generator'
 import {
   getSettings,
   saveSettings,
@@ -622,6 +623,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:get-default-repos-path', async () => {
     return getDefaultReposPath()
+  })
+
+  ipcMain.handle('setup-wizard:generate-descriptions', async (_event, repos: DiscoveredRepo[]) => {
+    return generateDescriptions(repos)
   })
 
   // Settings management

@@ -1,10 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
 import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock } from 'lucide-react'
 import type { DiscoveredRepo, Agent } from '@/shared/types'
+
+// German/Bismarck-related fun facts for the loading screen
+const BISMARCK_FACTS = [
+  "Otto von Bismarck unified Germany in 1871, creating the German Empire through a combination of diplomacy and military victories.",
+  "Bismarck introduced the world's first comprehensive social security system in the 1880s, including health insurance and pensions.",
+  "The Bismarck Archipelago in Papua New Guinea was named after Otto von Bismarck during German colonial expansion.",
+  "Bismarck was known as the 'Iron Chancellor' for his strong-willed leadership and 'blood and iron' policies.",
+  "The German battleship Bismarck was the largest warship built by Germany and was sunk in 1941 during WWII.",
+  "Bismarck famously said: 'Politics is the art of the possible, the attainable — the art of the next best.'",
+  "Otto von Bismarck kept a large collection of dogs and was known for his love of Great Danes.",
+  "Bismarck served as the first Chancellor of Germany for 19 years, from 1871 to 1890.",
+  "The Bismarck herring, a pickled fish delicacy, was named in honor of the Iron Chancellor.",
+  "Bismarck was a skilled diplomat who maintained peace in Europe through his complex alliance system."
+]
 
 // Format relative time for display
 function getRelativeTime(isoDate: string | undefined): string | null {
@@ -27,7 +41,7 @@ interface SetupWizardProps {
   onSkip: () => void
 }
 
-type WizardStep = 'path' | 'repos'
+type WizardStep = 'path' | 'repos' | 'descriptions'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('path')
@@ -39,10 +53,24 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [isScanning, setIsScanning] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Descriptions step state
+  const [repoPurposes, setRepoPurposes] = useState<Map<string, string>>(new Map())
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [currentFactIndex, setCurrentFactIndex] = useState(0)
+  const factIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Load suggested paths on mount
   useEffect(() => {
     loadSuggestedPaths()
+  }, [])
+
+  // Cleanup fact interval on unmount
+  useEffect(() => {
+    return () => {
+      if (factIntervalRef.current) {
+        clearInterval(factIntervalRef.current)
+      }
+    }
   }, [])
 
   const loadSuggestedPaths = async () => {
@@ -134,17 +162,63 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     setSelectedRepos(new Set())
   }
 
-  const handleCreateAgents = async () => {
+  // Navigate to descriptions step and start generating
+  const handleContinueToDescriptions = async () => {
     if (selectedRepos.size === 0) {
       setError('Please select at least one repository')
       return
     }
 
+    setError(null)
+    setIsGenerating(true)
+    setStep('descriptions')
+
+    // Start rotating facts
+    setCurrentFactIndex(0)
+    factIntervalRef.current = setInterval(() => {
+      setCurrentFactIndex(prev => (prev + 1) % BISMARCK_FACTS.length)
+    }, 4000)
+
+    try {
+      const reposToGenerate = discoveredRepos.filter(r => selectedRepos.has(r.path))
+      const results = await window.electronAPI.setupWizardGenerateDescriptions(reposToGenerate)
+
+      // Convert results to a Map
+      const purposeMap = new Map<string, string>()
+      for (const result of results) {
+        purposeMap.set(result.repoPath, result.purpose)
+      }
+      setRepoPurposes(purposeMap)
+    } catch (err) {
+      console.error('Failed to generate descriptions:', err)
+      // On error, just set empty purposes - user can edit manually
+      const emptyMap = new Map<string, string>()
+      for (const repoPath of selectedRepos) {
+        emptyMap.set(repoPath, '')
+      }
+      setRepoPurposes(emptyMap)
+    } finally {
+      setIsGenerating(false)
+      if (factIntervalRef.current) {
+        clearInterval(factIntervalRef.current)
+        factIntervalRef.current = null
+      }
+    }
+  }
+
+  // Final agent creation with purposes
+  const handleCreateAgents = async () => {
     setIsCreating(true)
     setError(null)
 
     try {
-      const reposToCreate = discoveredRepos.filter(r => selectedRepos.has(r.path))
+      // Build repos with purposes
+      const reposToCreate = discoveredRepos
+        .filter(r => selectedRepos.has(r.path))
+        .map(r => ({
+          ...r,
+          purpose: repoPurposes.get(r.path) || '',
+        }))
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
       onComplete(agents)
     } catch (err) {
@@ -155,8 +229,21 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
+  // Update a single repo's purpose
+  const handleUpdatePurpose = (repoPath: string, purpose: string) => {
+    setRepoPurposes(prev => {
+      const next = new Map(prev)
+      next.set(repoPath, purpose)
+      return next
+    })
+  }
+
   const handleGoBack = () => {
-    setStep('path')
+    if (step === 'descriptions') {
+      setStep('repos')
+    } else {
+      setStep('path')
+    }
     setError(null)
   }
 
@@ -398,21 +485,107 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     Back
                   </Button>
                   <Button
-                    onClick={handleCreateAgents}
-                    disabled={isCreating || selectedRepos.size === 0}
+                    onClick={handleContinueToDescriptions}
+                    disabled={selectedRepos.size === 0}
                   >
-                    {isCreating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Creating Agents...
-                      </>
-                    ) : (
-                      <>
-                        Create {selectedRepos.size} {selectedRepos.size === 1 ? 'Agent' : 'Agents'}
-                      </>
-                    )}
+                    Continue
+                    <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Descriptions */}
+          {step === 'descriptions' && (
+            <div className="space-y-6">
+              {isGenerating ? (
+                /* Loading state with rotating fun facts */
+                <div className="flex flex-col items-center justify-center py-12 space-y-6">
+                  <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Generating Descriptions...
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      Using AI to create purpose descriptions for your repositories
+                    </p>
+                  </div>
+
+                  {/* Fun fact card */}
+                  <div className="bg-muted/50 border border-border rounded-lg p-4 max-w-lg">
+                    <p className="text-sm text-muted-foreground italic">
+                      "{BISMARCK_FACTS[currentFactIndex]}"
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                /* Review and edit descriptions */
+                <>
+                  <div>
+                    <h2 className="text-xl font-semibold text-foreground mb-2">
+                      Review Descriptions
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                      AI-generated purpose descriptions for your repositories. Edit them as needed.
+                    </p>
+                  </div>
+
+                  {/* Descriptions list */}
+                  <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                    {discoveredRepos
+                      .filter(r => selectedRepos.has(r.path))
+                      .map((repo) => (
+                        <div key={repo.path} className="border border-border rounded-lg p-4">
+                          <Label className="text-sm font-medium text-foreground block mb-2">
+                            {repo.name}
+                          </Label>
+                          <textarea
+                            className="w-full min-h-[80px] p-3 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                            placeholder="Enter a purpose description for this repository..."
+                            value={repoPurposes.get(repo.path) || ''}
+                            onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1 truncate" title={repo.path}>
+                            {repo.path}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Error Message */}
+                  {error && (
+                    <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                      {error}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex justify-between pt-4">
+                    <Button
+                      onClick={handleGoBack}
+                      variant="ghost"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                    <Button
+                      onClick={handleCreateAgents}
+                      disabled={isCreating}
+                    >
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating Agents...
+                        </>
+                      ) : (
+                        <>
+                          Create {selectedRepos.size} {selectedRepos.size === 1 ? 'Agent' : 'Agents'}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
               )}
             </div>
           )}
