@@ -392,7 +392,7 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     installed: bdResult.path !== null,
     path: bdResult.path,
     version: bdResult.version,
-    installCommand: 'See https://github.com/steveyegge/beads',
+    installCommand: 'curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash',
   }
 
   const gh: DependencyStatus = {
