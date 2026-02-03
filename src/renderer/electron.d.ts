@@ -80,6 +80,7 @@ export interface ElectronAPI {
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig) => Promise<RalphLoopState>
@@ -111,7 +112,15 @@ export interface ElectronAPI {
   setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string })[]) => Promise<Workspace[]>
   setupWizardSaveDefaultReposPath: (reposPath: string) => Promise<void>
   setupWizardGetDefaultReposPath: () => Promise<string | null>
-  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]) => Promise<Array<{ repoPath: string; purpose: string; error?: string }>>
+  setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]) => Promise<Array<{ repoPath: string; purpose: string; completionCriteria: string; protectedBranches: string[]; error?: string }>>
+  setupWizardCheckPlanModeDeps: () => Promise<import('../shared/types').PlanModeDependencies>
+  setupWizardEnablePlanMode: (enabled: boolean) => Promise<void>
+  setupWizardDetectAndSaveGitHubToken: () => Promise<{ success: boolean; source: string | null }>
+
+  // GitHub token management
+  hasGitHubToken: () => Promise<boolean>
+  setGitHubToken: (token: string) => Promise<boolean>
+  clearGitHubToken: () => Promise<boolean>
 
   // Settings management
   getSettings: () => Promise<AppSettings>

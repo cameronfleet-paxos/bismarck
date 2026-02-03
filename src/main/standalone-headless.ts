@@ -21,7 +21,7 @@ import {
   getWorkspaces,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab } from './state-manager'
+import { getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -319,6 +319,7 @@ export async function startStandaloneHeadlessAgent(
     events: [],
     startedAt: new Date().toISOString(),
     worktreeInfo: worktreeInfo,
+    originalPrompt: prompt, // Store original prompt for restart capability
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
 
@@ -447,13 +448,25 @@ export async function stopStandaloneHeadlessAgent(headlessId: string): Promise<v
 
 /**
  * Initialize standalone headless module - load persisted agent info
+ * Mark any agents that were running when the app closed as interrupted
  */
 export function initStandaloneHeadless(): void {
   const agents = loadStandaloneHeadlessAgentInfo()
+  let modified = false
+
   for (const agent of agents) {
     if (agent.taskId) {
+      // Mark non-terminal agents as interrupted (they were running when app closed)
+      if (agent.status === 'starting' || agent.status === 'running' || agent.status === 'stopping') {
+        agent.status = 'interrupted'
+        modified = true
+      }
       standaloneHeadlessAgentInfo.set(agent.taskId, agent)
     }
+  }
+
+  if (modified) {
+    saveStandaloneHeadlessAgentInfo()
   }
   console.log(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
 }
@@ -518,14 +531,64 @@ export async function confirmStandaloneAgentDone(headlessId: string): Promise<vo
   // Clean up worktree and branch
   await cleanupStandaloneWorktree(headlessId)
 
-  // Delete the workspace
+  // Remove workspace from tab and active workspaces BEFORE deleting
+  // This releases the grid slot so it can be reused by new agents
   if (workspace) {
+    removeActiveWorkspace(workspace.id)
+    removeWorkspaceFromTab(workspace.id)
     deleteWorkspace(workspace.id)
-    console.log(`[StandaloneHeadless] Deleted workspace ${workspace.id}`)
+    console.log(`[StandaloneHeadless] Deleted workspace ${workspace.id} and released slot`)
   }
 
   // Emit state update
   emitStateUpdate()
+}
+
+/**
+ * Restart an interrupted standalone headless agent
+ * Creates a fresh agent with the same original prompt (new workspace, cleans old resources)
+ */
+export async function restartStandaloneHeadlessAgent(
+  headlessId: string,
+  model: 'opus' | 'sonnet' = 'sonnet'
+): Promise<{ headlessId: string; workspaceId: string }> {
+  const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
+  if (!existingInfo?.originalPrompt) {
+    throw new Error(`No original prompt for agent: ${headlessId}`)
+  }
+
+  const workspaces = getWorkspaces()
+  const workspace = workspaces.find(w => w.taskId === headlessId && w.isStandaloneHeadless)
+  if (!workspace) {
+    throw new Error(`No workspace found for agent: ${headlessId}`)
+  }
+
+  const repoPath = existingInfo.worktreeInfo?.repoPath
+  if (!repoPath) {
+    throw new Error(`No repo path for agent: ${headlessId}`)
+  }
+
+  // Find reference workspace in same repo (a non-headless workspace)
+  const referenceWorkspace = workspaces.find(w =>
+    w.directory.startsWith(repoPath) && !w.isStandaloneHeadless && !w.isHeadless
+  )
+  if (!referenceWorkspace) {
+    throw new Error(`No reference workspace for repo: ${repoPath}`)
+  }
+
+  console.log(`[StandaloneHeadless] Restarting agent ${headlessId} with original prompt`)
+
+  // Store original prompt before cleanup
+  const originalPrompt = existingInfo.originalPrompt
+
+  // Clean up old resources
+  await cleanupStandaloneWorktree(headlessId)
+  removeActiveWorkspace(workspace.id)
+  removeWorkspaceFromTab(workspace.id)
+  deleteWorkspace(workspace.id)
+
+  // Start fresh agent with same prompt
+  return startStandaloneHeadlessAgent(referenceWorkspace.id, originalPrompt, model)
 }
 
 /**

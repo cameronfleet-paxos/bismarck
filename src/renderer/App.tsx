@@ -104,6 +104,11 @@ function App() {
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
   const [isDestroying, setIsDestroying] = useState(false)
 
+  // Loading state for standalone headless agent actions
+  const [confirmingDoneIds, setConfirmingDoneIds] = useState<Set<string>>(new Set())
+  const [startingFollowUpIds, setStartingFollowUpIds] = useState<Set<string>>(new Set())
+  const [restartingIds, setRestartingIds] = useState<Set<string>>(new Set())
+
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
   const [simulateNewUser, setSimulateNewUser] = useState(false)
@@ -148,11 +153,28 @@ function App() {
     terminalWritersRef.current.delete(terminalId)
   }, [])
 
+  // Load standalone headless agents from main process
+  const loadStandaloneHeadlessAgents = async () => {
+    const standaloneAgents = await window.electronAPI?.getStandaloneHeadlessAgents?.()
+    if (standaloneAgents?.length) {
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        for (const info of standaloneAgents) {
+          if (info.taskId) {
+            newMap.set(info.taskId, info)
+          }
+        }
+        return newMap
+      })
+    }
+  }
+
   // Load agents and state on mount
   useEffect(() => {
     loadAgents()
     loadPreferences()
     loadPlansData()
+    loadStandaloneHeadlessAgents()
     setupEventListeners()
 
     return () => {
@@ -744,18 +766,27 @@ function App() {
   }
 
   const handleStandaloneConfirmDone = async (headlessId: string) => {
-    await window.electronAPI?.standaloneHeadlessConfirmDone?.(headlessId)
-    // Remove from headless agents map
-    setHeadlessAgents((prev) => {
-      const newMap = new Map(prev)
-      newMap.delete(headlessId)
-      return newMap
-    })
-    // Reload agents to pick up workspace deletion
-    await loadAgents()
-    // Refresh tabs
-    const state = await window.electronAPI.getState()
-    setTabs(state.tabs || [])
+    setConfirmingDoneIds(prev => new Set(prev).add(headlessId))
+    try {
+      await window.electronAPI?.standaloneHeadlessConfirmDone?.(headlessId)
+      // Remove from headless agents map
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        newMap.delete(headlessId)
+        return newMap
+      })
+      // Reload agents to pick up workspace deletion
+      await loadAgents()
+      // Refresh tabs
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+    } finally {
+      setConfirmingDoneIds(prev => {
+        const next = new Set(prev)
+        next.delete(headlessId)
+        return next
+      })
+    }
   }
 
   const handleDestroyAgent = async () => {
@@ -786,19 +817,55 @@ function App() {
     const prompt = window.prompt('Enter the follow-up task:')
     if (!prompt) return
 
-    const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt)
-    if (result) {
-      // Remove old agent info from map
-      setHeadlessAgents((prev) => {
-        const newMap = new Map(prev)
-        newMap.delete(headlessId)
-        return newMap
+    setStartingFollowUpIds(prev => new Set(prev).add(headlessId))
+    try {
+      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt)
+      if (result) {
+        // Remove old agent info from map
+        setHeadlessAgents((prev) => {
+          const newMap = new Map(prev)
+          newMap.delete(headlessId)
+          return newMap
+        })
+        // Reload agents to pick up the new workspace
+        await loadAgents()
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+      }
+    } finally {
+      setStartingFollowUpIds(prev => {
+        const next = new Set(prev)
+        next.delete(headlessId)
+        return next
       })
-      // Reload agents to pick up the new workspace
-      await loadAgents()
-      // Refresh tabs
-      const state = await window.electronAPI.getState()
-      setTabs(state.tabs || [])
+    }
+  }
+
+  // Restart an interrupted standalone headless agent
+  const handleStandaloneRestart = async (headlessId: string) => {
+    setRestartingIds(prev => new Set(prev).add(headlessId))
+    try {
+      const result = await window.electronAPI?.standaloneHeadlessRestart?.(headlessId, preferences.agentModel === 'opus' ? 'opus' : 'sonnet')
+      if (result) {
+        // Remove old agent info from map
+        setHeadlessAgents((prev) => {
+          const newMap = new Map(prev)
+          newMap.delete(headlessId)
+          return newMap
+        })
+        // Reload agents to pick up the new workspace
+        await loadAgents()
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+      }
+    } finally {
+      setRestartingIds(prev => {
+        const next = new Set(prev)
+        next.delete(headlessId)
+        return next
+      })
     }
   }
 
@@ -1976,6 +2043,10 @@ function App() {
                               isStandalone={true}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
+                              onRestart={() => handleStandaloneRestart(info.taskId!)}
+                              isConfirmingDone={confirmingDoneIds.has(info.taskId!)}
+                              isStartingFollowUp={startingFollowUpIds.has(info.taskId!)}
+                              isRestarting={restartingIds.has(info.taskId!)}
                             />
                           </div>
                         </div>

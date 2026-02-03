@@ -14,9 +14,10 @@ import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-u
 import { saveWorkspace, getWorkspaces } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
-import { loadSettings, updateSettings } from './settings-manager'
+import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import * as os from 'os'
 
 const execFileAsync = promisify(execFile)
 
@@ -33,6 +34,15 @@ export interface DependencyStatus {
 }
 
 /**
+ * GitHub token status (never includes the actual token)
+ */
+export interface GitHubTokenStatus {
+  detected: boolean       // true if a token was found via detection
+  source: string | null   // e.g., "gh auth", "~/.config/gh/hosts.yml", "GITHUB_TOKEN env"
+  configured: boolean     // true if a token is saved in settings
+}
+
+/**
  * Collection of all plan mode dependencies
  */
 export interface PlanModeDependencies {
@@ -40,6 +50,8 @@ export interface PlanModeDependencies {
   bd: DependencyStatus
   gh: DependencyStatus
   git: DependencyStatus
+  claude: DependencyStatus
+  githubToken: GitHubTokenStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 
@@ -190,7 +202,7 @@ interface DiscoveredRepoWithDetails extends DiscoveredRepo {
 export async function bulkCreateAgents(repos: DiscoveredRepoWithDetails[]): Promise<Agent[]> {
   const createdAgents: Agent[] = []
   const themes: ThemeName[] = ['brown', 'blue', 'red', 'gray', 'green', 'purple', 'teal', 'orange', 'pink']
-  const icons = Object.keys(agentIcons) as AgentIconName[]
+  const icons = [...agentIcons]  // agentIcons is already an array of icon names
 
   for (const repo of repos) {
     // Detect/register the repository first
@@ -314,15 +326,96 @@ async function checkDocker(): Promise<{ path: string | null; version: string | n
 }
 
 /**
+ * Detect GitHub token from various sources (internal - never returns token over IPC)
+ * Checks in priority order:
+ * 1. gh auth token command
+ * 2. ~/.config/gh/hosts.yml file
+ * 3. Environment variables: GITHUB_TOKEN, GH_TOKEN, GITHUB_API_TOKEN
+ *
+ * Returns the token and source, or null if not found
+ */
+async function detectGitHubTokenInternal(): Promise<{ token: string; source: string } | null> {
+  // 1. Try gh auth token command
+  try {
+    const { stdout } = await execFileAsync('gh', ['auth', 'token'])
+    const token = stdout.trim()
+    if (token && token.length > 0) {
+      return { token, source: 'gh auth' }
+    }
+  } catch {
+    // gh auth token failed, continue to next method
+  }
+
+  // 2. Try ~/.config/gh/hosts.yml
+  try {
+    const configPath = path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
+    const content = await fs.readFile(configPath, 'utf-8')
+    // Simple YAML parsing for oauth_token - look for the pattern
+    // github.com:
+    //   oauth_token: <token>
+    const tokenMatch = content.match(/oauth_token:\s*([^\s\n]+)/)
+    if (tokenMatch && tokenMatch[1]) {
+      return { token: tokenMatch[1], source: '~/.config/gh/hosts.yml' }
+    }
+  } catch {
+    // File doesn't exist or can't be read
+  }
+
+  // 3. Check environment variables
+  const envVars = ['GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN']
+  for (const envVar of envVars) {
+    const token = process.env[envVar]
+    if (token && token.length > 0) {
+      return { token, source: `${envVar} env` }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Detect GitHub token status (for UI display - never returns actual token)
+ */
+async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
+  const configured = await hasGitHubToken()
+
+  if (configured) {
+    return { detected: false, source: null, configured: true }
+  }
+
+  const result = await detectGitHubTokenInternal()
+  return {
+    detected: result !== null,
+    source: result?.source ?? null,
+    configured: false,
+  }
+}
+
+/**
+ * Detect and save GitHub token directly (token never crosses IPC)
+ * Returns success status and source
+ */
+export async function detectAndSaveGitHubToken(): Promise<{ success: boolean; source: string | null }> {
+  const result = await detectGitHubTokenInternal()
+  if (result) {
+    await setGitHubToken(result.token)
+    return { success: true, source: result.source }
+  }
+  return { success: false, source: null }
+}
+
+/**
  * Check all dependencies required for plan mode
  */
 export async function checkPlanModeDependencies(): Promise<PlanModeDependencies> {
   // Check all dependencies in parallel
-  const [dockerResult, bdResult, ghResult, gitResult] = await Promise.all([
+  const [dockerResult, bdResult, ghResult, gitResult, claudeResult, githubTokenStatus] = await Promise.all([
     checkDocker(),
     checkCommand('bd'),
     checkCommand('gh'),
     checkCommand('git'),
+    checkCommand('claude'),
+    detectGitHubTokenStatus(),
   ])
 
   const docker: DependencyStatus = {
@@ -361,8 +454,17 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     installCommand: 'brew install git',
   }
 
+  const claude: DependencyStatus = {
+    name: 'Claude Code',
+    required: true,
+    installed: claudeResult.path !== null,
+    path: claudeResult.path,
+    version: claudeResult.version,
+    installCommand: 'npm install -g @anthropic-ai/claude-code',
+  }
+
   // Check if all required dependencies are installed
-  const allRequiredInstalled = [docker, bd, git]
+  const allRequiredInstalled = [docker, bd, git, claude]
     .filter(d => d.required)
     .every(d => d.installed)
 
@@ -371,6 +473,8 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     bd,
     gh,
     git,
+    claude,
+    githubToken: githubTokenStatus,
     allRequiredInstalled,
   }
 }

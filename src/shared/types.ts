@@ -286,6 +286,7 @@ export type HeadlessAgentStatus =
   | 'stopping'
   | 'completed'
   | 'failed'
+  | 'interrupted'  // Agent was running when app closed
 
 // Container configuration for spawning Docker containers
 export interface ContainerConfig {
@@ -397,6 +398,7 @@ export interface HeadlessAgentInfo {
   completedAt?: string
   result?: HeadlessAgentResult
   worktreeInfo?: StandaloneWorktreeInfo  // For standalone headless agents
+  originalPrompt?: string  // For restart capability (standalone agents)
 }
 
 // Extended Agent type to support both execution modes
@@ -487,12 +489,21 @@ export interface DependencyStatus {
   installCommand?: string  // e.g., "brew install docker"
 }
 
+// GitHub token status (never includes actual token value)
+export interface GitHubTokenStatus {
+  detected: boolean       // true if a token was found via detection
+  source: string | null   // e.g., "gh auth", "~/.config/gh/hosts.yml", "GITHUB_TOKEN env"
+  configured: boolean     // true if a token is saved in settings
+}
+
 // Collection of all plan mode dependencies
 export interface PlanModeDependencies {
   docker: DependencyStatus
   bd: DependencyStatus
   gh: DependencyStatus
   git: DependencyStatus
+  claude: DependencyStatus
+  githubToken: GitHubTokenStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 

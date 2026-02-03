@@ -16,8 +16,9 @@ import * as net from 'net'
 import * as path from 'path'
 import { EventEmitter } from 'events'
 import { logger } from './logger'
-import { spawnWithPath } from './exec-utils'
+import { spawnWithPath, getEnvWithPath } from './exec-utils'
 import { getConfigDir } from './config'
+import { getGitHubToken } from './settings-manager'
 
 export interface ToolProxyConfig {
   port: number // Default: 9847
@@ -92,14 +93,18 @@ async function executeCommand(
   command: string,
   args: string[],
   stdin?: string,
-  options?: { cwd?: string }
+  options?: { cwd?: string; env?: Record<string, string> }
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve) => {
+    // Build environment with any extra vars (e.g., GITHUB_TOKEN)
+    const env = options?.env ? getEnvWithPath(options.env) : undefined
+
     // Use spawnWithPath to ensure tools like gh, bd are found in user paths
     const proc = spawnWithPath(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
       cwd: options?.cwd,
+      ...(env ? { env } : {}),
     })
 
     let stdout = ''
@@ -195,7 +200,14 @@ async function handleGhRequest(
     // Log the operation
     proxyEvents.emit('gh', { subpath, args, cwd })
 
-    const result = await executeCommand('gh', args, body.stdin, cwd ? { cwd } : undefined)
+    // Get GitHub token from settings and pass to gh command
+    const githubToken = await getGitHubToken()
+    const env: Record<string, string> = {}
+    if (githubToken) {
+      env.GITHUB_TOKEN = githubToken
+    }
+
+    const result = await executeCommand('gh', args, body.stdin, { cwd, env: Object.keys(env).length > 0 ? env : undefined })
 
     logger.proxyRequest('gh', args, result.exitCode === 0, undefined, {
       exitCode: result.exitCode,

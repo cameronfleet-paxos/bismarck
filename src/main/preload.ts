@@ -125,6 +125,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt),
+  standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
+    ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
@@ -275,6 +277,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:check-plan-mode-deps'),
   setupWizardEnablePlanMode: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('setup-wizard:enable-plan-mode', enabled),
+  setupWizardDetectAndSaveGitHubToken: (): Promise<{ success: boolean; source: string | null }> =>
+    ipcRenderer.invoke('setup-wizard:detect-and-save-github-token'),
+
+  // GitHub token management
+  hasGitHubToken: (): Promise<boolean> =>
+    ipcRenderer.invoke('has-github-token'),
+  setGitHubToken: (token: string): Promise<boolean> =>
+    ipcRenderer.invoke('set-github-token', token),
+  clearGitHubToken: (): Promise<boolean> =>
+    ipcRenderer.invoke('clear-github-token'),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),

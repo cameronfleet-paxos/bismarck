@@ -2,13 +2,15 @@
  * Description Generator - Uses Claude Haiku to auto-generate purpose descriptions
  * and completion criteria for repositories based on their name, path, remote URL,
  * and contents of key documentation files.
+ *
+ * Uses Claude Code CLI (`claude -p`) for generation instead of direct API calls.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { DiscoveredRepo } from '../shared/types'
 import { getDefaultBranch } from './git-utils'
+import { spawnWithPath, findBinary } from './exec-utils'
 
 export interface DescriptionResult {
   repoPath: string
@@ -65,17 +67,17 @@ async function detectProtectedBranches(repoPath: string): Promise<string[]> {
 }
 
 /**
- * Generate purpose descriptions for multiple repositories using Claude Haiku
+ * Generate purpose descriptions for multiple repositories using Claude Haiku via claude CLI
  * Calls are made in parallel for efficiency
  */
 export async function generateDescriptions(
   repos: DiscoveredRepo[]
 ): Promise<DescriptionResult[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-
-  if (!apiKey) {
-    console.log('[DescriptionGenerator] No ANTHROPIC_API_KEY found, returning empty descriptions')
-    // Still detect protected branches even without API key
+  // Check if claude CLI is available
+  const claudePath = findBinary('claude')
+  if (!claudePath) {
+    console.log('[DescriptionGenerator] Claude CLI not found, returning empty descriptions')
+    // Still detect protected branches even without claude CLI
     const results = await Promise.all(
       repos.map(async (repo) => ({
         repoPath: repo.path,
@@ -87,13 +89,11 @@ export async function generateDescriptions(
     return results
   }
 
-  const client = new Anthropic({ apiKey })
-
   const results = await Promise.all(
     repos.map(async (repo): Promise<DescriptionResult> => {
       try {
         const [description, protectedBranches] = await Promise.all([
-          generateSingleDescription(client, repo),
+          generateSingleDescription(repo),
           detectProtectedBranches(repo.path),
         ])
         return {
@@ -126,21 +126,15 @@ interface GeneratedDescription {
 
 /**
  * Generate a purpose description and completion criteria for a single repository
+ * Uses claude CLI with -p flag for headless mode
  */
 async function generateSingleDescription(
-  client: Anthropic,
   repo: DiscoveredRepo
 ): Promise<GeneratedDescription> {
   const repoInfo = buildRepoInfo(repo)
   const repoContext = await readRepoContext(repo.path)
 
-  const response = await client.messages.create({
-    model: 'claude-3-5-haiku-20241022',
-    max_tokens: 400,
-    messages: [
-      {
-        role: 'user',
-        content: `Based on the following repository information and file contents, generate:
+  const prompt = `Based on the following repository information and file contents, generate:
 
 1. PURPOSE: A 1-2 sentence description of what this codebase does
 2. COMPLETION CRITERIA: 2-4 bullet points describing what "done" looks like for work in this repo (e.g., tests pass, builds succeed, code is linted)
@@ -155,17 +149,14 @@ PURPOSE: <your purpose description>
 COMPLETION_CRITERIA:
 - <criterion 1>
 - <criterion 2>
-- <criterion 3>`,
-      },
-    ],
-  })
+- <criterion 3>`
 
-  const textBlock = response.content.find(block => block.type === 'text')
-  const text = textBlock?.text?.trim() || ''
+  // Use claude CLI with -p flag for headless prompt
+  const result = await runClaudePrompt(prompt)
 
   // Parse the response
-  const purposeMatch = text.match(/PURPOSE:\s*(.+?)(?=\nCOMPLETION_CRITERIA:|$)/s)
-  const criteriaMatch = text.match(/COMPLETION_CRITERIA:\s*(.+)$/s)
+  const purposeMatch = result.match(/PURPOSE:\s*(.+?)(?=\nCOMPLETION_CRITERIA:|$)/s)
+  const criteriaMatch = result.match(/COMPLETION_CRITERIA:\s*(.+)$/s)
 
   const purpose = purposeMatch?.[1]?.trim() || ''
   const criteriaText = criteriaMatch?.[1]?.trim() || ''
@@ -178,6 +169,61 @@ COMPLETION_CRITERIA:
     .join('\n')
 
   return { purpose, completionCriteria }
+}
+
+/**
+ * Run a prompt using claude CLI and return the result
+ */
+async function runClaudePrompt(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-p', prompt,
+      '--output-format', 'json',
+      '--model', 'haiku'
+    ]
+
+    const process = spawnWithPath('claude', args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    process.stdout?.on('data', (data) => {
+      stdout += data.toString()
+    })
+
+    process.stderr?.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    process.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`claude CLI exited with code ${code}: ${stderr}`))
+        return
+      }
+
+      try {
+        // Parse JSON output to extract the result
+        const json = JSON.parse(stdout)
+        // The JSON output format has a 'result' field with the text response
+        const result = json.result || ''
+        resolve(result)
+      } catch (parseError) {
+        // If JSON parsing fails, try to use stdout directly
+        // This handles cases where the output might not be valid JSON
+        console.warn('[DescriptionGenerator] Failed to parse JSON, using raw output')
+        resolve(stdout.trim())
+      }
+    })
+
+    process.on('error', (err) => {
+      reject(err)
+    })
+
+    // Close stdin as we're not sending any input
+    process.stdin?.end()
+  })
 }
 
 /**

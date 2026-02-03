@@ -49,6 +49,9 @@ export interface AppSettings {
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
   }
+  tools: {
+    githubToken: string | null  // GitHub token for gh CLI (needed for SAML SSO orgs)
+  }
 }
 
 // In-memory cache of settings
@@ -109,6 +112,9 @@ export function getDefaultSettings(): AppSettings {
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
+    },
+    tools: {
+      githubToken: null,
     },
   }
 }
@@ -174,6 +180,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     planMode: {
       ...(currentSettings.planMode || defaults.planMode),
       ...(updates.planMode || {}),
+    },
+    tools: {
+      ...(currentSettings.tools || defaults.tools),
+      ...(updates.tools || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -416,4 +426,35 @@ export async function detectToolPaths(): Promise<AppSettings['paths']> {
 export async function getToolPaths(): Promise<AppSettings['paths']> {
   const settings = await loadSettings()
   return settings.paths
+}
+
+/**
+ * Get the configured GitHub token
+ * Returns null if not configured
+ */
+export async function getGitHubToken(): Promise<string | null> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  return settings.tools?.githubToken ?? defaults.tools.githubToken
+}
+
+/**
+ * Set the GitHub token (null to clear)
+ */
+export async function setGitHubToken(token: string | null): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.tools = {
+    ...(settings.tools || defaults.tools),
+    githubToken: token,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Check if a GitHub token is configured (without returning the actual token)
+ */
+export async function hasGitHubToken(): Promise<boolean> {
+  const token = await getGitHubToken()
+  return token !== null && token.length > 0
 }

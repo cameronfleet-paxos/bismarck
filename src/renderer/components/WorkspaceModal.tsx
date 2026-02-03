@@ -141,7 +141,7 @@ export function AgentModal({
               id="directory"
               value={directory}
               onChange={(e) => setDirectory(e.target.value)}
-              placeholder="/Users/cameron/dev/pax"
+              placeholder="/path/to/your/project"
             />
             {/* Git repository detection status */}
             {directory.trim() && (

@@ -113,14 +113,10 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     }
   }
 
-  // Pass Claude OAuth token or Anthropic API key to container
-  // OAuth token is preferred for headless agents using Claude subscription
+  // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
   if (oauthToken) {
     args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
-  } else if (process.env.ANTHROPIC_API_KEY) {
-    // Fallback to API key if no OAuth token
-    args.push('-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`)
   }
 
   // Add any custom environment variables

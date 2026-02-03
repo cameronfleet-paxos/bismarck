@@ -41,10 +41,10 @@ interface SetupWizardProps {
   onSkip: () => void
 }
 
-type WizardStep = 'path' | 'repos' | 'descriptions' | 'plan-mode'
+type WizardStep = 'deps' | 'path' | 'repos' | 'descriptions' | 'plan-mode'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
-  const [step, setStep] = useState<WizardStep>('path')
+  const [step, setStep] = useState<WizardStep>('deps')
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [manualPath, setManualPath] = useState<string>('')
   const [suggestedPaths, setSuggestedPaths] = useState<string[]>([])
@@ -65,11 +65,31 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [dependencies, setDependencies] = useState<PlanModeDependencies | null>(null)
   const [isCheckingDeps, setIsCheckingDeps] = useState(false)
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
+  const [isDetectingToken, setIsDetectingToken] = useState(false)
+  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null } | null>(null)
 
-  // Load suggested paths on mount
+  // Load suggested paths and check dependencies on mount
   useEffect(() => {
     loadSuggestedPaths()
+    // Check dependencies on mount for the deps step
+    checkDependencies()
   }, [])
+
+  const checkDependencies = async () => {
+    setIsCheckingDeps(true)
+    try {
+      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+      setDependencies(deps)
+      // Auto-enable plan mode if all required deps are installed
+      if (deps.allRequiredInstalled) {
+        setPlanModeEnabled(true)
+      }
+    } catch (err) {
+      console.error('Failed to check dependencies:', err)
+    } finally {
+      setIsCheckingDeps(false)
+    }
+  }
 
   // Cleanup fact interval on unmount
   useEffect(() => {
@@ -282,20 +302,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const handleContinueToPlanMode = async () => {
     setError(null)
     setStep('plan-mode')
-    // Check dependencies when entering plan-mode step
-    setIsCheckingDeps(true)
-    try {
-      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
-      setDependencies(deps)
-      // Auto-enable plan mode if all required deps are installed
-      if (deps.allRequiredInstalled) {
-        setPlanModeEnabled(true)
-      }
-    } catch (err) {
-      console.error('Failed to check dependencies:', err)
-    } finally {
-      setIsCheckingDeps(false)
-    }
+    // Dependencies were already checked on mount, no need to re-check
   }
 
   // Final step: save plan mode preference and create agents
@@ -337,13 +344,35 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
+  // Detect and save GitHub token
+  const handleDetectAndSaveToken = async () => {
+    setIsDetectingToken(true)
+    setTokenDetectResult(null)
+    try {
+      const result = await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+      setTokenDetectResult(result)
+      // Refresh dependencies to update token status
+      if (result.success) {
+        const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+        setDependencies(deps)
+      }
+    } catch (err) {
+      console.error('Failed to detect GitHub token:', err)
+      setTokenDetectResult({ success: false, source: null })
+    } finally {
+      setIsDetectingToken(false)
+    }
+  }
+
   const handleGoBack = () => {
     if (step === 'plan-mode') {
       setStep('descriptions')
     } else if (step === 'descriptions') {
       setStep('repos')
-    } else {
+    } else if (step === 'repos') {
       setStep('path')
+    } else if (step === 'path') {
+      setStep('deps')
     }
     setError(null)
   }
@@ -363,7 +392,129 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
         {/* Wizard Card */}
         <div className="bg-card border border-border rounded-lg shadow-lg p-8">
-          {/* Step 1: Path Selection */}
+          {/* Step 1: Dependencies Check */}
+          {step === 'deps' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Check Dependencies
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Bismarck requires some tools to be installed. Let's verify they're available.
+                </p>
+              </div>
+
+              {/* Dependencies Section */}
+              <div className="space-y-3">
+                {isCheckingDeps ? (
+                  <div className="flex items-center justify-center p-8 border border-border rounded-lg">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Checking dependencies...</span>
+                  </div>
+                ) : dependencies ? (
+                  <div className="border border-border rounded-lg divide-y divide-border">
+                    {[dependencies.claude, dependencies.docker, dependencies.git, dependencies.bd, dependencies.gh].map((dep) => (
+                      <div key={dep.name} className="flex items-start justify-between p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5">
+                            {dep.installed ? (
+                              <Check className="h-5 w-5 text-green-500" />
+                            ) : (
+                              <X className="h-5 w-5 text-red-500" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-foreground">{dep.name}</span>
+                              {!dep.required && (
+                                <span className="text-xs text-muted-foreground">(optional)</span>
+                              )}
+                            </div>
+                            {dep.installed ? (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {dep.path}
+                                {dep.version && ` (v${dep.version})`}
+                              </p>
+                            ) : dep.installCommand ? (
+                              <div className="flex items-center gap-2 mt-1">
+                                <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                                  {dep.installCommand}
+                                </code>
+                                <button
+                                  onClick={() => handleCopyCommand(dep.installCommand!)}
+                                  className="p-1 hover:bg-muted rounded transition-colors"
+                                  title="Copy to clipboard"
+                                >
+                                  {copiedCommand === dep.installCommand ? (
+                                    <Check className="h-3 w-3 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 text-muted-foreground" />
+                                  )}
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground mt-0.5">Not installed</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* Re-check button */}
+                {!isCheckingDeps && dependencies && (
+                  <Button
+                    onClick={checkDependencies}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Re-check Dependencies
+                  </Button>
+                )}
+
+                {/* Warning if missing required deps */}
+                {dependencies && !dependencies.allRequiredInstalled && (
+                  <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-foreground font-medium">Missing required dependencies</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Please install the missing dependencies above before continuing.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={onSkip}
+                  variant="ghost"
+                >
+                  Skip Setup
+                </Button>
+                <Button
+                  onClick={() => setStep('path')}
+                  disabled={isCheckingDeps || (dependencies !== null && !dependencies.allRequiredInstalled)}
+                >
+                  Continue
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Path Selection */}
           {step === 'path' && (
             <div className="space-y-6">
               <div>
@@ -439,10 +590,11 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
               {/* Actions */}
               <div className="flex justify-between pt-4">
                 <Button
-                  onClick={onSkip}
+                  onClick={handleGoBack}
                   variant="ghost"
                 >
-                  Skip Setup
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
                 </Button>
                 <Button
                   onClick={handleContinueToRepos}
@@ -464,7 +616,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Repository Selection */}
+          {/* Step 3: Repository Selection */}
           {step === 'repos' && (
             <div className="space-y-6">
               <div>
@@ -720,7 +872,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 4: Plan Mode */}
+          {/* Step 5: Plan Mode */}
           {step === 'plan-mode' && (
             <div className="space-y-6">
               <div>
@@ -763,81 +915,66 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                 </button>
               </div>
 
-              {/* Dependencies Section */}
-              {planModeEnabled && (
-                <div className="space-y-3">
-                  <Label className="text-sm text-muted-foreground">
-                    Required Dependencies
-                  </Label>
-
-                  {isCheckingDeps ? (
-                    <div className="flex items-center justify-center p-8 border border-border rounded-lg">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      <span className="ml-2 text-sm text-muted-foreground">Checking dependencies...</span>
-                    </div>
-                  ) : dependencies ? (
-                    <div className="border border-border rounded-lg divide-y divide-border">
-                      {[dependencies.docker, dependencies.git, dependencies.bd, dependencies.gh].map((dep) => (
-                        <div key={dep.name} className="flex items-start justify-between p-3">
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5">
-                              {dep.installed ? (
-                                <Check className="h-5 w-5 text-green-500" />
-                              ) : (
-                                <X className="h-5 w-5 text-red-500" />
-                              )}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-foreground">{dep.name}</span>
-                                {!dep.required && (
-                                  <span className="text-xs text-muted-foreground">(optional)</span>
-                                )}
-                              </div>
-                              {dep.installed ? (
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {dep.path}
-                                  {dep.version && ` (v${dep.version})`}
-                                </p>
-                              ) : dep.installCommand ? (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-                                    {dep.installCommand}
-                                  </code>
-                                  <button
-                                    onClick={() => handleCopyCommand(dep.installCommand!)}
-                                    className="p-1 hover:bg-muted rounded transition-colors"
-                                    title="Copy to clipboard"
-                                  >
-                                    {copiedCommand === dep.installCommand ? (
-                                      <Check className="h-3 w-3 text-green-500" />
-                                    ) : (
-                                      <Copy className="h-3 w-3 text-muted-foreground" />
-                                    )}
-                                  </button>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground mt-0.5">Not installed</p>
-                              )}
-                            </div>
-                          </div>
+              {/* GitHub Token Section */}
+              {planModeEnabled && dependencies && (
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {dependencies.githubToken.configured ? (
+                          <Check className="h-5 w-5 text-green-500" />
+                        ) : dependencies.githubToken.detected ? (
+                          <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        ) : (
+                          <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">GitHub Token</span>
+                          <span className="text-xs text-muted-foreground">(optional)</span>
                         </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* Warning if missing required deps */}
-                  {dependencies && !dependencies.allRequiredInstalled && (
-                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                      <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm text-foreground font-medium">Missing required dependencies</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Install the missing dependencies above to use plan mode, or disable plan mode to continue.
-                        </p>
+                        {dependencies.githubToken.configured ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Token configured
+                          </p>
+                        ) : dependencies.githubToken.detected ? (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              Found token from {dependencies.githubToken.source}
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={handleDetectAndSaveToken}
+                              disabled={isDetectingToken}
+                            >
+                              {isDetectingToken ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                'Use detected token'
+                              )}
+                            </Button>
+                            {tokenDetectResult?.success && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                Token saved successfully
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              No token found. Configure in Settings &gt; Tools if needed for SAML SSO orgs.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
 
@@ -859,7 +996,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                 </Button>
                 <Button
                   onClick={handleContinueFromPlanMode}
-                  disabled={isCreating || (planModeEnabled && dependencies && !dependencies.allRequiredInstalled)}
+                  disabled={isCreating}
                 >
                   {isCreating ? (
                     <>
@@ -878,7 +1015,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         </div>
 
         {/* Skip link at bottom */}
-        {step === 'path' && (
+        {(step === 'deps' || step === 'path') && (
           <div className="text-center mt-4">
             <button
               onClick={onSkip}

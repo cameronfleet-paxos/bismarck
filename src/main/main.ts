@@ -100,6 +100,7 @@ import {
   getDefaultReposPath,
   checkPlanModeDependencies,
   enablePlanMode,
+  detectAndSaveGitHubToken,
 } from './setup-wizard'
 import { generateDescriptions } from './description-generator'
 import {
@@ -115,6 +116,8 @@ import {
   updateDockerSshSettings,
   getCustomPrompts,
   setCustomPrompt,
+  hasGitHubToken,
+  setGitHubToken,
 } from './settings-manager'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
@@ -127,6 +130,7 @@ import {
   confirmStandaloneAgentDone,
   startFollowUpAgent,
   cleanupStandaloneWorktree,
+  restartStandaloneHeadlessAgent,
 } from './standalone-headless'
 import {
   startRalphLoop,
@@ -536,6 +540,10 @@ function registerIpcHandlers() {
     return startFollowUpAgent(headlessId, prompt)
   })
 
+  ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
+    return restartStandaloneHeadlessAgent(headlessId, model)
+  })
+
   // Ralph Loop management
   ipcMain.handle('start-ralph-loop', async (_event, config: RalphLoopConfig) => {
     return startRalphLoop(config)
@@ -678,6 +686,25 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:enable-plan-mode', async (_event, enabled: boolean) => {
     return enablePlanMode(enabled)
+  })
+
+  ipcMain.handle('setup-wizard:detect-and-save-github-token', async () => {
+    return detectAndSaveGitHubToken()
+  })
+
+  // GitHub token management
+  ipcMain.handle('has-github-token', async () => {
+    return hasGitHubToken()
+  })
+
+  ipcMain.handle('set-github-token', async (_event, token: string) => {
+    await setGitHubToken(token)
+    return true
+  })
+
+  ipcMain.handle('clear-github-token', async () => {
+    await setGitHubToken(null)
+    return true
   })
 
   // Settings management

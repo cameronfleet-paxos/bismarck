@@ -32,6 +32,10 @@ interface HeadlessTerminalProps {
   isStandalone?: boolean           // True for standalone headless agents
   onConfirmDone?: () => void       // Called when user clicks "Confirm Done"
   onStartFollowUp?: () => void     // Called when user clicks "Start Follow-up"
+  onRestart?: () => void           // Called when user clicks "Restart" (for interrupted agents)
+  isConfirmingDone?: boolean       // Loading state for "Confirm Done" button
+  isStartingFollowUp?: boolean     // Loading state for "Start Follow-up" button
+  isRestarting?: boolean           // Loading state for "Restart" button
 }
 
 interface CollapsedState {
@@ -184,6 +188,10 @@ export function HeadlessTerminal({
   isStandalone = false,
   onConfirmDone,
   onStartFollowUp,
+  onRestart,
+  isConfirmingDone = false,
+  isStartingFollowUp = false,
+  isRestarting = false,
 }: HeadlessTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<CollapsedState>({})
@@ -646,17 +654,31 @@ export function HeadlessTerminal({
               {isStandalone && onStartFollowUp && (
                 <button
                   onClick={onStartFollowUp}
-                  className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                  disabled={isStartingFollowUp || isConfirmingDone}
+                  className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Start Follow-up
+                  {isStartingFollowUp ? (
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Starting...
+                    </span>
+                  ) : (
+                    'Start Follow-up'
+                  )}
                 </button>
               )}
               {isStandalone && onConfirmDone && (
                 <button
                   onClick={onConfirmDone}
-                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
+                  disabled={isConfirmingDone || isStartingFollowUp}
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Confirm Done
+                  {isConfirmingDone ? (
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Closing...
+                    </span>
+                  ) : (
+                    'Confirm Done'
+                  )}
                 </button>
               )}
             </div>
@@ -673,19 +695,69 @@ export function HeadlessTerminal({
                 {onStartFollowUp && (
                   <button
                     onClick={onStartFollowUp}
-                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                    disabled={isStartingFollowUp || isConfirmingDone}
+                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Retry
+                    {isStartingFollowUp ? (
+                      <span className="flex items-center gap-1">
+                        <span className="animate-spin">⟳</span> Starting...
+                      </span>
+                    ) : (
+                      'Retry'
+                    )}
                   </button>
                 )}
                 <button
                   onClick={onConfirmDone}
-                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors"
+                  disabled={isConfirmingDone || isStartingFollowUp}
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Confirm Done
+                  {isConfirmingDone ? (
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Closing...
+                    </span>
+                  ) : (
+                    'Confirm Done'
+                  )}
                 </button>
               </div>
             )}
+          </div>
+        )
+      case 'interrupted':
+        return (
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 text-yellow-500">
+              <span>⚠</span> Interrupted (app was closed)
+            </div>
+            <div className="flex items-center gap-2">
+              {isStandalone && onRestart && (
+                <button
+                  onClick={onRestart}
+                  disabled={isRestarting || isConfirmingDone}
+                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isRestarting ? (
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Restarting...
+                    </span>
+                  ) : 'Restart'}
+                </button>
+              )}
+              {isStandalone && onConfirmDone && (
+                <button
+                  onClick={onConfirmDone}
+                  disabled={isConfirmingDone || isRestarting}
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isConfirmingDone ? (
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Closing...
+                    </span>
+                  ) : 'Confirm Done'}
+                </button>
+              )}
+            </div>
           </div>
         )
       default:
