@@ -1074,7 +1074,9 @@ function App() {
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
     const results: Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> = []
+    console.log('[Renderer] getRalphLoopIterationsForTab:', { tabId: tab.id, ralphLoopsSize: ralphLoops.size, ralphLoopIds: Array.from(ralphLoops.keys()) })
     for (const [, loopState] of ralphLoops) {
+      console.log('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
       if (loopState.tabId === tab.id) {
         // Get the current running or most recent iteration
         const currentIteration = loopState.iterations.find(iter => iter.status === 'running')
@@ -1564,7 +1566,7 @@ function App() {
                 key={tab.id}
                 className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'}`}
               >
-                {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 ? (
+                {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 ? (
                   (() => {
                     const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {

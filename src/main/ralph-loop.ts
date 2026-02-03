@@ -325,7 +325,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
     console.log(`[RalphLoop] Starting iteration ${state.currentIteration}/${state.config.maxIterations}`)
 
     const iteration = await runIteration(state, state.currentIteration)
-    state.iterations.push(iteration)
+    // Note: iteration is already added to state.iterations inside runIteration
 
     // Accumulate costs
     if (iteration.cost) {
@@ -412,6 +412,9 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
     addWorkspaceToTab(workspaceId, state.tabId)
     setActiveTab(state.tabId)
     emitStateUpdate()
+
+    // Add iteration to state BEFORE starting so renderer can see it
+    state.iterations.push(iteration)
 
     // Update iteration status
     iteration.status = 'running'
