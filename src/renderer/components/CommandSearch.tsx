@@ -7,6 +7,7 @@ import {
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import { themes } from '@/shared/constants'
 import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
+import { RALPH_LOOP_PRESETS } from '@/shared/ralph-loop-presets'
 
 interface ActiveTerminal {
   terminalId: string
@@ -67,6 +68,7 @@ export function CommandSearch({
   const [completionPhrase, setCompletionPhrase] = useState('<promise>COMPLETE</promise>')
   const [maxIterations, setMaxIterations] = useState(50)
   const [ralphModel, setRalphModel] = useState<'opus' | 'sonnet'>('sonnet')
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom')
 
   const inputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -140,6 +142,7 @@ export function CommandSearch({
       setCompletionPhrase('<promise>COMPLETE</promise>')
       setMaxIterations(50)
       setRalphModel('sonnet')
+      setSelectedPreset('custom')
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open])
@@ -309,6 +312,17 @@ export function CommandSearch({
     }
   }
 
+  const handlePresetSelect = (presetId: string) => {
+    setSelectedPreset(presetId)
+    const preset = RALPH_LOOP_PRESETS.find(p => p.id === presetId)
+    if (preset) {
+      setPrompt(preset.prompt)
+      setCompletionPhrase(preset.completionPhrase)
+      setMaxIterations(preset.maxIterations)
+      setRalphModel(preset.model)
+    }
+  }
+
   const isAgentActive = (agentId: string) => activeTerminals.some(t => t.workspaceId === agentId)
   const isAgentWaiting = (agentId: string) => waitingQueue.includes(agentId)
   const getAgentTab = (agentId: string) => tabs.find(t => t.workspaceIds.includes(agentId))
@@ -391,16 +405,43 @@ export function CommandSearch({
           </div>
         ) : mode === 'ralph-loop-config' ? (
           <div className="p-4 space-y-4">
+            {/* Preset selector */}
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Preset</label>
+              <div className="flex flex-wrap gap-1.5">
+                {RALPH_LOOP_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handlePresetSelect(preset.id)}
+                    className={`px-2.5 py-1.5 text-xs font-medium rounded ${
+                      selectedPreset === preset.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                    title={preset.description}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Prompt textarea */}
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Prompt</label>
               <textarea
                 ref={textareaRef}
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => {
+                  setPrompt(e.target.value)
+                  // If user edits, switch to custom preset indicator
+                  if (selectedPreset !== 'custom') {
+                    setSelectedPreset('custom')
+                  }
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder="Enter prompt for Ralph Loop..."
-                className="w-full h-24 p-3 text-sm border rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full min-h-40 p-3 text-sm border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
