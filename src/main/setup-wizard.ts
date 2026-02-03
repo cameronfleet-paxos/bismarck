@@ -10,7 +10,7 @@ import * as fs from 'fs/promises'
 import { dialog } from 'electron'
 import { randomUUID } from 'crypto'
 import type { DiscoveredRepo, Agent, ThemeName } from '../shared/types'
-import { isGitRepo, getRepoRoot, getRemoteUrl } from './git-utils'
+import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-utils'
 import { saveWorkspace, getWorkspaces } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository } from './repository-manager'
@@ -94,10 +94,12 @@ export async function scanForRepositories(
           // Add to discovered list if not already there
           if (!discovered.find((r) => r.path === repoRoot)) {
             const remoteUrl = await getRemoteUrl(repoRoot)
+            const lastCommitDate = await getLastCommitDate(repoRoot)
             discovered.push({
               path: repoRoot,
               name: path.basename(repoRoot),
               remoteUrl: remoteUrl || undefined,
+              lastCommitDate: lastCommitDate || undefined,
             })
           }
         }
@@ -130,6 +132,16 @@ export async function scanForRepositories(
   }
 
   await scan(parentPath, 0)
+
+  // Sort by lastCommitDate descending (most recent first)
+  // Repos without commit dates go to the end
+  discovered.sort((a, b) => {
+    if (!a.lastCommitDate && !b.lastCommitDate) return 0
+    if (!a.lastCommitDate) return 1
+    if (!b.lastCommitDate) return -1
+    return new Date(b.lastCommitDate).getTime() - new Date(a.lastCommitDate).getTime()
+  })
+
   return discovered
 }
 

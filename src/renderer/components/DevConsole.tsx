@@ -6,13 +6,15 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2 } from 'lucide-react'
+import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus } from 'lucide-react'
 import { Button } from './ui/button'
 import type { HeadlessAgentInfo, StreamEvent } from '@/shared/types'
 
 interface DevConsoleProps {
   open: boolean
   onClose: () => void
+  simulateNewUser?: boolean
+  onToggleSimulateNewUser?: () => void
 }
 
 interface MockPlanState {
@@ -21,7 +23,7 @@ interface MockPlanState {
   tasks: Array<{ id: string; subject: string; status: string }>
 }
 
-export function DevConsole({ open, onClose }: DevConsoleProps) {
+export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNewUser }: DevConsoleProps) {
   const [mockPlan, setMockPlan] = useState<MockPlanState | null>(null)
   const [mockAgents, setMockAgents] = useState<Map<string, HeadlessAgentInfo>>(new Map())
   const [eventLog, setEventLog] = useState<Array<{ time: string; message: string; type: 'info' | 'success' | 'error' }>>([])
@@ -200,6 +202,33 @@ export function DevConsole({ open, onClose }: DevConsoleProps) {
               </Button>
             </div>
           </div>
+
+          {/* User Simulation */}
+          {onToggleSimulateNewUser && (
+            <div>
+              <h3 className="text-sm font-medium mb-2">User Simulation</h3>
+              <Button
+                variant={simulateNewUser ? "destructive" : "outline"}
+                className="w-full"
+                onClick={onToggleSimulateNewUser}
+              >
+                {simulateNewUser ? (
+                  <>
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Exit Simulation
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Simulate New User
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                View empty state without affecting data
+              </p>
+            </div>
+          )}
 
           {/* Mock Plan Status */}
           {mockPlan && (

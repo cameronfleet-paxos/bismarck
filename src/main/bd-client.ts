@@ -1,9 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 import { ExecOptions } from 'child_process'
 import { logger } from './logger'
 import { execWithPath } from './exec-utils'
+import { getConfigDir } from './config'
 import type { BeadTask } from '../shared/types'
 
 // Re-export BeadTask for convenience
@@ -16,7 +16,7 @@ const execAsync = (command: string, options?: ExecOptions) => execWithPath(comma
  * Get the plan-specific directory path
  */
 export function getPlanDir(planId: string): string {
-  return path.join(os.homedir(), '.bismarck', 'plans', planId)
+  return path.join(getConfigDir(), 'plans', planId)
 }
 
 /**

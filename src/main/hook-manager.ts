@@ -43,7 +43,13 @@ function getSessionStartHookScriptPath(): string {
   return path.join(getConfigDir(), 'hooks', SESSION_START_HOOK_SCRIPT_NAME)
 }
 
+// Get the config directory name (e.g., '.bismarck' or '.bismarck-dev')
+function getConfigDirName(): string {
+  return process.env.NODE_ENV === 'development' ? '.bismarck-dev' : '.bismarck'
+}
+
 export function createHookScript(): void {
+  const configDirName = getConfigDirName()
   const hookScript = `#!/bin/bash
 # Bismarck StopHook - signals when agent needs input
 # Optimized: single jq call, grep for mapping file
@@ -52,7 +58,7 @@ export function createHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] && exit 0
 
-MAPPING="$HOME/.bismarck/sessions/\${SESSION_ID}.json"
+MAPPING="$HOME/${configDirName}/sessions/\${SESSION_ID}.json"
 [ ! -f "$MAPPING" ] && exit 0
 
 # Read both values in one pass using grep (avoids jq startup overhead)
@@ -73,6 +79,7 @@ exit 0
 }
 
 export function createNotificationHookScript(): void {
+  const configDirName = getConfigDirName()
   const hookScript = `#!/bin/bash
 # Bismarck NotificationHook - signals when agent needs permission
 # Optimized: single jq call, grep for mapping file
@@ -81,7 +88,7 @@ export function createNotificationHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] && exit 0
 
-MAPPING="$HOME/.bismarck/sessions/\${SESSION_ID}.json"
+MAPPING="$HOME/${configDirName}/sessions/\${SESSION_ID}.json"
 [ ! -f "$MAPPING" ] && exit 0
 
 # Read both values in one pass using grep (avoids jq startup overhead)
@@ -102,6 +109,7 @@ exit 0
 }
 
 export function createSessionStartHookScript(): void {
+  const configDirName = getConfigDirName()
   const hookScript = `#!/bin/bash
 # Bismarck SessionStart hook - creates session-to-workspace mapping
 # Runs at session start when env vars ARE available
@@ -109,8 +117,8 @@ export function createSessionStartHookScript(): void {
 SESSION_ID=$(grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION_ID" ] || [ -z "$BISMARCK_WORKSPACE_ID" ] || [ -z "$BISMARCK_INSTANCE_ID" ] && exit 0
 
-mkdir -p "$HOME/.bismarck/sessions"
-printf '{"workspaceId":"%s","instanceId":"%s"}' "$BISMARCK_WORKSPACE_ID" "$BISMARCK_INSTANCE_ID" > "$HOME/.bismarck/sessions/\${SESSION_ID}.json"
+mkdir -p "$HOME/${configDirName}/sessions"
+printf '{"workspaceId":"%s","instanceId":"%s"}' "$BISMARCK_WORKSPACE_ID" "$BISMARCK_INSTANCE_ID" > "$HOME/${configDirName}/sessions/\${SESSION_ID}.json"
 exit 0
 `
 

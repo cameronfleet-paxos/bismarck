@@ -4,7 +4,8 @@ import { app } from 'electron'
 import type { Workspace, AppConfig, AppState, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo } from '../shared/types'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 
-const CONFIG_DIR_NAME = '.bismarck'
+// Use .bismarck-dev in development mode to avoid affecting production data
+const CONFIG_DIR_NAME = process.env.NODE_ENV === 'development' ? '.bismarck-dev' : '.bismarck'
 
 // Mutex for serializing plan modifications to prevent race conditions
 const planMutexes: Map<string, Promise<void>> = new Map()

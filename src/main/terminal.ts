@@ -163,12 +163,12 @@ export function createTerminal(
       trustPromptBuffer = ''
     }, 2000)
 
-    // Check for the trust prompt in accumulated buffer
-    if (trustPromptBuffer.includes('Yes, I trust this folder') && trustPromptBuffer.includes('.bismarck')) {
+    // Check for the trust prompt in accumulated buffer (matches both .bismarck and .bismarck-dev)
+    if (trustPromptBuffer.includes('Yes, I trust this folder') && (trustPromptBuffer.includes('.bismarck') || trustPromptBuffer.includes('.bismarck-dev'))) {
       if (trustPromptDebounce) return
       trustPromptDebounce = true
       trustPromptBuffer = '' // Clear buffer once matched
-      console.log(`[Terminal] Auto-accepting workspace trust prompt for .bismarck directory`)
+      console.log(`[Terminal] Auto-accepting workspace trust prompt for bismarck directory`)
       // Send '1' to select "Yes, I trust this folder" after a short delay
       setTimeout(() => {
         ptyProcess.write('1\r')

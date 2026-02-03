@@ -3,8 +3,24 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square } from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock } from 'lucide-react'
 import type { DiscoveredRepo, Agent } from '@/shared/types'
+
+// Format relative time for display
+function getRelativeTime(isoDate: string | undefined): string | null {
+  if (!isoDate) return null
+  const date = new Date(isoDate)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) return 'today'
+  if (diffDays === 1) return 'yesterday'
+  if (diffDays < 7) return `${diffDays} days ago`
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
+  return `${Math.floor(diffDays / 365)} years ago`
+}
 
 interface SetupWizardProps {
   onComplete: (agents: Agent[]) => void
@@ -139,8 +155,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background">
-      <div className="w-full max-w-2xl mx-auto px-4">
+    <div className="flex items-center justify-center min-h-screen bg-background py-8">
+      <div className={`w-full mx-auto px-4 ${step === 'repos' ? 'max-w-4xl' : 'max-w-2xl'}`}>
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-foreground mb-2">
@@ -284,10 +300,10 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                 </Button>
               </div>
 
-              {/* Repository List */}
-              <div className="border border-border rounded-md max-h-96 overflow-y-auto">
+              {/* Repository Grid */}
+              <div className="max-h-[60vh] overflow-y-auto">
                 {discoveredRepos.length === 0 ? (
-                  <div className="p-8 text-center">
+                  <div className="p-8 text-center border border-border rounded-md">
                     <p className="text-muted-foreground mb-4">
                       No repositories found
                     </p>
@@ -301,35 +317,55 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     </div>
                   </div>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-1">
                     {discoveredRepos.map((repo) => {
                       const isSelected = selectedRepos.has(repo.path)
                       return (
                         <button
                           key={repo.path}
                           onClick={() => handleToggleRepo(repo.path)}
-                          className="w-full px-4 py-3 flex items-start gap-3 hover:bg-accent transition-colors text-left"
+                          className={`
+                            relative rounded-lg border p-4 text-left transition-all
+                            hover:border-primary/50
+                            ${isSelected
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                              : 'border-border bg-card hover:bg-accent/50'
+                            }
+                          `}
                         >
-                          <div className="pt-0.5">
+                          {/* Selection indicator */}
+                          <div className="absolute top-2 right-2">
                             {isSelected ? (
                               <CheckSquare className="h-5 w-5 text-primary" />
                             ) : (
                               <Square className="h-5 w-5 text-muted-foreground" />
                             )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-foreground">
-                              {repo.name}
+
+                          {/* Repo name */}
+                          <h4 className="font-semibold text-foreground pr-6 truncate">
+                            {repo.name}
+                          </h4>
+
+                          {/* Path (truncated) */}
+                          <p className="text-xs text-muted-foreground mt-1 truncate" title={repo.path}>
+                            {repo.path}
+                          </p>
+
+                          {/* Last commit time */}
+                          {repo.lastCommitDate && (
+                            <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground/80">
+                              <Clock className="h-3 w-3" />
+                              <span>{getRelativeTime(repo.lastCommitDate)}</span>
                             </div>
-                            <div className="text-sm text-muted-foreground truncate">
-                              {repo.path}
-                            </div>
-                            {repo.remoteUrl && (
-                              <div className="text-xs text-muted-foreground/80 truncate mt-1">
-                                {repo.remoteUrl}
-                              </div>
-                            )}
-                          </div>
+                          )}
+
+                          {/* Remote URL (optional, subtle) */}
+                          {repo.remoteUrl && (
+                            <p className="text-[10px] text-muted-foreground/60 mt-1 truncate" title={repo.remoteUrl}>
+                              {repo.remoteUrl.replace(/^(git@|https:\/\/)/, '').replace(/\.git$/, '')}
+                            </p>
+                          )}
                         </button>
                       )
                     })}

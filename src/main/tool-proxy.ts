@@ -14,10 +14,10 @@
 import * as http from 'http'
 import * as net from 'net'
 import * as path from 'path'
-import * as os from 'os'
 import { EventEmitter } from 'events'
 import { logger } from './logger'
 import { spawnWithPath } from './exec-utils'
+import { getConfigDir } from './config'
 
 export interface ToolProxyConfig {
   port: number // Default: 9847
@@ -220,10 +220,9 @@ async function handleGhRequest(
 
 /**
  * Get the plan-specific directory path
- * (Duplicated from bd-client.ts to avoid circular dependency)
  */
 function getPlanDir(planId: string): string {
-  return path.join(os.homedir(), '.bismarck', 'plans', planId)
+  return path.join(getConfigDir(), 'plans', planId)
 }
 
 /**

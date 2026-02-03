@@ -11,7 +11,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
+import { getConfigDir } from './config'
 
 // Log categories for filtering
 export type LogCategory =
@@ -51,7 +51,7 @@ function ensureLogDir(logPath: string): void {
 
 // Get plan-specific log path
 function getPlanLogPath(planId: string): string {
-  return path.join(os.homedir(), '.bismarck', 'plans', planId, 'debug.log')
+  return path.join(getConfigDir(), 'plans', planId, 'debug.log')
 }
 
 // Format context for log line

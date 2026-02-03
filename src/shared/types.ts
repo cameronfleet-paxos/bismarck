@@ -470,4 +470,5 @@ export interface DiscoveredRepo {
   path: string          // Absolute path to repository
   name: string          // Directory basename
   remoteUrl?: string    // Origin remote URL if available
+  lastCommitDate?: string // ISO 8601 timestamp of most recent commit
 }

@@ -211,6 +211,23 @@ export async function getRemoteUrl(directory: string): Promise<string | null> {
 }
 
 /**
+ * Get the timestamp of the most recent commit in the repository
+ * Returns ISO 8601 timestamp string or null if no commits/error
+ */
+export async function getLastCommitDate(directory: string): Promise<string | null> {
+  try {
+    const { stdout } = await gitExec(
+      'git log -1 --format=%aI',  // %aI = author date, ISO 8601 format
+      directory
+    );
+    const trimmed = stdout.trim();
+    return trimmed || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Create a new git worktree
  * @param logContext - Optional logging context for correlation
  */
