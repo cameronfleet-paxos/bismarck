@@ -472,3 +472,26 @@ export interface DiscoveredRepo {
   remoteUrl?: string    // Origin remote URL if available
   lastCommitDate?: string // ISO 8601 timestamp of most recent commit
 }
+
+// ============================================
+// Plan Mode Dependency Types
+// ============================================
+
+// Status of a single dependency for plan mode
+export interface DependencyStatus {
+  name: string
+  required: boolean
+  installed: boolean
+  path: string | null
+  version: string | null
+  installCommand?: string  // e.g., "brew install docker"
+}
+
+// Collection of all plan mode dependencies
+export interface PlanModeDependencies {
+  docker: DependencyStatus
+  bd: DependencyStatus
+  gh: DependencyStatus
+  git: DependencyStatus
+  allRequiredInstalled: boolean  // true if all required deps are installed
+}

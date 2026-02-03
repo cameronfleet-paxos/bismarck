@@ -172,10 +172,17 @@ export async function spawnContainerAgent(
     worktreePath: config.workingDir,
   }
 
+  // Extract key environment variables for logging (filter out sensitive tokens)
+  const envVarsForLog = args
+    .filter((arg, i) => args[i - 1] === '-e')
+    .filter(env => !env.includes('OAUTH_TOKEN') && !env.includes('API_KEY'))
+    .map(env => env.split('=')[0] + '=' + (env.includes('WORKTREE') || env.includes('PROXY') ? env.split('=')[1] : '[set]'))
+
   logger.info('docker', `Spawning container`, logContext, {
     image: config.image,
     useEntrypoint: config.useEntrypoint,
     workingDir: config.workingDir,
+    envVars: envVarsForLog,
   })
   logger.debug('docker', `Docker command: docker ${args.join(' ')}`, logContext)
 

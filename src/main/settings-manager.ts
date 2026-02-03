@@ -46,6 +46,9 @@ export interface AppSettings {
     planner: string | null
     discussion: string | null
   }
+  planMode: {
+    enabled: boolean       // Whether plan mode (parallel agents) is enabled
+  }
 }
 
 // In-memory cache of settings
@@ -103,6 +106,9 @@ export function getDefaultSettings(): AppSettings {
       orchestrator: null,
       planner: null,
       discussion: null,
+    },
+    planMode: {
+      enabled: false,  // Disabled by default, wizard can enable
     },
   }
 }
@@ -164,6 +170,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     prompts: {
       ...(currentSettings.prompts || defaults.prompts),
       ...(updates.prompts || {}),
+    },
+    planMode: {
+      ...(currentSettings.planMode || defaults.planMode),
+      ...(updates.planMode || {}),
     },
   }
   await saveSettings(updatedSettings)

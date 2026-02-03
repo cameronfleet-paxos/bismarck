@@ -98,6 +98,8 @@ import {
   bulkCreateAgents,
   saveDefaultReposPath,
   getDefaultReposPath,
+  checkPlanModeDependencies,
+  enablePlanMode,
 } from './setup-wizard'
 import { generateDescriptions } from './description-generator'
 import {
@@ -627,6 +629,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:generate-descriptions', async (_event, repos: DiscoveredRepo[]) => {
     return generateDescriptions(repos)
+  })
+
+  ipcMain.handle('setup-wizard:check-plan-mode-deps', async () => {
+    return checkPlanModeDependencies()
+  })
+
+  ipcMain.handle('setup-wizard:enable-plan-mode', async (_event, enabled: boolean) => {
+    return enablePlanMode(enabled)
   })
 
   // Settings management

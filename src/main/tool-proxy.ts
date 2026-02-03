@@ -343,7 +343,7 @@ async function handleGitRequest(
 
     const args = body.args || []
 
-    logger.debug('proxy', `git request: ${args.join(' ')}`, { worktreePath: cwd })
+    logger.info('proxy', `git request received: git ${args.join(' ')}`, { worktreePath: cwd })
 
     // Log the operation
     proxyEvents.emit('git', { cwd, args })
@@ -351,8 +351,12 @@ async function handleGitRequest(
     // Execute git command on host
     const result = await executeCommand('git', args, body.stdin, { cwd })
 
-    logger.proxyRequest('git', args, result.exitCode === 0, { worktreePath: cwd }, {
+    logger.info('proxy', `git request completed: git ${args.slice(0, 2).join(' ')}...`, { worktreePath: cwd }, {
       exitCode: result.exitCode,
+      success: result.exitCode === 0,
+      stdoutLen: result.stdout?.length || 0,
+      stderrLen: result.stderr?.length || 0,
+      stderrPreview: result.stderr?.substring(0, 200) || '',
     })
 
     sendJson(res, 200, {
@@ -446,7 +450,13 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     })
 
     server.listen(currentConfig.port, '0.0.0.0', () => {
-      logger.info('proxy', `Server listening on port ${currentConfig.port}`)
+      logger.info('proxy', `Tool proxy server started`, undefined, {
+        port: currentConfig.port,
+        url: `http://host.docker.internal:${currentConfig.port}`,
+        ghEnabled: currentConfig.tools.gh.enabled,
+        bdEnabled: currentConfig.tools.bd.enabled,
+        gitEnabled: currentConfig.tools.git.enabled,
+      })
       proxyEvents.emit('started', { port: currentConfig.port })
       resolve()
     })

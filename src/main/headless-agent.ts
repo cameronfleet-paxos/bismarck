@@ -27,6 +27,7 @@ import {
   isErrorEvent,
   extractTextContent,
 } from './stream-parser'
+import { isProxyRunning, getProxyConfig } from './tool-proxy'
 
 export type HeadlessAgentStatus =
   | 'idle'
@@ -111,6 +112,20 @@ export class HeadlessAgent extends EventEmitter {
     this.events = []
     this.startTime = Date.now()
     this.setStatus('starting')
+
+    // Log diagnostic information about proxy state
+    const proxyRunning = isProxyRunning()
+    const proxyConfig = proxyRunning ? getProxyConfig() : null
+    logger.info('agent', 'Starting headless agent', this.getLogContext(), {
+      worktreePath: options.worktreePath,
+      image: options.image,
+      proxyRunning,
+      proxyPort: proxyConfig?.port,
+    })
+
+    if (!proxyRunning) {
+      logger.warn('agent', 'Tool proxy is NOT running - git commands from container may fail', this.getLogContext())
+    }
 
     try {
       // Build container config

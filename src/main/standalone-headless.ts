@@ -33,6 +33,7 @@ import {
   remoteBranchExists,
   getCommitsBetween,
 } from './git-utils'
+import { startToolProxy, isProxyRunning } from './tool-proxy'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
 
 // Word lists for fun random names
@@ -261,6 +262,16 @@ export async function startStandaloneHeadlessAgent(
   // Ensure standalone headless directory exists
   ensureStandaloneHeadlessDir()
 
+  // Ensure tool proxy is running for Docker container communication
+  // This is critical - without it, git commands from containers will fail
+  const proxyWasRunning = isProxyRunning()
+  console.log(`[StandaloneHeadless] Tool proxy status before start: running=${proxyWasRunning}`)
+  if (!proxyWasRunning) {
+    console.log('[StandaloneHeadless] Starting tool proxy for container communication')
+    await startToolProxy()
+    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
+  }
+
   // Create the worktree
   console.log(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
@@ -368,6 +379,15 @@ export async function startStandaloneHeadlessAgent(
     image: selectedImage,
     claudeFlags: ['--model', model],
   }
+
+  console.log(`[StandaloneHeadless] Starting agent with config:`, {
+    headlessId,
+    worktreePath,
+    branchName,
+    image: selectedImage,
+    model,
+    proxyRunning: isProxyRunning(),
+  })
 
   try {
     await agent.start(options)
@@ -519,6 +539,15 @@ export async function startFollowUpAgent(
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
     throw new Error(`No worktree info for agent ${headlessId}`)
+  }
+
+  // Ensure tool proxy is running for Docker container communication
+  const proxyWasRunning = isProxyRunning()
+  console.log(`[StandaloneHeadless] Tool proxy status before follow-up: running=${proxyWasRunning}`)
+  if (!proxyWasRunning) {
+    console.log('[StandaloneHeadless] Starting tool proxy for follow-up agent')
+    await startToolProxy()
+    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
   }
 
   // Find the existing workspace
