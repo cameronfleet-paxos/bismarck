@@ -1,6 +1,6 @@
 import './index.css'
 import './electron.d.ts'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
@@ -30,6 +30,7 @@ import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicat
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
+import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -45,6 +46,26 @@ type AppView = 'main' | 'settings'
 
 // Type for terminal write functions
 type TerminalWriter = (data: string) => void
+
+// Helper component to trigger tutorial when needed
+function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; onTriggered: () => void }) {
+  const { startTutorial, isActive } = useTutorial()
+  const hasTriggeredRef = useRef(false)
+
+  useEffect(() => {
+    if (shouldStart && !isActive && !hasTriggeredRef.current) {
+      // Delay to ensure all elements are rendered
+      const timer = setTimeout(() => {
+        startTutorial()
+        hasTriggeredRef.current = true
+        onTriggered()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [shouldStart, isActive, startTutorial, onTriggered])
+
+  return null
+}
 
 function App() {
   // View routing
@@ -137,6 +158,10 @@ function App() {
 
   // Plan ID to auto-expand in sidebar (cleared after consumption)
   const [expandPlanId, setExpandPlanId] = useState<string | null>(null)
+
+  // Tutorial state - trigger after setup wizard completes
+  const [shouldStartTutorial, setShouldStartTutorial] = useState(false)
+  const tutorialStartTriggeredRef = useRef(false)
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -350,6 +375,17 @@ function App() {
     if (updated) {
       setPreferences(updated)
     }
+  }
+
+  // Tutorial completion handlers
+  const handleTutorialComplete = async () => {
+    await handlePreferencesChange({ tutorialCompleted: true })
+    setShouldStartTutorial(false)
+  }
+
+  const handleTutorialSkip = async () => {
+    await handlePreferencesChange({ tutorialCompleted: true })
+    setShouldStartTutorial(false)
   }
 
   const setupEventListeners = () => {
@@ -1401,6 +1437,10 @@ function App() {
                 }
               }
             }
+            // Trigger tutorial after setup wizard completes (if not already completed)
+            if (!preferences.tutorialCompleted) {
+              setShouldStartTutorial(true)
+            }
           }}
           onSkip={() => {
             // Open the manual agent creation modal
@@ -1419,7 +1459,19 @@ function App() {
 
   // Render both views but show only one - prevents terminal unmount/remount
   return (
-    <>
+    <TutorialProvider
+      operatingMode={preferences.operatingMode}
+      tutorialCompleted={preferences.tutorialCompleted}
+      onTutorialComplete={handleTutorialComplete}
+      onTutorialSkip={handleTutorialSkip}
+    >
+      <TutorialTrigger
+        shouldStart={shouldStartTutorial}
+        onTriggered={() => {
+          setShouldStartTutorial(false)
+          tutorialStartTriggeredRef.current = true
+        }}
+      />
       {/* Settings view - rendered on top when active */}
       {currentView === 'settings' && (
         <SettingsPage onBack={() => {
@@ -2594,7 +2646,7 @@ function App() {
         onStartRalphLoop={handleStartRalphLoop}
       />
     </div>
-    </>
+    </TutorialProvider>
   )
 }
 
