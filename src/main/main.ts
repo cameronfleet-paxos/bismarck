@@ -7,6 +7,7 @@ import {
   getWorkspaces,
   saveWorkspace,
   deleteWorkspace,
+  reorderWorkspaces,
   getClaudeOAuthToken,
   setClaudeOAuthToken,
   clearClaudeOAuthToken,
@@ -269,6 +270,10 @@ function registerIpcHandlers() {
     deleteWorkspace(id)
     removeActiveWorkspace(id)
     closeSocketServer(id)
+  })
+
+  ipcMain.handle('reorder-workspaces', (_event, workspaceIds: string[]) => {
+    reorderWorkspaces(workspaceIds)
   })
 
   // Terminal management

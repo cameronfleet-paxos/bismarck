@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-workspace', workspace),
   deleteWorkspace: (id: string): Promise<void> =>
     ipcRenderer.invoke('delete-workspace', id),
+  reorderWorkspaces: (workspaceIds: string[]): Promise<void> =>
+    ipcRenderer.invoke('reorder-workspaces', workspaceIds),
 
   // Terminal management
   createTerminal: (workspaceId: string): Promise<string> =>

@@ -6,6 +6,7 @@ export interface ElectronAPI {
   getWorkspaces: () => Promise<Workspace[]>
   saveWorkspace: (workspace: Workspace) => Promise<Workspace>
   deleteWorkspace: (id: string) => Promise<void>
+  reorderWorkspaces: (workspaceIds: string[]) => Promise<void>
 
   // Terminal management
   createTerminal: (workspaceId: string) => Promise<string>

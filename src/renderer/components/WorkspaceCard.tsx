@@ -1,4 +1,4 @@
-import { Pencil, Trash2, Play, Square, MoreVertical, Container } from 'lucide-react'
+import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   DropdownMenu,
@@ -26,6 +26,15 @@ interface AgentCardProps {
   onClick: () => void
   onMoveToTab?: (tabId: string) => void
   onStopHeadless?: () => void
+  // Drag-and-drop props for sidebar reordering
+  draggable?: boolean
+  isDragging?: boolean
+  isDropTarget?: boolean
+  onDragStart?: () => void
+  onDragEnd?: () => void
+  onDragOver?: () => void
+  onDragLeave?: () => void
+  onDrop?: () => void
 }
 
 export function AgentCard({
@@ -42,11 +51,20 @@ export function AgentCard({
   onClick,
   onMoveToTab,
   onStopHeadless,
+  draggable,
+  isDragging,
+  isDropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: AgentCardProps) {
   const themeColors = themes[agent.theme]
 
   return (
     <div
+      draggable={draggable}
       className={`
         relative rounded-lg p-4 cursor-pointer transition-all
         ${isActive && isFocused ? 'ring-2 ring-primary' : ''}
@@ -54,14 +72,36 @@ export function AgentCard({
         ${!isActive ? 'hover:border-primary/50' : ''}
         ${isWaiting ? 'animate-pulse ring-2 ring-yellow-500' : ''}
         ${isFocused ? 'border-2' : 'border'}
+        ${isDragging ? 'opacity-50' : ''}
+        ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}
       `}
       style={{
         borderColor: isFocused ? 'white' : 'rgba(255, 255, 255, 0.15)'
       }}
       onClick={onClick}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('agentId', agent.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart?.()
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => {
+        if (draggable) {
+          e.preventDefault()
+          onDragOver?.()
+        }
+      }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault()
+        onDrop?.()
+      }}
     >
       {/* Top: Icon + title */}
       <div className="flex items-center gap-2 mb-1">
+        {draggable && (
+          <GripVertical className="w-4 h-4 text-muted-foreground/50 cursor-grab flex-shrink-0" />
+        )}
         <div
           className="w-5 h-5 rounded-sm flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: themeColors.bg }}

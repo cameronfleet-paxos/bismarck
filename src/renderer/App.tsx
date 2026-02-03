@@ -86,10 +86,14 @@ function App() {
   // Track which terminals have finished booting (by terminalId)
   const [bootedTerminals, setBootedTerminals] = useState<Set<string>>(new Set())
 
-  // Drag-and-drop state
+  // Drag-and-drop state (for terminal grid)
   const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(null)
   const [dropTargetPosition, setDropTargetPosition] = useState<number | null>(null)
   const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null)
+
+  // Drag-and-drop state for sidebar agent reordering
+  const [sidebarDraggedAgentId, setSidebarDraggedAgentId] = useState<string | null>(null)
+  const [sidebarDropTargetAgentId, setSidebarDropTargetAgentId] = useState<string | null>(null)
 
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
@@ -749,6 +753,29 @@ function App() {
   const handleEditAgent = (agent: Agent) => {
     setEditingAgent(agent)
     setModalOpen(true)
+  }
+
+  // Handle sidebar agent reorder via drag-and-drop
+  const handleSidebarAgentReorder = async (draggedId: string, targetId: string) => {
+    // Get standalone agents only (plan agents shouldn't be reordered this way)
+    const { standaloneAgents } = groupAgentsByPlan()
+    const currentOrder = standaloneAgents.map(a => a.id)
+
+    const dragIndex = currentOrder.indexOf(draggedId)
+    const targetIndex = currentOrder.indexOf(targetId)
+
+    if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+      return
+    }
+
+    // Remove dragged item and insert at target position
+    const newOrder = [...currentOrder]
+    newOrder.splice(dragIndex, 1)
+    newOrder.splice(targetIndex, 0, draggedId)
+
+    // Persist the new order
+    await window.electronAPI?.reorderWorkspaces?.(newOrder)
+    await loadAgents()
   }
 
   const handleStopHeadlessAgent = async (agent: Agent) => {
@@ -1534,6 +1561,32 @@ function App() {
                           onStop={() => handleStopAgent(agent.id)}
                           onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
                           onStopHeadless={() => handleStopHeadlessAgent(agent)}
+                          // Drag-and-drop for sidebar reordering
+                          draggable={true}
+                          isDragging={sidebarDraggedAgentId === agent.id}
+                          isDropTarget={sidebarDropTargetAgentId === agent.id}
+                          onDragStart={() => setSidebarDraggedAgentId(agent.id)}
+                          onDragEnd={() => {
+                            setSidebarDraggedAgentId(null)
+                            setSidebarDropTargetAgentId(null)
+                          }}
+                          onDragOver={() => {
+                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
+                              setSidebarDropTargetAgentId(agent.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (sidebarDropTargetAgentId === agent.id) {
+                              setSidebarDropTargetAgentId(null)
+                            }
+                          }}
+                          onDrop={() => {
+                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
+                              handleSidebarAgentReorder(sidebarDraggedAgentId, agent.id)
+                            }
+                            setSidebarDraggedAgentId(null)
+                            setSidebarDropTargetAgentId(null)
+                          }}
                         />
                       )
                     })}
