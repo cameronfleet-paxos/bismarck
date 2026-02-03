@@ -265,7 +265,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:get-common-repo-paths'),
   setupWizardScanForRepositories: (parentPath: string, depth?: number): Promise<DiscoveredRepo[]> =>
     ipcRenderer.invoke('setup-wizard:scan-for-repositories', parentPath, depth),
-  setupWizardBulkCreateAgents: (repos: DiscoveredRepo[]): Promise<Workspace[]> =>
+  setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string; completionCriteria?: string; protectedBranches?: string[] })[]): Promise<Workspace[]> =>
     ipcRenderer.invoke('setup-wizard:bulk-create-agents', repos),
   setupWizardSaveDefaultReposPath: (reposPath: string): Promise<void> =>
     ipcRenderer.invoke('setup-wizard:save-default-repos-path', reposPath),
