@@ -43,7 +43,7 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
 const PROMPT_LABELS: Record<PromptType, string> = {
   discussion: 'Discussion Agent',
   orchestrator: 'Orchestrator Agent',
-  planner: 'Planner Agent',
+  planner: 'Planner',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {
