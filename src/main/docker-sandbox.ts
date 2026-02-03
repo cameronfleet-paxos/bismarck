@@ -113,6 +113,30 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     }
   }
 
+  // Mount Docker socket for testcontainers support (opt-in)
+  // This enables containers to spawn sibling containers for integration tests
+  if (settings.docker.dockerSocket?.enabled) {
+    const socketPath = settings.docker.dockerSocket.path || '/var/run/docker.sock'
+    args.push('-v', `${socketPath}:${socketPath}`)
+
+    // Docker socket appears as root:root inside the container on macOS Docker Desktop
+    // Add agent user to root group (0) for socket access
+    // Note: This is already done for SSH agent on macOS, but we need it for all platforms
+    // when Docker socket is enabled
+    if (process.platform !== 'darwin' || settings.docker.sshAgent?.enabled === false) {
+      args.push('--group-add', '0')
+    }
+
+    // For Docker Desktop (macOS/Windows), testcontainers needs to know how to reach
+    // spawned containers since they run as siblings, not children
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      args.push('-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal')
+    }
+
+    // Explicitly set DOCKER_HOST for clarity
+    args.push('-e', `DOCKER_HOST=unix://${socketPath}`)
+  }
+
   // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
   console.log('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')

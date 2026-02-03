@@ -116,6 +116,7 @@ import {
   addProxiedTool,
   removeProxiedTool,
   updateDockerSshSettings,
+  updateDockerSocketSettings,
   getCustomPrompts,
   setCustomPrompt,
   hasGitHubToken,
@@ -748,6 +749,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSshSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-socket-settings', async (_event, settings: { enabled?: boolean; path?: string }) => {
+    return updateDockerSocketSettings(settings)
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {

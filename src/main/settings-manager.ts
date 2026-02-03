@@ -40,6 +40,10 @@ export interface AppSettings {
     sshAgent: {
       enabled: boolean     // Enable SSH agent forwarding to containers
     }
+    dockerSocket: {
+      enabled: boolean     // Enable Docker socket mounting for testcontainers support
+      path: string         // Socket path (default: /var/run/docker.sock)
+    }
   }
   prompts: {
     orchestrator: string | null  // null = use default
@@ -103,6 +107,10 @@ export function getDefaultSettings(): AppSettings {
       ],
       sshAgent: {
         enabled: true,
+      },
+      dockerSocket: {
+        enabled: false,  // Opt-in for security
+        path: '/var/run/docker.sock',
       },
     },
     prompts: {
@@ -171,6 +179,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
       sshAgent: {
         ...currentSettings.docker.sshAgent,
         ...(updates.docker?.sshAgent || {}),
+      },
+      dockerSocket: {
+        ...(currentSettings.docker.dockerSocket || defaults.docker.dockerSocket),
+        ...(updates.docker?.dockerSocket || {}),
       },
     },
     prompts: {
@@ -343,6 +355,19 @@ export async function updateDockerSshSettings(sshSettings: { enabled?: boolean }
   settings.docker.sshAgent = {
     ...settings.docker.sshAgent,
     ...sshSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Update Docker socket settings
+ */
+export async function updateDockerSocketSettings(socketSettings: { enabled?: boolean; path?: string }): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.docker.dockerSocket = {
+    ...(settings.docker.dockerSocket || defaults.docker.dockerSocket),
+    ...socketSettings,
   }
   await saveSettings(settings)
 }

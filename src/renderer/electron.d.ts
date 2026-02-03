@@ -135,6 +135,7 @@ export interface ElectronAPI {
   addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
   removeProxiedTool: (id: string) => Promise<boolean>
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
+  updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management

@@ -39,6 +39,12 @@ RUN apt-get update && apt-get install -y \
     lsof \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Docker CLI for testcontainers support
+# Only installs the CLI (not daemon) - connects to host Docker via socket mount
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Bazelisk (manages Bazel versions automatically)
 # Use dpkg --print-architecture to detect arm64 vs amd64
 RUN ARCH=$(dpkg --print-architecture) && \

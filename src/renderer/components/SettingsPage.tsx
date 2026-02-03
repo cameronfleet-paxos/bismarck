@@ -78,6 +78,7 @@ interface AppSettings {
   }
   docker: {
     images: string[]
+    selectedImage: string
     resourceLimits: {
       cpu: string
       memory: string
@@ -85,6 +86,10 @@ interface AppSettings {
     proxiedTools: ProxiedTool[]
     sshAgent?: {
       enabled: boolean
+    }
+    dockerSocket?: {
+      enabled: boolean
+      path: string
     }
   }
 }
@@ -231,6 +236,18 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update SSH agent settings:', error)
+    }
+  }
+
+  const handleDockerSocketToggle = async (enabled: boolean) => {
+    try {
+      await window.electronAPI.updateDockerSocketSettings({ enabled })
+      await loadSettings()
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update Docker socket settings:', error)
     }
   }
 
@@ -562,6 +579,48 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   containers. Your keys remain on your host machine and are never copied into containers.
                 </p>
               </div>
+            </div>
+
+            {/* Docker Socket Access */}
+            <div className="bg-card border rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-2">Docker Socket Access</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Mount the Docker socket into containers for testcontainers and integration tests
+              </p>
+
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <Label htmlFor="docker-socket-enabled">Enable Docker Socket Access</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allows containers to spawn sibling containers (required for testcontainers)
+                  </p>
+                </div>
+                <Switch
+                  id="docker-socket-enabled"
+                  checked={settings.docker.dockerSocket?.enabled ?? false}
+                  onCheckedChange={handleDockerSocketToggle}
+                />
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  <strong>Security note:</strong> When enabled, containers can control Docker on your host machine,
+                  including spawning and managing other containers. This is required for integration tests that use
+                  testcontainers-go or similar frameworks. Only enable if you need to run integration tests that
+                  require Docker access.
+                </p>
+              </div>
+
+              {settings.docker.dockerSocket?.enabled && (
+                <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    <strong>How it works:</strong> The Docker socket (<code className="bg-muted px-1 rounded">/var/run/docker.sock</code>)
+                    is mounted into containers, allowing them to communicate with your host's Docker daemon.
+                    On macOS, the <code className="bg-muted px-1 rounded">TESTCONTAINERS_HOST_OVERRIDE</code> environment
+                    variable is automatically set to enable proper networking with spawned containers.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )
