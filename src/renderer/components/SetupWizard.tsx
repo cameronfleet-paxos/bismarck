@@ -3,8 +3,8 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy } from 'lucide-react'
-import type { DiscoveredRepo, Agent, PlanModeDependencies } from '@/shared/types'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle } from 'lucide-react'
+import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 
 // German/Bismarck-related fun facts for the loading screen
 const BISMARCK_FACTS = [
@@ -60,6 +60,10 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentFactIndex, setCurrentFactIndex] = useState(0)
   const factIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // Real-time progress tracking
+  const [repoStatuses, setRepoStatuses] = useState<Map<string, DescriptionProgressEvent>>(new Map())
+  const [latestQuote, setLatestQuote] = useState<string | null>(null)
+  const [completedCount, setCompletedCount] = useState(0)
   // Plan mode step state
   const [planModeEnabled, setPlanModeEnabled] = useState(false)
   const [dependencies, setDependencies] = useState<PlanModeDependencies | null>(null)
@@ -67,6 +71,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isDetectingToken, setIsDetectingToken] = useState(false)
   const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
+  // Ref to prevent double-clicks during async operations
+  const isCreatingRef = useRef(false)
 
   // Load suggested paths and check dependencies on mount
   useEffect(() => {
@@ -200,17 +206,58 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     setIsGenerating(true)
     setStep('descriptions')
 
+    // Reset progress state
+    setRepoStatuses(new Map())
+    setLatestQuote(null)
+    setCompletedCount(0)
+
     // Start rotating facts
     setCurrentFactIndex(0)
     factIntervalRef.current = setInterval(() => {
       setCurrentFactIndex(prev => (prev + 1) % BISMARCK_FACTS.length)
     }, 4000)
 
+    // Set up progress listener
+    window.electronAPI.onDescriptionGenerationProgress((event: DescriptionProgressEvent) => {
+      setRepoStatuses(prev => {
+        const next = new Map(prev)
+        next.set(event.repoPath, event)
+        return next
+      })
+
+      // Update counts and quote on completion
+      if (event.status === 'completed' || event.status === 'error') {
+        setCompletedCount(prev => prev + 1)
+        if (event.quote) {
+          setLatestQuote(event.quote)
+        }
+      }
+
+      // Update local state with results as they come in
+      if (event.status === 'completed' && event.result) {
+        setRepoPurposes(prev => {
+          const next = new Map(prev)
+          next.set(event.repoPath, event.result!.purpose)
+          return next
+        })
+        setRepoCompletionCriteria(prev => {
+          const next = new Map(prev)
+          next.set(event.repoPath, event.result!.completionCriteria)
+          return next
+        })
+        setRepoProtectedBranches(prev => {
+          const next = new Map(prev)
+          next.set(event.repoPath, event.result!.protectedBranches)
+          return next
+        })
+      }
+    })
+
     try {
       const reposToGenerate = discoveredRepos.filter(r => selectedRepos.has(r.path))
       const results = await window.electronAPI.setupWizardGenerateDescriptions(reposToGenerate)
 
-      // Convert results to Maps
+      // Convert results to Maps (final state, though we've already updated incrementally)
       const purposeMap = new Map<string, string>()
       const criteriaMap = new Map<string, string>()
       const branchesMap = new Map<string, string[]>()
@@ -242,11 +289,16 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         clearInterval(factIntervalRef.current)
         factIntervalRef.current = null
       }
+      // Clean up the progress listener
+      window.electronAPI.removeDescriptionGenerationProgressListener()
     }
   }
 
   // Final agent creation with purposes, completion criteria, and protected branches
   const handleCreateAgents = async () => {
+    // Prevent double-clicks using ref (synchronous check)
+    if (isCreatingRef.current) return
+    isCreatingRef.current = true
     setIsCreating(true)
     setError(null)
 
@@ -266,6 +318,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       console.error('Failed to create agents:', err)
       setError('Failed to create agents')
     } finally {
+      isCreatingRef.current = false
       setIsCreating(false)
     }
   }
@@ -307,6 +360,9 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
   // Final step: save plan mode preference and create agents
   const handleContinueFromPlanMode = async () => {
+    // Prevent double-clicks using ref (synchronous check)
+    if (isCreatingRef.current) return
+    isCreatingRef.current = true
     setIsCreating(true)
     setError(null)
 
@@ -329,6 +385,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       console.error('Failed to create agents:', err)
       setError('Failed to create agents')
     } finally {
+      isCreatingRef.current = false
       setIsCreating(false)
     }
   }
@@ -753,21 +810,95 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           {step === 'descriptions' && (
             <div className="space-y-6">
               {isGenerating ? (
-                /* Loading state with rotating fun facts */
-                <div className="flex flex-col items-center justify-center py-12 space-y-6">
-                  <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                /* Loading state with real-time progress */
+                <div className="space-y-6">
+                  {/* Progress header */}
                   <div className="text-center space-y-2">
                     <h3 className="text-lg font-semibold text-foreground">
-                      Generating Descriptions...
+                      Analyzing Repositories...
                     </h3>
-                    <p className="text-sm text-muted-foreground max-w-md">
-                      Using AI to create purpose descriptions for your repositories
+                    <p className="text-sm text-muted-foreground">
+                      {completedCount} of {selectedRepos.size} complete
                     </p>
                   </div>
 
-                  {/* Fun fact card */}
-                  <div className="bg-muted/50 border border-border rounded-lg p-4 max-w-lg">
-                    <p className="text-sm text-muted-foreground italic">
+                  {/* Progress bar */}
+                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-primary h-full transition-all duration-500 ease-out"
+                      style={{ width: `${selectedRepos.size > 0 ? (completedCount / selectedRepos.size) * 100 : 0}%` }}
+                    />
+                  </div>
+
+                  {/* Victory quote card - animated appearance */}
+                  {latestQuote && (
+                    <div
+                      key={latestQuote}
+                      className="bg-primary/10 border border-primary/20 rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300"
+                    >
+                      <p className="text-sm text-foreground italic text-center">
+                        "{latestQuote}"
+                      </p>
+                      <p className="text-xs text-muted-foreground text-center mt-2">— Otto von Bismarck</p>
+                    </div>
+                  )}
+
+                  {/* Repository grid with status icons */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto p-1">
+                    {discoveredRepos
+                      .filter(r => selectedRepos.has(r.path))
+                      .map((repo) => {
+                        const status = repoStatuses.get(repo.path)
+                        const statusValue = status?.status || 'pending'
+                        return (
+                          <div
+                            key={repo.path}
+                            className={`
+                              relative rounded-lg border p-3 transition-all duration-300
+                              ${statusValue === 'pending' ? 'border-border bg-card' : ''}
+                              ${statusValue === 'generating' ? 'border-primary bg-primary/5' : ''}
+                              ${statusValue === 'completed' ? 'border-green-500/50 bg-green-500/5' : ''}
+                              ${statusValue === 'error' ? 'border-destructive/50 bg-destructive/5' : ''}
+                            `}
+                          >
+                            {/* Status icon */}
+                            <div className="absolute top-2 right-2">
+                              {statusValue === 'pending' && (
+                                <Circle className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              {statusValue === 'generating' && (
+                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                              )}
+                              {statusValue === 'completed' && (
+                                <div className="animate-in zoom-in duration-200">
+                                  <Check className="h-4 w-4 text-green-500" />
+                                </div>
+                              )}
+                              {statusValue === 'error' && (
+                                <X className="h-4 w-4 text-destructive" />
+                              )}
+                            </div>
+
+                            {/* Repo name */}
+                            <h4 className="font-medium text-sm text-foreground pr-6 truncate">
+                              {repo.name}
+                            </h4>
+
+                            {/* Status text */}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {statusValue === 'pending' && 'Waiting...'}
+                              {statusValue === 'generating' && 'Generating...'}
+                              {statusValue === 'completed' && 'Complete'}
+                              {statusValue === 'error' && (status?.error || 'Error')}
+                            </p>
+                          </div>
+                        )
+                      })}
+                  </div>
+
+                  {/* Rotating fun facts at the bottom */}
+                  <div className="bg-muted/50 border border-border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground italic text-center">
                       "{BISMARCK_FACTS[currentFactIndex]}"
                     </p>
                   </div>
@@ -805,7 +936,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                               Purpose
                             </Label>
                             <textarea
-                              className="w-full min-h-[60px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                              className="w-full min-h-[100px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                               placeholder="What does this repository do?"
                               value={repoPurposes.get(repo.path) || ''}
                               onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
@@ -818,7 +949,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                               Completion Criteria
                             </Label>
                             <textarea
-                              className="w-full min-h-[60px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
+                              className="w-full min-h-[120px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
                               placeholder="- Tests pass&#10;- Code is linted&#10;- Build succeeds"
                               value={repoCompletionCriteria.get(repo.path) || ''}
                               onChange={(e) => handleUpdateCompletionCriteria(repo.path, e.target.value)}

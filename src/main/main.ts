@@ -684,7 +684,9 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:generate-descriptions', async (_event, repos: DiscoveredRepo[]) => {
-    return generateDescriptions(repos)
+    return generateDescriptions(repos, (progressEvent) => {
+      mainWindow?.webContents.send('description-generation-progress', progressEvent)
+    })
   })
 
   ipcMain.handle('setup-wizard:check-plan-mode-deps', async () => {

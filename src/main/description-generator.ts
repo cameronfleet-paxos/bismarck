@@ -8,7 +8,7 @@
 
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import type { DiscoveredRepo } from '../shared/types'
+import type { DiscoveredRepo, DescriptionProgressEvent } from '../shared/types'
 import { getDefaultBranch } from './git-utils'
 import { spawnWithPath, findBinary } from './exec-utils'
 
@@ -18,6 +18,30 @@ export interface DescriptionResult {
   completionCriteria: string
   protectedBranches: string[]
   error?: string
+}
+
+// Bismarck victory quotes for celebrating each completed repository analysis
+const BISMARCK_VICTORY_QUOTES = [
+  "The great questions of the day will not be settled by speeches — but by iron and code!",
+  "Not by rhetoric, but by repositories.",
+  "A conquering army cannot be stopped!",
+  "Laws are like sausages — it is best not to see them being made. Unlike this code.",
+  "When you want to fool the world, tell the truth. This repo speaks for itself.",
+  "Politics is the art of the possible. So is good software.",
+  "Be polite; write diplomatically; even in a declaration of war one observes the rules of politeness.",
+  "Never believe anything until it has been officially denied. Or until tests pass.",
+  "People never lie so much as after a hunt, during a war, or before an election. But code never lies.",
+  "With a gentleman I am always a gentleman and a half.",
+  "The main thing is to make history, not to write it. This repo is ready.",
+  "An appeal to fear never finds an echo in German hearts. Nor in well-documented code.",
+  "Anyone who has ever looked into the glazed eyes of a soldier dying on the battlefield will think hard before starting a war. Same for production bugs.",
+  "A government must not waiver once it has chosen its course. It must not look to the left or right but go forward.",
+  "The secret of politics? Make a good treaty with Russia. The secret of code? Good documentation."
+]
+
+// Get a random victory quote
+function getRandomVictoryQuote(): string {
+  return BISMARCK_VICTORY_QUOTES[Math.floor(Math.random() * BISMARCK_VICTORY_QUOTES.length)]
 }
 
 /**
@@ -69,48 +93,120 @@ async function detectProtectedBranches(repoPath: string): Promise<string[]> {
 /**
  * Generate purpose descriptions for multiple repositories using Claude Haiku via claude CLI
  * Calls are made in parallel for efficiency
+ *
+ * @param repos - Repositories to generate descriptions for
+ * @param onProgress - Optional callback for real-time progress updates
  */
 export async function generateDescriptions(
-  repos: DiscoveredRepo[]
+  repos: DiscoveredRepo[],
+  onProgress?: (event: DescriptionProgressEvent) => void
 ): Promise<DescriptionResult[]> {
+  // Emit initial pending status for all repos
+  if (onProgress) {
+    for (const repo of repos) {
+      onProgress({
+        repoPath: repo.path,
+        repoName: repo.name,
+        status: 'pending',
+      })
+    }
+  }
+
   // Check if claude CLI is available
   const claudePath = findBinary('claude')
   if (!claudePath) {
     console.log('[DescriptionGenerator] Claude CLI not found, returning empty descriptions')
     // Still detect protected branches even without claude CLI
     const results = await Promise.all(
-      repos.map(async (repo) => ({
-        repoPath: repo.path,
-        purpose: '',
-        completionCriteria: '',
-        protectedBranches: await detectProtectedBranches(repo.path),
-      }))
+      repos.map(async (repo) => {
+        const protectedBranches = await detectProtectedBranches(repo.path)
+        const result = {
+          repoPath: repo.path,
+          purpose: '',
+          completionCriteria: '',
+          protectedBranches,
+        }
+        // Emit completed status (even though we didn't generate descriptions)
+        if (onProgress) {
+          onProgress({
+            repoPath: repo.path,
+            repoName: repo.name,
+            status: 'completed',
+            result: {
+              purpose: '',
+              completionCriteria: '',
+              protectedBranches,
+            },
+            quote: getRandomVictoryQuote(),
+          })
+        }
+        return result
+      })
     )
     return results
   }
 
   const results = await Promise.all(
     repos.map(async (repo): Promise<DescriptionResult> => {
+      // Emit generating status
+      if (onProgress) {
+        onProgress({
+          repoPath: repo.path,
+          repoName: repo.name,
+          status: 'generating',
+        })
+      }
+
       try {
         const [description, protectedBranches] = await Promise.all([
           generateSingleDescription(repo),
           detectProtectedBranches(repo.path),
         ])
-        return {
+
+        const result = {
           repoPath: repo.path,
           purpose: description.purpose,
           completionCriteria: description.completionCriteria,
           protectedBranches,
         }
+
+        // Emit completed status with result and victory quote
+        if (onProgress) {
+          onProgress({
+            repoPath: repo.path,
+            repoName: repo.name,
+            status: 'completed',
+            result: {
+              purpose: description.purpose,
+              completionCriteria: description.completionCriteria,
+              protectedBranches,
+            },
+            quote: getRandomVictoryQuote(),
+          })
+        }
+
+        return result
       } catch (error) {
         console.error(`[DescriptionGenerator] Error generating description for ${repo.path}:`, error)
         const protectedBranches = await detectProtectedBranches(repo.path)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        // Emit error status
+        if (onProgress) {
+          onProgress({
+            repoPath: repo.path,
+            repoName: repo.name,
+            status: 'error',
+            error: errorMessage,
+          })
+        }
+
         return {
           repoPath: repo.path,
           purpose: '',
           completionCriteria: '',
           protectedBranches,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
         }
       }
     })

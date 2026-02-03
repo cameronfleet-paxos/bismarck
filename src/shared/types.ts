@@ -513,6 +513,19 @@ export interface DiscoveredRepo {
   lastCommitDate?: string // ISO 8601 timestamp of most recent commit
 }
 
+// Description generation progress status
+export type DescriptionGenerationStatus = 'pending' | 'generating' | 'completed' | 'error'
+
+// Progress event for real-time description generation feedback
+export interface DescriptionProgressEvent {
+  repoPath: string
+  repoName: string
+  status: DescriptionGenerationStatus
+  result?: { purpose: string; completionCriteria: string; protectedBranches: string[] }
+  error?: string
+  quote?: string
+}
+
 // ============================================
 // Plan Mode Dependency Types
 // ============================================

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -238,6 +238,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('ralph-loop-event', (_event, data) => callback(data))
   },
 
+  // Description generation progress events
+  onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void): void => {
+    ipcRenderer.on('description-generation-progress', (_event, progress) => callback(progress))
+  },
+  removeDescriptionGenerationProgressListener: (): void => {
+    ipcRenderer.removeAllListeners('description-generation-progress')
+  },
+
   // Bead task events
   onBeadTasksUpdated: (callback: (planId: string) => void): void => {
     ipcRenderer.on('bead-tasks-updated', (_event, planId) => callback(planId))
@@ -364,6 +372,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('bead-tasks-updated')
     ipcRenderer.removeAllListeners('ralph-loop-update')
     ipcRenderer.removeAllListeners('ralph-loop-event')
+    ipcRenderer.removeAllListeners('description-generation-progress')
   },
 
   // Dev test harness (development mode only)
