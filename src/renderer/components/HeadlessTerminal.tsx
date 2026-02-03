@@ -12,7 +12,7 @@
  * - Auto-scroll to latest output
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, ReactNode } from 'react'
 import type {
   ThemeName,
   StreamEvent,
@@ -23,6 +23,84 @@ import type {
 } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { extractPRUrl } from '@/shared/pr-utils'
+
+// URL regex pattern
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+
+// File path regex - matches absolute paths like /path/to/file or ~/path/to/file
+// Also matches line numbers like :123 or :123:45
+const FILE_PATH_REGEX = /(?:\/[\w.-]+)+(?::(\d+)(?::(\d+))?)?|~\/[\w./-]+(?::(\d+)(?::(\d+))?)?/g
+
+/**
+ * Make URLs and file paths in text clickable
+ */
+function makeLinksClickable(text: string): ReactNode[] {
+  const result: ReactNode[] = []
+  let lastIndex = 0
+
+  // Combined pattern for both URLs and file paths
+  const combinedPattern = new RegExp(
+    `(${URL_REGEX.source})|(${FILE_PATH_REGEX.source})`,
+    'g'
+  )
+
+  let match
+  while ((match = combinedPattern.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      result.push(text.slice(lastIndex, match.index))
+    }
+
+    const matchedText = match[0]
+
+    if (matchedText.startsWith('http')) {
+      // It's a URL
+      result.push(
+        <a
+          key={`url-${match.index}`}
+          href={matchedText}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            window.electronAPI?.openExternal?.(matchedText)
+          }}
+          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+          title={`Open: ${matchedText}`}
+        >
+          {matchedText}
+        </a>
+      )
+    } else {
+      // It's a file path
+      result.push(
+        <span
+          key={`file-${match.index}`}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            // Extract the file path without line numbers for opening
+            const pathOnly = matchedText.replace(/:\d+(?::\d+)?$/, '')
+            // Use shell open to reveal in finder/explorer
+            window.electronAPI?.openExternal?.(`file://${pathOnly.startsWith('~') ? pathOnly.replace('~', process.env.HOME || '') : pathOnly}`)
+          }}
+          className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+          title={`Open: ${matchedText}`}
+        >
+          {matchedText}
+        </span>
+      )
+    }
+
+    lastIndex = match.index + matchedText.length
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex))
+  }
+
+  return result.length > 0 ? result : [text]
+}
 
 interface HeadlessTerminalProps {
   events: StreamEvent[]
@@ -424,7 +502,7 @@ export function HeadlessTerminal({
           >
             <span className="text-white flex-shrink-0">⏺</span>
             <p className="whitespace-pre-wrap">
-              {para.trim()}
+              {makeLinksClickable(para.trim())}
             </p>
           </div>
         ))}
@@ -484,16 +562,20 @@ export function HeadlessTerminal({
         {/* For Task tools, show subagent output with elbow brackets */}
         {isTaskTool && taskOutput && (
           <div className="ml-2 mt-1 space-y-0.5">
-            {taskOutput.split('\n').filter(line => line.trim()).slice(0, 10).map((line, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className={`flex-shrink-0 ${hasError ? 'text-red-400' : 'text-zinc-500'}`}>
-                  ⎿
-                </span>
-                <span className={`${hasError ? 'text-red-400' : 'text-zinc-400'} break-all`}>
-                  {line.trim().length > 100 ? line.trim().slice(0, 100) + '...' : line.trim()}
-                </span>
-              </div>
-            ))}
+            {taskOutput.split('\n').filter(line => line.trim()).slice(0, 10).map((line, i) => {
+              const trimmedLine = line.trim()
+              const displayLine = trimmedLine.length > 100 ? trimmedLine.slice(0, 100) + '...' : trimmedLine
+              return (
+                <div key={i} className="flex items-start gap-2">
+                  <span className={`flex-shrink-0 ${hasError ? 'text-red-400' : 'text-zinc-500'}`}>
+                    ⎿
+                  </span>
+                  <span className={`${hasError ? 'text-red-400' : 'text-zinc-400'} break-all`}>
+                    {makeLinksClickable(displayLine)}
+                  </span>
+                </div>
+              )
+            })}
             {taskOutput.split('\n').filter(line => line.trim()).length > 10 && (
               <div className="flex items-start gap-2">
                 <span className="flex-shrink-0 text-zinc-500">⎿</span>
@@ -512,7 +594,7 @@ export function HeadlessTerminal({
               ⎿
             </span>
             <span className={`${hasError ? 'text-red-400' : 'text-zinc-400'} break-all`}>
-              {outputPreview.slice(2)}
+              {makeLinksClickable(outputPreview.slice(2))}
             </span>
           </div>
         )}
@@ -549,9 +631,11 @@ export function HeadlessTerminal({
                       hasError ? 'bg-red-900/20 text-red-300' : 'bg-black/30 text-zinc-300'
                     }`}
                   >
-                    {toolResult.output.length > 2000
-                      ? toolResult.output.substring(0, 2000) + '\n... (truncated)'
-                      : toolResult.output}
+                    {makeLinksClickable(
+                      toolResult.output.length > 2000
+                        ? toolResult.output.substring(0, 2000) + '\n... (truncated)'
+                        : toolResult.output
+                    )}
                   </pre>
                 </div>
               )}
