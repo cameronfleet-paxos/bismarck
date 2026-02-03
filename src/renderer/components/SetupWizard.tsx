@@ -94,8 +94,15 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         return
       }
 
-      setDiscoveredRepos(repos)
-      // Don't auto-select - let users choose their most used repos
+      // Add root directory as a special entry at the top
+      const rootName = pathToScan.split('/').pop() || 'root'
+      const rootEntry: DiscoveredRepo = {
+        path: pathToScan,
+        name: `${rootName} (root)`,
+      }
+      setDiscoveredRepos([rootEntry, ...repos])
+      // Pre-select the root directory only
+      setSelectedRepos(new Set([pathToScan]))
       // Save the selected path
       await window.electronAPI.setupWizardSaveDefaultReposPath(pathToScan)
       setStep('repos')
