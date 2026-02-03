@@ -65,7 +65,7 @@ export function TabBar({
   }
 
   return (
-    <div className="border-b bg-muted/30 flex items-center px-2 py-1 gap-1 overflow-x-auto">
+    <div data-tutorial="tabs" className="border-b bg-muted/30 flex items-center px-2 py-1 gap-1 overflow-x-auto">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         const isEditing = editingTabId === tab.id

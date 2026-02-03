@@ -1594,7 +1594,7 @@ function App() {
                   }
                 }
                 return (
-                  <div className="space-y-3">
+                  <div data-tutorial="agents" className="space-y-3">
                     {/* Plan groups */}
                     {planGroups.map(({ plan, agents: planAgents }) => (
                       <PlanAgentGroup

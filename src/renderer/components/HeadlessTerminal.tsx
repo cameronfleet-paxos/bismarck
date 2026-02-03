@@ -851,6 +851,7 @@ export function HeadlessTerminal({
 
   return (
     <div
+      data-tutorial="headless"
       className="w-full h-full flex flex-col overflow-hidden"
       style={{ backgroundColor: themeColors.bg, color: themeColors.fg }}
     >
