@@ -76,6 +76,7 @@ export interface Agent {
   taskId?: string               // Associated task ID
   isHeadless?: boolean          // Running in headless Docker mode (no interactive terminal)
   isStandaloneHeadless?: boolean // Standalone headless agent (not part of a plan)
+  order?: number                 // Display order in sidebar (lower = higher in list)
 }
 
 // Alias for backwards compatibility

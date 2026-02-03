@@ -838,7 +838,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Create plan agent workspace (runs in plan directory so bd commands work without cd)
       const planAgentWorkspace: Workspace = {
         id: `plan-agent-${planId}`,
-        name: `Plan Agent (${plan.title})`,
+        name: `Planner (${plan.title})`,
         directory: planDir, // Plan agent runs in plan directory for bd commands
         purpose: 'Initial discovery and task creation',
         theme: 'blue',
@@ -1739,11 +1739,11 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
 }
 
 /**
- * Build the prompt for the plan agent that creates tasks
- * Note: Plan agent runs in the plan directory so bd commands work directly
+ * Build the prompt for the planner that creates tasks
+ * Note: Planner runs in the plan directory so bd commands work directly
  * It has access to the codebase via --add-dir flag for analysis
  *
- * The Plan Agent is responsible for:
+ * The Planner is responsible for:
  * - Analyzing the codebase
  * - Creating epic + tasks
  * - Setting up dependencies

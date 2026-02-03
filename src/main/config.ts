@@ -232,7 +232,12 @@ export function saveConfig(config: AppConfig): void {
 // Workspace operations
 export function getWorkspaces(): Workspace[] {
   const config = loadConfig()
-  return config.workspaces
+  // Sort by order field (undefined values go to end, maintaining insertion order)
+  return [...config.workspaces].sort((a, b) => {
+    const orderA = a.order ?? Number.MAX_SAFE_INTEGER
+    const orderB = b.order ?? Number.MAX_SAFE_INTEGER
+    return orderA - orderB
+  })
 }
 
 export function saveWorkspace(workspace: Workspace): Workspace {
@@ -252,6 +257,18 @@ export function saveWorkspace(workspace: Workspace): Workspace {
 export function deleteWorkspace(id: string): void {
   const config = loadConfig()
   config.workspaces = config.workspaces.filter((w) => w.id !== id)
+  saveConfig(config)
+}
+
+export function reorderWorkspaces(workspaceIds: string[]): void {
+  const config = loadConfig()
+  // Assign order values based on the provided array order
+  for (let i = 0; i < workspaceIds.length; i++) {
+    const workspace = config.workspaces.find((w) => w.id === workspaceIds[i])
+    if (workspace) {
+      workspace.order = i
+    }
+  }
   saveConfig(config)
 }
 

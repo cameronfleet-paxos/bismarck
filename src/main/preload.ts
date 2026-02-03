@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-workspace', workspace),
   deleteWorkspace: (id: string): Promise<void> =>
     ipcRenderer.invoke('delete-workspace', id),
+  reorderWorkspaces: (workspaceIds: string[]): Promise<void> =>
+    ipcRenderer.invoke('reorder-workspaces', workspaceIds),
 
   // Terminal management
   createTerminal: (workspaceId: string): Promise<string> =>
@@ -265,7 +267,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:get-common-repo-paths'),
   setupWizardScanForRepositories: (parentPath: string, depth?: number): Promise<DiscoveredRepo[]> =>
     ipcRenderer.invoke('setup-wizard:scan-for-repositories', parentPath, depth),
-  setupWizardBulkCreateAgents: (repos: DiscoveredRepo[]): Promise<Workspace[]> =>
+  setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string; completionCriteria?: string; protectedBranches?: string[] })[]): Promise<Workspace[]> =>
     ipcRenderer.invoke('setup-wizard:bulk-create-agents', repos),
   setupWizardSaveDefaultReposPath: (reposPath: string): Promise<void> =>
     ipcRenderer.invoke('setup-wizard:save-default-repos-path', reposPath),
@@ -279,6 +281,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('setup-wizard:enable-plan-mode', enabled),
   setupWizardDetectAndSaveGitHubToken: (): Promise<{ success: boolean; source: string | null }> =>
     ipcRenderer.invoke('setup-wizard:detect-and-save-github-token'),
+  setupWizardGroupAgentsIntoTabs: (agents: Workspace[]): Promise<AgentTab[]> =>
+    ipcRenderer.invoke('setup-wizard:group-agents-into-tabs', agents),
 
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>

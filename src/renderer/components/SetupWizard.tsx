@@ -784,12 +784,12 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     </p>
                   </div>
 
-                  {/* Descriptions list */}
-                  <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                  {/* Descriptions list - 2 column grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto">
                     {discoveredRepos
                       .filter(r => selectedRepos.has(r.path))
                       .map((repo) => (
-                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-4">
+                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-3">
                           <div>
                             <Label className="text-sm font-medium text-foreground block mb-1">
                               {repo.name}
@@ -872,23 +872,23 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 5: Plan Mode */}
+          {/* Step 5: Headless Agents */}
           {step === 'plan-mode' && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Enable Plan Mode
+                  Enable Headless Agents
                 </h2>
                 <p className="text-muted-foreground text-sm">
-                  Plan mode allows multiple AI agents to work on tasks in parallel using Docker containers.
+                  Headless agents run AI agents in parallel using Docker containers.
                 </p>
               </div>
 
-              {/* Plan Mode Toggle */}
+              {/* Headless Agents Toggle */}
               <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
                 <div className="flex-1">
                   <Label htmlFor="plan-mode-toggle" className="text-sm font-medium text-foreground">
-                    Enable Plan Mode
+                    Enable Headless Agents
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
                     Run parallel agents in isolated Docker containers

@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -86,10 +86,20 @@ function App() {
   // Track which terminals have finished booting (by terminalId)
   const [bootedTerminals, setBootedTerminals] = useState<Set<string>>(new Set())
 
-  // Drag-and-drop state
+  // Drag-and-drop state (for terminal grid)
   const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(null)
   const [dropTargetPosition, setDropTargetPosition] = useState<number | null>(null)
   const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null)
+
+  // Drag-and-drop state for sidebar agent reordering
+  const [sidebarDraggedAgentId, setSidebarDraggedAgentId] = useState<string | null>(null)
+  const [sidebarDropTargetAgentId, setSidebarDropTargetAgentId] = useState<string | null>(null)
+
+  // Drag-and-drop state for headless agents in plan tabs
+  const [draggedHeadlessId, setDraggedHeadlessId] = useState<string | null>(null)
+  const [dropTargetHeadlessId, setDropTargetHeadlessId] = useState<string | null>(null)
+  // Custom order for headless agents per plan (id -> display index)
+  const [headlessAgentOrder, setHeadlessAgentOrder] = useState<Map<string, string[]>>(new Map())
 
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
@@ -751,6 +761,69 @@ function App() {
     setModalOpen(true)
   }
 
+  // Handle sidebar agent reorder via drag-and-drop
+  const handleSidebarAgentReorder = async (draggedId: string, targetId: string) => {
+    // Get standalone agents only (plan agents shouldn't be reordered this way)
+    const { standaloneAgents } = groupAgentsByPlan()
+    const currentOrder = standaloneAgents.map(a => a.id)
+
+    const dragIndex = currentOrder.indexOf(draggedId)
+    const targetIndex = currentOrder.indexOf(targetId)
+
+    if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+      return
+    }
+
+    // Remove dragged item and insert at target position
+    const newOrder = [...currentOrder]
+    newOrder.splice(dragIndex, 1)
+    newOrder.splice(targetIndex, 0, draggedId)
+
+    // Persist the new order
+    await window.electronAPI?.reorderWorkspaces?.(newOrder)
+    await loadAgents()
+  }
+
+  // Handle headless agent reorder via drag-and-drop within plan tab
+  const handleHeadlessAgentReorder = (planId: string, draggedId: string, targetId: string) => {
+    setHeadlessAgentOrder((prev) => {
+      const newMap = new Map(prev)
+      const currentOrder = newMap.get(planId) || []
+
+      // Get all headless agents for this plan
+      const planAgentIds = Array.from(headlessAgents.values())
+        .filter((info) => info.planId === planId)
+        .map((info) => info.id)
+
+      // Build the order array - use existing order or default to current list order
+      let orderedIds = currentOrder.length > 0
+        ? currentOrder.filter((id) => planAgentIds.includes(id))
+        : planAgentIds
+
+      // Add any new agents that aren't in the order yet
+      for (const id of planAgentIds) {
+        if (!orderedIds.includes(id)) {
+          orderedIds.push(id)
+        }
+      }
+
+      const dragIndex = orderedIds.indexOf(draggedId)
+      const targetIndex = orderedIds.indexOf(targetId)
+
+      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+        return prev
+      }
+
+      // Remove dragged item and insert at target position
+      orderedIds = [...orderedIds]
+      orderedIds.splice(dragIndex, 1)
+      orderedIds.splice(targetIndex, 0, draggedId)
+
+      newMap.set(planId, orderedIds)
+      return newMap
+    })
+  }
+
   const handleStopHeadlessAgent = async (agent: Agent) => {
     if (agent.taskId) {
       await window.electronAPI?.stopHeadlessAgent?.(agent.taskId)
@@ -1052,8 +1125,28 @@ function App() {
     }
     const agentInfos = Array.from(headlessAgents.values()).filter((info) => info.planId === plan.id)
     console.log('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
+
+    // Apply custom order if available
+    const customOrder = headlessAgentOrder.get(plan.id)
+    if (customOrder && customOrder.length > 0) {
+      const orderedInfos: HeadlessAgentInfo[] = []
+      for (const id of customOrder) {
+        const info = agentInfos.find((i) => i.id === id)
+        if (info) {
+          orderedInfos.push(info)
+        }
+      }
+      // Add any agents not in the custom order at the end
+      for (const info of agentInfos) {
+        if (!customOrder.includes(info.id)) {
+          orderedInfos.push(info)
+        }
+      }
+      return orderedInfos
+    }
+
     return agentInfos
-  }, [plans, headlessAgents])
+  }, [plans, headlessAgents, headlessAgentOrder])
 
   // Get standalone headless agents for a regular tab
   const getStandaloneHeadlessForTab = useCallback((tab: AgentTab): Array<{ agent: Agent; info: HeadlessAgentInfo }> => {
@@ -1289,8 +1382,26 @@ function App() {
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
+            // Group agents into logical tabs using Haiku analysis
+            if (newAgents && newAgents.length > 0) {
+              await window.electronAPI.setupWizardGroupAgentsIntoTabs(newAgents)
+            }
             // Reload agents after wizard creates them
             await loadAgents()
+            // Refresh tabs to get the grouped state
+            const state = await window.electronAPI.getState()
+            setTabs(state.tabs || [])
+            setActiveTabId(state.activeTabId)
+            // Auto-launch all agents to give user a ready-to-go experience
+            if (newAgents && newAgents.length > 0) {
+              for (const agent of newAgents) {
+                // Skip headless agents - they don't use terminals
+                if (!agent.isHeadless && !agent.isStandaloneHeadless) {
+                  const terminalId = await window.electronAPI.createTerminal(agent.id)
+                  setActiveTerminals((prev) => [...prev, { terminalId, workspaceId: agent.id }])
+                }
+              }
+            }
           }}
           onSkip={() => {
             // Open the manual agent creation modal
@@ -1534,6 +1645,32 @@ function App() {
                           onStop={() => handleStopAgent(agent.id)}
                           onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
                           onStopHeadless={() => handleStopHeadlessAgent(agent)}
+                          // Drag-and-drop for sidebar reordering
+                          draggable={true}
+                          isDragging={sidebarDraggedAgentId === agent.id}
+                          isDropTarget={sidebarDropTargetAgentId === agent.id}
+                          onDragStart={() => setSidebarDraggedAgentId(agent.id)}
+                          onDragEnd={() => {
+                            setSidebarDraggedAgentId(null)
+                            setSidebarDropTargetAgentId(null)
+                          }}
+                          onDragOver={() => {
+                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
+                              setSidebarDropTargetAgentId(agent.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (sidebarDropTargetAgentId === agent.id) {
+                              setSidebarDropTargetAgentId(null)
+                            }
+                          }}
+                          onDrop={() => {
+                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
+                              handleSidebarAgentReorder(sidebarDraggedAgentId, agent.id)
+                            }
+                            setSidebarDraggedAgentId(null)
+                            setSidebarDropTargetAgentId(null)
+                          }}
                         />
                       )
                     })}
@@ -1784,15 +1921,51 @@ function App() {
                       console.log('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
+                      const isDragging = draggedHeadlessId === info.id
+                      const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
                       return (
                         <div
                           key={info.id}
+                          draggable={!expandedAgentId}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('headlessId', info.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                            setDraggedHeadlessId(info.id)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id) {
+                              setDropTargetHeadlessId(info.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === info.id) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id && info.planId) {
+                              handleHeadlessAgentReorder(info.planId, draggedHeadlessId, info.id)
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''} ${
+                            !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                          }`}
                         >
                           <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
                             <div className="flex items-center gap-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               <span>Task {info.taskId}</span>
                             </div>
                             <div className="flex items-center gap-2">

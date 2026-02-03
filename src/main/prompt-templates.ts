@@ -124,7 +124,7 @@ Plan ID: {{planId}}
 Title: {{planTitle}}
 
 You are the orchestrator. Your job is to:
-1. Wait for Plan Agent to finish creating tasks
+1. Wait for Planner to finish creating tasks
 2. Assign each task to a repository and worktree
 3. Mark first task(s) as ready for execution
 4. Monitor task completion and unblock dependents
@@ -182,7 +182,7 @@ For exclusion, use "not" instead:
   bd --sandbox list --json | jq '.[] | select(.id == "x" | not)'
 
 === WORKFLOW ===
-Phase 1 - Initial Setup (after Plan Agent exits):
+Phase 1 - Initial Setup (after Planner exits):
 1. List all tasks: bd --sandbox list --json
 2. For each task:
    a. Decide which repository it belongs to
@@ -195,16 +195,16 @@ Phase 2 - Monitoring (every 30 seconds):
 3. Check if dependent's blockers are all closed
 4. If all blockers closed, mark the dependent task as ready
 
-Begin by waiting for the Plan Agent to create tasks, then start assigning repositories and worktrees.`,
+Begin by waiting for the Planner to create tasks, then start assigning repositories and worktrees.`,
 
-  planner: `[BISMARCK PLAN AGENT]
+  planner: `[BISMARCK PLANNER]
 Plan ID: {{planId}}
 Title: {{planTitle}}
 
 {{planDescription}}
 {{discussionContext}}
 === YOUR TASK ===
-You are the Plan Agent. Your job is to:
+You are the Planner. Your job is to:
 1. Understand the problem/feature described above
 2. Break it down into discrete tasks
 3. Create those tasks in bd with proper dependencies

@@ -6,6 +6,7 @@ export interface ElectronAPI {
   getWorkspaces: () => Promise<Workspace[]>
   saveWorkspace: (workspace: Workspace) => Promise<Workspace>
   deleteWorkspace: (id: string) => Promise<void>
+  reorderWorkspaces: (workspaceIds: string[]) => Promise<void>
 
   // Terminal management
   createTerminal: (workspaceId: string) => Promise<string>
@@ -109,13 +110,14 @@ export interface ElectronAPI {
   setupWizardShowFolderPicker: () => Promise<string | null>
   setupWizardGetCommonRepoPaths: () => Promise<string[]>
   setupWizardScanForRepositories: (parentPath: string, depth?: number) => Promise<DiscoveredRepo[]>
-  setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string })[]) => Promise<Workspace[]>
+  setupWizardBulkCreateAgents: (repos: (DiscoveredRepo & { purpose?: string; completionCriteria?: string; protectedBranches?: string[] })[]) => Promise<Workspace[]>
   setupWizardSaveDefaultReposPath: (reposPath: string) => Promise<void>
   setupWizardGetDefaultReposPath: () => Promise<string | null>
   setupWizardGenerateDescriptions: (repos: DiscoveredRepo[]) => Promise<Array<{ repoPath: string; purpose: string; completionCriteria: string; protectedBranches: string[]; error?: string }>>
   setupWizardCheckPlanModeDeps: () => Promise<import('../shared/types').PlanModeDependencies>
   setupWizardEnablePlanMode: (enabled: boolean) => Promise<void>
   setupWizardDetectAndSaveGitHubToken: () => Promise<{ success: boolean; source: string | null; reason?: string }>
+  setupWizardGroupAgentsIntoTabs: (agents: Workspace[]) => Promise<AgentTab[]>
 
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
