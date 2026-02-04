@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Bismarck Installer
-# One-line install: curl -fsSL https://raw.githubusercontent.com/anthropics/bismarck/main/install.sh | bash
+# One-line install: curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash
 #
 set -e
 
@@ -32,16 +32,16 @@ check_requirements() {
         error "curl is required but not installed"
     fi
 
-    # tar required
-    if ! command -v tar &> /dev/null; then
-        error "tar is required but not installed"
+    # hdiutil required (should always be present on macOS)
+    if ! command -v hdiutil &> /dev/null; then
+        error "hdiutil is required but not installed"
     fi
 }
 
 # Get latest release version from GitHub API
 get_latest_version() {
     local latest
-    latest=$(curl -fsSL "https://api.github.com/repos/anthropics/bismarck/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    latest=$(curl -fsSL "https://api.github.com/repos/cameronfleet-paxos/bismarck/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
     if [[ -z "$latest" ]]; then
         error "Failed to fetch latest release version. Check your internet connection or try specifying a version with BISMARCK_VERSION=v1.0.0"
     fi
@@ -62,23 +62,28 @@ main() {
     fi
     info "Version: $version"
 
-    # Download URL
-    local download_url="https://github.com/anthropics/bismarck/releases/download/${version}/Bismarck-arm64.tar.gz"
+    # Version without 'v' prefix for filename
+    local version_number="${version#v}"
+
+    # Download URL for DMG
+    local download_url="https://github.com/cameronfleet-paxos/bismarck/releases/download/${version}/Bismarck-${version_number}-arm64.dmg"
     local tmp_dir=$(mktemp -d)
-    local archive_path="${tmp_dir}/Bismarck-arm64.tar.gz"
+    local dmg_path="${tmp_dir}/Bismarck.dmg"
+    local mount_point="${tmp_dir}/bismarck_mount"
 
     # Download
     info "Downloading Bismarck..."
-    if ! curl -fsSL "$download_url" -o "$archive_path"; then
+    if ! curl -fsSL "$download_url" -o "$dmg_path"; then
         rm -rf "$tmp_dir"
         error "Failed to download Bismarck from $download_url"
     fi
 
-    # Extract
-    info "Extracting..."
-    if ! tar -xzf "$archive_path" -C "$tmp_dir"; then
+    # Mount DMG
+    info "Mounting disk image..."
+    mkdir -p "$mount_point"
+    if ! hdiutil attach "$dmg_path" -mountpoint "$mount_point" -nobrowse -quiet; then
         rm -rf "$tmp_dir"
-        error "Failed to extract archive"
+        error "Failed to mount disk image"
     fi
 
     # Ensure ~/Applications exists
@@ -90,9 +95,13 @@ main() {
         rm -rf ~/Applications/Bismarck.app
     fi
 
-    # Move to ~/Applications
+    # Copy to ~/Applications
     info "Installing to ~/Applications..."
-    mv "${tmp_dir}/Bismarck.app" ~/Applications/
+    cp -R "${mount_point}/Bismarck.app" ~/Applications/
+
+    # Unmount DMG
+    info "Cleaning up..."
+    hdiutil detach "$mount_point" -quiet || true
 
     # Remove quarantine attribute (allows app to run without Gatekeeper warning)
     info "Removing quarantine attribute..."

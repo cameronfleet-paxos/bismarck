@@ -36,15 +36,6 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
     }
 
     loadData()
-
-    // Listen for update status changes
-    window.electronAPI.onUpdateStatus((status) => {
-      setUpdateStatus(status)
-    })
-
-    return () => {
-      window.electronAPI.removeUpdateStatusListener()
-    }
   }, [])
 
   const showSavedIndicator = () => {
@@ -66,7 +57,8 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
   const handleCheckForUpdates = async () => {
     try {
       setUpdateStatus({ state: 'checking' })
-      await window.electronAPI.checkForUpdates()
+      const status = await window.electronAPI.checkForUpdates()
+      setUpdateStatus(status)
     } catch (error) {
       console.error('Failed to check for updates:', error)
       setUpdateStatus({ state: 'error', message: 'Failed to check for updates' })
