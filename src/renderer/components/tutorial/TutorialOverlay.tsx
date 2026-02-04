@@ -102,7 +102,8 @@ function getTooltipPosition(
 export function TutorialOverlay({ step, isActive, children }: TutorialOverlayProps) {
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null)
 
-  const isCentered = step.target === 'center'
+  // Centered mode: when target is 'center' OR when target element is not found (fallback)
+  const isCentered = step.target === 'center' || (spotlightRect && spotlightRect.width === 0 && spotlightRect.height === 0)
 
   const calculateSpotlight = useCallback(() => {
     if (!isActive) {
@@ -119,8 +120,9 @@ export function TutorialOverlay({ step, isActive, children }: TutorialOverlayPro
 
     const targetElement = document.querySelector(`[data-tutorial="${step.target}"]`)
     if (!targetElement) {
-      console.warn(`Tutorial target element not found: [data-tutorial="${step.target}"]`)
-      setSpotlightRect(null)
+      console.warn(`Tutorial target element not found: [data-tutorial="${step.target}"], falling back to centered`)
+      // Fallback to centered display when target not found
+      setSpotlightRect({ x: 0, y: 0, width: 0, height: 0 })
       return
     }
 

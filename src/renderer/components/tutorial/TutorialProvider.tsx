@@ -83,26 +83,21 @@ export function TutorialProvider({
     }
 
     // Run onExit for previous step
-    if (previousStepRef.current?.onExit) {
+    if (previousStepRef.current && previousStepRef.current.id !== currentStep?.id && previousStepRef.current.onExit) {
       onAction?.(previousStepRef.current.onExit)
     }
 
-    // Run onEnter for current step
+    // Run onEnter for current step (with delay to allow DOM to update)
     if (currentStep?.onEnter) {
-      // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
         onAction?.(currentStep.onEnter!)
-      }, 50)
+      }, 100)
+      previousStepRef.current = currentStep
       return () => clearTimeout(timer)
     }
 
     previousStepRef.current = currentStep
   }, [isActive, currentStep, onAction])
-
-  // Update previous step ref after effect runs
-  useEffect(() => {
-    previousStepRef.current = currentStep
-  }, [currentStep])
 
   const startTutorial = useCallback(() => {
     if (tutorialCompleted) {
