@@ -9,6 +9,25 @@ import { getWorkspaceById, saveWorkspace } from './config'
 import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 
+/**
+ * Strip ANSI escape codes from terminal output
+ * This is essential for reliable shell prompt detection since prompts
+ * are often wrapped in color codes and other escape sequences
+ */
+function stripAnsi(str: string): string {
+  // Remove all ANSI escape sequences:
+  // - CSI sequences: \x1b[ followed by params and final byte
+  // - OSC sequences: \x1b] followed by content and terminator
+  // - Single-character escapes: \x1b followed by single char
+  return str
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // CSI sequences (colors, cursor, etc.)
+    .replace(/\x1b\][^\x07]*\x07/g, '')    // OSC sequences (title, etc.) terminated by BEL
+    .replace(/\x1b\][^\x1b]*\x1b\\/g, '')  // OSC sequences terminated by ST
+    .replace(/\x1b[()][AB012]/g, '')       // Character set selection
+    .replace(/\x1b[>=<]/g, '')             // Keypad mode changes
+    .replace(/\x1b\[\?[0-9;]*[hl]/g, '')   // DEC private mode set/reset
+}
+
 // Track first agent ready for benchmark milestone
 let firstAgentReadyReported = false
 

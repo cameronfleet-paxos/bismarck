@@ -135,6 +135,7 @@ function App() {
     agentModel: 'sonnet',
     gridSize: '2x2',
   })
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false)
 
   // Team mode state
   const [plans, setPlans] = useState<Plan[]>([])
@@ -217,11 +218,12 @@ function App() {
 
   // Trigger tutorial on load if setup is done but tutorial hasn't been completed
   // This handles the "Restart Tutorial" flow where page reloads with tutorialCompleted: false
+  // Wait for preferencesLoaded to avoid triggering before tutorialCompleted is loaded from disk
   useEffect(() => {
-    if (agents.length > 0 && !preferences.tutorialCompleted && !tutorialStartTriggeredRef.current) {
+    if (preferencesLoaded && agents.length > 0 && !preferences.tutorialCompleted && !tutorialStartTriggeredRef.current) {
       setShouldStartTutorial(true)
     }
-  }, [agents.length, preferences.tutorialCompleted])
+  }, [preferencesLoaded, agents.length, preferences.tutorialCompleted])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -440,6 +442,7 @@ function App() {
     if (prefs) {
       setPreferences(prefs)
     }
+    setPreferencesLoaded(true)
   }
 
   const loadPlansData = async () => {
