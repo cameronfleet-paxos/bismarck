@@ -1185,7 +1185,7 @@ function App() {
     setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
 
     try {
-      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, tabId)
       if (result) {
         // Reload agents to pick up the new headless agent workspace
         await loadAgents()

@@ -809,16 +809,42 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                       </p>
                     ) : (
                       <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                        <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">No token found</p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          To enable auto-detection, add to your shell profile (<code className="bg-muted px-1 rounded">~/.zshrc</code> or <code className="bg-muted px-1 rounded">~/.bashrc</code>):
+                        <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                          {tokenDetectResult.reason === 'command_substitution'
+                            ? 'Token set via command'
+                            : tokenDetectResult.reason === 'unresolved_ref'
+                            ? 'Token references unresolved variable'
+                            : 'No token found'}
                         </p>
-                        <pre className="bg-zinc-800 text-zinc-100 p-2 rounded mt-2 text-xs font-mono overflow-x-auto">
-                          export GITHUB_TOKEN="ghp_your_token_here"
-                        </pre>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Then click "Auto-detect" again, or paste your token below.
-                        </p>
+                        {tokenDetectResult.reason === 'command_substitution' ? (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Token appears to be set via a command (e.g., <code className="bg-muted px-1 rounded">$(op ...)</code>).
+                            For security, we can't execute shell commands. Paste your token below.
+                          </p>
+                        ) : tokenDetectResult.reason === 'unresolved_ref' ? (
+                          <>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Found <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> in your shell profile,
+                              but it references another variable that isn't exported.
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              If it's set by a secrets manager (1Password, Doppler, etc.),
+                              copy the token value and paste it below.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              To enable auto-detection, add to your shell profile (<code className="bg-muted px-1 rounded">~/.zshrc</code> or <code className="bg-muted px-1 rounded">~/.bashrc</code>):
+                            </p>
+                            <pre className="bg-zinc-800 text-zinc-100 p-2 rounded mt-2 text-xs font-mono overflow-x-auto">
+                              export GITHUB_TOKEN="ghp_your_token_here"
+                            </pre>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Then click "Auto-detect" again, or paste your token below.
+                            </p>
+                          </>
+                        )}
                       </div>
                     )
                   )}

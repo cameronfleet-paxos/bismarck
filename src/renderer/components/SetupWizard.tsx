@@ -1195,6 +1195,17 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                                   For security, we can't execute shell commands. Please configure the token manually in Settings &gt; Tools.
                                 </p>
                               </>
+                            ) : tokenDetectResult?.reason === 'unresolved_ref' ? (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  Found <code className="text-[10px] bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in your shell profile,
+                                  but it references another variable that isn't exported.
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  If it's set by a secrets manager (1Password, Doppler, etc.),
+                                  copy the token value and configure manually in Settings → Tools.
+                                </p>
+                              </>
                             ) : (
                               <>
                                 <p className="text-xs text-muted-foreground">
