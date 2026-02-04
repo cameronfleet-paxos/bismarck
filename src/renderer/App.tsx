@@ -301,35 +301,32 @@ function App() {
       const expandedAgentId = activeTabMaximizedAgentId || autoExpandedAgentId
       const isAutoExpanded = expandedAgentId === autoExpandedAgentId && !activeTabMaximizedAgentId
 
-      // Cmd/Ctrl+D to dismiss current waiting agent in expand mode
-      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+      // Cmd/Ctrl+N to dismiss current waiting agent (and go to next if available)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         if (preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded) {
           e.preventDefault()
-          handleFocusAgent(expandedAgentId)
-        }
-      }
-
-      // Cmd/Ctrl+N for next waiting agent
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        if (preferences.attentionMode === 'expand' && waitingQueue.length > 1) {
-          e.preventDefault()
           const currentAgentId = waitingQueue[0]
-          const nextAgentId = waitingQueue[1]
 
           // Acknowledge/dismiss the current agent
           window.electronAPI?.acknowledgeWaiting?.(currentAgentId)
           setWaitingQueue((prev) => prev.filter((id) => id !== currentAgentId))
+          handleFocusAgent(currentAgentId)
 
-          // Switch to tab containing next agent
-          const tab = tabs.find((t) => t.workspaceIds.includes(nextAgentId))
-          if (tab && tab.id !== activeTabId) {
-            window.electronAPI?.setActiveTab?.(tab.id)
-            setActiveTabId(tab.id)
+          // If there's a next agent, switch to it
+          if (waitingQueue.length > 1) {
+            const nextAgentId = waitingQueue[1]
+
+            // Switch to tab containing next agent
+            const tab = tabs.find((t) => t.workspaceIds.includes(nextAgentId))
+            if (tab && tab.id !== activeTabId) {
+              window.electronAPI?.setActiveTab?.(tab.id)
+              setActiveTabId(tab.id)
+            }
+
+            // Focus on next agent but DON'T acknowledge it
+            setFocusedAgentId(nextAgentId)
+            window.electronAPI?.setFocusedWorkspace?.(nextAgentId)
           }
-
-          // Focus on next agent but DON'T acknowledge it
-          setFocusedAgentId(nextAgentId)
-          window.electronAPI?.setFocusedWorkspace?.(nextAgentId)
         }
       }
     }
@@ -2000,7 +1997,7 @@ function App() {
                                       className="h-6 text-xs"
                                     >
                                       <Check className="h-3 w-3 mr-1" />
-                                      Dismiss {navigator.platform.includes('Mac') ? '⌘D' : 'Ctrl+D'}
+                                      Dismiss {navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'}
                                     </Button>
                                     {waitingQueue.length > 1 && (
                                       <Button
@@ -2367,7 +2364,7 @@ function App() {
                                     className="h-6 text-xs"
                                   >
                                     <Check className="h-3 w-3 mr-1" />
-                                    Dismiss {navigator.platform.includes('Mac') ? '⌘D' : 'Ctrl+D'}
+                                    Dismiss {navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'}
                                   </Button>
                                   {waitingQueue.length > 1 && (
                                     <Button
