@@ -133,6 +133,9 @@ function App() {
   // Custom order for headless agents per plan (id -> display index)
   const [headlessAgentOrder, setHeadlessAgentOrder] = useState<Map<string, string[]>>(new Map())
 
+  // Track headless agents that are currently spawning (show loading placeholder)
+  const [spawningHeadlessIds, setSpawningHeadlessIds] = useState<Set<string>>(new Set())
+
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
 
@@ -1083,11 +1086,22 @@ function App() {
 
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
-    const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
-    if (result) {
-      // Reload agents to pick up the new headless agent workspace
-      await loadAgents()
-      // The workspace will be added to a tab via IPC event, which will trigger state update
+    // Show loading state immediately for visual feedback
+    setSpawningHeadlessIds(prev => new Set(prev).add(agentId))
+    try {
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
+      if (result) {
+        // Reload agents to pick up the new headless agent workspace
+        await loadAgents()
+        // The workspace will be added to a tab via IPC event, which will trigger state update
+      }
+    } finally {
+      // Clear loading state
+      setSpawningHeadlessIds(prev => {
+        const next = new Set(prev)
+        next.delete(agentId)
+        return next
+      })
     }
   }
 
