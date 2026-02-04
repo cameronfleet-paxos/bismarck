@@ -16,6 +16,7 @@ interface PlanAgentGroupProps {
   onAgentClick: (agentId: string, agentTab: AgentTab | undefined) => void
   onEditAgent: (agent: Agent) => void
   onDeleteAgent: (agentId: string) => void
+  onCloneAgent: (agent: Agent) => void
   onLaunchAgent: (agentId: string) => void
   onStopAgent: (agentId: string) => void
   onMoveToTab: (agentId: string, tabId: string) => void
@@ -52,6 +53,7 @@ export function PlanAgentGroup({
   onAgentClick,
   onEditAgent,
   onDeleteAgent,
+  onCloneAgent,
   onLaunchAgent,
   onStopAgent,
   onMoveToTab,
@@ -103,6 +105,7 @@ export function PlanAgentGroup({
                 onClick={() => onAgentClick(agent.id, agentTab)}
                 onEdit={() => onEditAgent(agent)}
                 onDelete={() => onDeleteAgent(agent.id)}
+                onClone={() => onCloneAgent(agent)}
                 onLaunch={() => onLaunchAgent(agent.id)}
                 onStop={() => onStopAgent(agent.id)}
                 onMoveToTab={(tabId) => onMoveToTab(agent.id, tabId)}

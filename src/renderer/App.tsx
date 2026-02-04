@@ -907,6 +907,22 @@ function App() {
     setModalOpen(true)
   }
 
+  const handleCloneAgent = async (agent: Agent) => {
+    // Create cloned agent with new ID and modified name
+    const clonedAgent: Agent = {
+      id: crypto.randomUUID(),
+      name: `${agent.name} (Copy)`,
+      directory: agent.directory,
+      purpose: agent.purpose,
+      theme: agent.theme,
+      icon: agent.icon,
+      repositoryId: agent.repositoryId,
+      // Explicitly exclude session/runtime fields - they should not be cloned
+    }
+    await window.electronAPI.saveWorkspace(clonedAgent)
+    await loadAgents()
+  }
+
   // Handle sidebar agent reorder via drag-and-drop
   const handleSidebarAgentReorder = async (draggedId: string, targetId: string) => {
     // Get standalone agents only (plan agents shouldn't be reordered this way)
@@ -1860,6 +1876,7 @@ function App() {
                         onAgentClick={handleAgentClick}
                         onEditAgent={handleEditAgent}
                         onDeleteAgent={handleDeleteAgent}
+                        onCloneAgent={handleCloneAgent}
                         onLaunchAgent={handleLaunchAgent}
                         onStopAgent={handleStopAgent}
                         onMoveToTab={handleMoveAgentToTab}
@@ -1893,6 +1910,7 @@ function App() {
                           }}
                           onEdit={() => handleEditAgent(agent)}
                           onDelete={() => handleDeleteAgent(agent.id)}
+                          onClone={() => handleCloneAgent(agent)}
                           onLaunch={() => handleLaunchAgent(agent.id)}
                           onStop={() => handleStopAgent(agent.id)}
                           onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
