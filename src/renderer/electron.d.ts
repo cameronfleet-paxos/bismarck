@@ -214,6 +214,10 @@ export interface ElectronAPI {
   // Tray updates
   updateTray: (count: number) => void
 
+  // Startup benchmark timing
+  sendBenchmarkTiming?: (label: string, phase: string, startMs: number, durationMs: number) => void
+  sendBenchmarkMilestone?: (name: string) => void
+
   // Cleanup
   removeAllListeners: () => void
 

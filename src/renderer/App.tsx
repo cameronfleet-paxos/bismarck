@@ -1,6 +1,7 @@
 import './index.css'
 import './electron.d.ts'
-import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
+import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
@@ -271,16 +272,50 @@ function App() {
 
   // Load agents and state on mount
   useEffect(() => {
-    loadAgents()
-    loadPreferences()
-    loadPlansData()
-    loadStandaloneHeadlessAgents()
+    const mountStartTime = performance.now()
+    sendMilestone('renderer:App-mount')
+
+    // Wrap data loading with timing
+    const loadWithTiming = async () => {
+      const start = performance.now()
+      await loadAgents()
+      sendTiming('renderer:loadAgents', start - benchmarkStartTime, performance.now() - start)
+
+      const prefStart = performance.now()
+      await loadPreferences()
+      sendTiming('renderer:loadPreferences', prefStart - benchmarkStartTime, performance.now() - prefStart)
+
+      const plansStart = performance.now()
+      await loadPlansData()
+      sendTiming('renderer:loadPlansData', plansStart - benchmarkStartTime, performance.now() - plansStart)
+
+      const headlessStart = performance.now()
+      await loadStandaloneHeadlessAgents()
+      sendTiming('renderer:loadStandaloneHeadless', headlessStart - benchmarkStartTime, performance.now() - headlessStart)
+
+      sendTiming('renderer:App-mount-total', mountStartTime - benchmarkStartTime, performance.now() - mountStartTime)
+      sendMilestone('renderer-data-loaded')
+    }
+
+    loadWithTiming()
+
+    const setupStart = performance.now()
     setupEventListeners()
+    sendTiming('renderer:setupEventListeners', setupStart - benchmarkStartTime, performance.now() - setupStart)
 
     return () => {
       window.electronAPI?.removeAllListeners?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Track first render complete (runs after DOM mutations but before paint)
+  const firstRenderRef = useRef(false)
+  useLayoutEffect(() => {
+    if (!firstRenderRef.current) {
+      firstRenderRef.current = true
+      sendMilestone('renderer-first-render-complete')
+    }
   }, [])
 
   // Keep focusedAgentIdRef in sync with focusedAgentId state

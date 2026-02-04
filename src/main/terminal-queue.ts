@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron'
 import { createTerminal } from './terminal'
 import { createSocketServer } from './socket-server'
 import { addActiveWorkspace, getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab } from './state-manager'
+import { startTimer, endTimer, milestone } from './startup-benchmark'
 
 const SPAWN_CONCURRENCY = 10
 const SPAWN_DELAY_MS = 100
@@ -88,6 +89,10 @@ async function processQueue(): Promise<void> {
  * Spawn a single terminal
  */
 async function spawnTerminal(item: QueuedTerminal): Promise<void> {
+  // End the queue timer and start the spawn timer
+  endTimer(`agent:queue-terminal:${item.workspaceId}`)
+  startTimer(`agent:spawn-terminal:${item.workspaceId}`, 'agent')
+
   try {
     const terminalId = createTerminal(
       item.workspaceId,
@@ -96,8 +101,10 @@ async function spawnTerminal(item: QueuedTerminal): Promise<void> {
       item.options?.claudeFlags,
       item.options?.autoAcceptMode
     )
+    endTimer(`agent:spawn-terminal:${item.workspaceId}`)
     item.resolve(terminalId)
   } catch (error) {
+    endTimer(`agent:spawn-terminal:${item.workspaceId}`)
     console.error(`[TerminalQueue] Failed to spawn terminal for ${item.workspaceId}:`, error)
     item.reject(error instanceof Error ? error : new Error(String(error)))
   }
@@ -117,6 +124,7 @@ export function queueTerminalCreation(
   }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    startTimer(`agent:queue-terminal:${workspaceId}`, 'agent')
     queue.push({
       workspaceId,
       mainWindow,

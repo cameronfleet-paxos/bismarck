@@ -28,6 +28,10 @@ import {
   extractTextContent,
 } from './stream-parser'
 import { isProxyRunning, getProxyConfig } from './tool-proxy'
+import { startTimer, endTimer, milestone } from './startup-benchmark'
+
+// Track first headless agent ready for benchmark milestone
+let firstHeadlessReadyReported = false
 
 export type HeadlessAgentStatus =
   | 'idle'
@@ -108,6 +112,9 @@ export class HeadlessAgent extends EventEmitter {
       throw new Error(`Cannot start agent in status: ${this.status}`)
     }
 
+    const taskLabel = options.taskId || 'unknown'
+    startTimer(`agent:headless-start:${taskLabel}`, 'agent')
+
     this.options = options
     this.events = []
     this.startTime = Date.now()
@@ -144,15 +151,33 @@ export class HeadlessAgent extends EventEmitter {
       }
 
       // Spawn container
+      startTimer(`agent:container-spawn:${taskLabel}`, 'agent')
       this.container = await spawnContainerAgent(containerConfig)
+      endTimer(`agent:container-spawn:${taskLabel}`)
       this.setStatus('running')
 
       // Set up stream parser
       this.parser = new StreamEventParser()
       this.setupParserListeners()
 
+      // Track first event for benchmark
+      let firstEventReceived = false
+      const taskLabelForEvents = options.taskId || 'unknown'
+      startTimer(`agent:first-event:${taskLabelForEvents}`, 'agent')
+
       // Pipe container stdout to parser
       this.container.stdout.on('data', (data) => {
+        // Record first event timing
+        if (!firstEventReceived) {
+          firstEventReceived = true
+          endTimer(`agent:first-event:${taskLabelForEvents}`)
+          endTimer(`agent:headless-start:${taskLabelForEvents}`)
+          // Report first headless agent ready milestone only once
+          if (!firstHeadlessReadyReported) {
+            firstHeadlessReadyReported = true
+            milestone('first-headless-agent-ready')
+          }
+        }
         logger.debug('agent', `stdout received (${data.length} bytes)`, this.getLogContext(), {
           preview: data.toString().substring(0, 200),
         })
@@ -170,6 +195,11 @@ export class HeadlessAgent extends EventEmitter {
         this.handleContainerExit(exitCode)
       })
     } catch (error) {
+      // Clean up any pending timers on error
+      const taskLabelForError = options.taskId || 'unknown'
+      endTimer(`agent:container-spawn:${taskLabelForError}`)
+      endTimer(`agent:first-event:${taskLabelForError}`)
+      endTimer(`agent:headless-start:${taskLabelForError}`)
       this.setStatus('failed')
       this.emit('error', error)
       throw error

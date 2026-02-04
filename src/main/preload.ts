@@ -384,6 +384,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('update-tray', count)
   },
 
+  // Startup benchmark timing (for renderer → main communication)
+  sendBenchmarkTiming: (label: string, phase: string, startMs: number, durationMs: number): void => {
+    ipcRenderer.send('benchmark-timing', { label, phase, startMs, durationMs })
+  },
+  sendBenchmarkMilestone: (name: string): void => {
+    ipcRenderer.send('benchmark-milestone', { name })
+  },
+
   // Cleanup
   removeAllListeners: (): void => {
     ipcRenderer.removeAllListeners('terminal-data')

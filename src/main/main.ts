@@ -3,6 +3,20 @@ import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
 import {
+  initBenchmark,
+  startTimer,
+  endTimer,
+  milestone,
+  timeSync,
+  timeAsync,
+  recordRendererTiming,
+  recordRendererMilestone,
+  type BenchmarkPhase,
+} from './startup-benchmark'
+
+// Initialize benchmark at the very top, before any other initialization
+initBenchmark()
+import {
   ensureConfigDirExists,
   getWorkspaces,
   saveWorkspace,
@@ -197,6 +211,7 @@ process.on('unhandledRejection', async (reason, promise) => {
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  startTimer('window:BrowserWindow-new', 'window')
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -206,6 +221,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   })
+  endTimer('window:BrowserWindow-new')
 
   // Bring app to foreground on macOS (skip in dev mode to avoid stealing focus)
   if (process.env.NODE_ENV !== 'development') {
@@ -221,6 +237,7 @@ function createWindow() {
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
 
+  startTimer('window:loadURL', 'window')
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
@@ -241,9 +258,13 @@ function createWindow() {
 
   // Listen for waiting count changes to update tray
   mainWindow.webContents.on('did-finish-load', () => {
+    endTimer('window:loadURL')
+    milestone('window-did-finish-load')
+    startTimer('window:send-initial-state', 'window')
     // Send initial state to renderer
     const state = getState()
     mainWindow?.webContents.send('initial-state', state)
+    endTimer('window:send-initial-state')
   })
 }
 
@@ -895,39 +916,57 @@ function registerIpcHandlers() {
       return getMockFlowOptions()
     })
   }
+
+  // Benchmark timing handlers (always registered, used by renderer)
+  ipcMain.on('benchmark-timing', (_, { label, phase, startMs, durationMs }) => {
+    recordRendererTiming(label, phase as BenchmarkPhase, startMs, durationMs)
+  })
+
+  ipcMain.on('benchmark-milestone', (_, { name }) => {
+    recordRendererMilestone(name)
+  })
 }
 
 app.whenReady().then(async () => {
+  startTimer('main:app-whenReady', 'main')
+
   // Set instance ID for socket isolation
-  setInstanceId(instanceId)
+  timeSync('main:setInstanceId', 'main', () => setInstanceId(instanceId))
 
   // Initialize config directory structure
-  ensureConfigDirExists()
+  timeSync('main:ensureConfigDirExists', 'main', () => ensureConfigDirExists())
 
   // Cleanup orphaned processes from previous sessions
-  await cleanupOrphanedProcesses()
+  await timeAsync('main:cleanupOrphanedProcesses', 'main', () => cleanupOrphanedProcesses())
 
   // Initialize state
-  initializeState()
+  timeSync('main:initializeState', 'main', () => initializeState())
 
   // Initialize standalone headless module
-  initStandaloneHeadless()
+  timeSync('main:initStandaloneHeadless', 'main', () => initStandaloneHeadless())
 
   // Initialize Ralph Loop module
-  initRalphLoop()
+  timeSync('main:initRalphLoop', 'main', () => initRalphLoop())
 
   // Create hook script and configure Claude settings
-  createHookScript()
-  configureClaudeHook()
+  timeSync('main:createHookScript', 'main', () => createHookScript())
+  timeSync('main:configureClaudeHook', 'main', () => configureClaudeHook())
 
   // Register IPC handlers before creating window
-  registerIpcHandlers()
+  timeSync('main:registerIpcHandlers', 'main', () => registerIpcHandlers())
 
+  startTimer('main:createWindow', 'main')
   createWindow()
+  endTimer('main:createWindow')
+
+  endTimer('main:app-whenReady')
+  milestone('main-ready')
 
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
+  startTimer('main:initializeDockerEnvironment', 'main')
   initializeDockerEnvironment().then((result) => {
+    endTimer('main:initializeDockerEnvironment')
     if (result.success) {
       console.log('[Main] Docker environment ready:', result.message)
       if (result.imageBuilt) {
@@ -939,6 +978,7 @@ app.whenReady().then(async () => {
       // Headless mode will fall back to interactive mode
     }
   }).catch((err) => {
+    endTimer('main:initializeDockerEnvironment')
     console.error('[Main] Docker initialization error:', err)
   })
 })

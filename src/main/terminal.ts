@@ -7,6 +7,10 @@ import { EventEmitter } from 'events'
 import { BrowserWindow } from 'electron'
 import { getWorkspaceById, saveWorkspace } from './config'
 import { getInstanceId } from './socket-server'
+import { startTimer, endTimer, milestone } from './startup-benchmark'
+
+// Track first agent ready for benchmark milestone
+let firstAgentReadyReported = false
 
 /**
  * Check if a Claude session exists with content.
@@ -99,6 +103,9 @@ export function createTerminal(
   }
   claudeCmd += '\n'
 
+  // Benchmark: start PTY spawn timing
+  startTimer(`agent:pty-spawn:${workspaceId}`, 'agent')
+
   // Spawn interactive shell
   const ptyProcess = pty.spawn(shell, ['-l'], {
     name: 'xterm-256color',
@@ -115,6 +122,10 @@ export function createTerminal(
       CLAUDE_CODE_ENTRY_POINT: process.env.CLAUDE_CODE_ENTRY_POINT || 'claude',
     },
   })
+
+  // Benchmark: PTY spawned
+  endTimer(`agent:pty-spawn:${workspaceId}`)
+  startTimer(`agent:shell-prompt:${workspaceId}`, 'agent')
 
   // Create emitter for terminal output listening
   const emitter = new EventEmitter()
@@ -228,6 +239,8 @@ export function createTerminal(
       data.includes(os.userInfo().username)
     )) {
       promptDetected = true
+      endTimer(`agent:shell-prompt:${workspaceId}`)
+      startTimer(`agent:claude-start:${workspaceId}`, 'agent')
       // Small additional delay to ensure shell is fully ready
       setTimeout(() => {
         ptyProcess.write(claudeCmd)
@@ -240,9 +253,25 @@ export function createTerminal(
   setTimeout(() => {
     if (!promptDetected) {
       promptDetected = true
+      endTimer(`agent:shell-prompt:${workspaceId}`)
+      startTimer(`agent:claude-start:${workspaceId}`, 'agent')
       ptyProcess.write(claudeCmd)
     }
   }, 3000)
+
+  // Detect when Claude is ready (shows the status line with ⏵)
+  let claudeReadyDetected = false
+  ptyProcess.onData((data) => {
+    if (!claudeReadyDetected && data.includes('⏵')) {
+      claudeReadyDetected = true
+      endTimer(`agent:claude-start:${workspaceId}`)
+      // Report first-agent-ready milestone only once
+      if (!firstAgentReadyReported) {
+        firstAgentReadyReported = true
+        milestone('first-agent-ready')
+      }
+    }
+  })
 
   // Handle process exit
   ptyProcess.onExit(({ exitCode }) => {
