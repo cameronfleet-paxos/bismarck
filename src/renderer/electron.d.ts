@@ -1,6 +1,16 @@
 import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
+// Update status types
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string; releaseNotes?: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; progress: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+
 export interface ElectronAPI {
   // Workspace management
   getWorkspaces: () => Promise<Workspace[]>
@@ -156,6 +166,17 @@ export interface ElectronAPI {
   // Playbox settings
   updatePlayboxSettings: (settings: { bismarckMode?: boolean }) => Promise<void>
   getPlayboxSettings: () => Promise<{ bismarckMode: boolean }>
+
+  // Auto-update management
+  checkForUpdates: () => Promise<UpdateStatus>
+  downloadUpdate: () => Promise<UpdateStatus>
+  installUpdate: () => Promise<void>
+  getUpdateStatus: () => Promise<UpdateStatus>
+  getUpdateSettings: () => Promise<{ autoCheck: boolean }>
+  setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
+  getAppVersion: () => Promise<string>
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
+  removeUpdateStatusListener: () => void
 
   // Terminal events
   onTerminalData: (

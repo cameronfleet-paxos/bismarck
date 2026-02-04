@@ -171,6 +171,13 @@ import {
 } from './ralph-loop'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
+  initAutoUpdater,
+  setAutoUpdaterWindow,
+  checkForUpdatesOnLaunch,
+  startPeriodicChecks,
+  stopPeriodicChecks,
+} from './auto-updater'
+import {
   setDevHarnessWindow,
   runMockFlow,
   startMockAgent,
@@ -229,13 +236,14 @@ function createWindow() {
     mainWindow.focus()
   }
 
-  // Set the main window reference for socket server, plan manager, dev harness, queue, standalone headless, and ralph loop
+  // Set the main window reference for socket server, plan manager, dev harness, queue, standalone headless, ralph loop, and auto-updater
   setMainWindow(mainWindow)
   setPlanManagerWindow(mainWindow)
   setDevHarnessWindow(mainWindow)
   setQueueMainWindow(mainWindow)
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
+  setAutoUpdaterWindow(mainWindow)
 
   startTimer('window:loadURL', 'window')
   if (process.env.NODE_ENV === 'development') {
@@ -251,6 +259,7 @@ function createWindow() {
     setPlanManagerWindow(null)
     setDevHarnessWindow(null)
     setQueueMainWindow(null)
+    setAutoUpdaterWindow(null)
   })
 
   // Create system tray
@@ -955,12 +964,20 @@ app.whenReady().then(async () => {
   // Register IPC handlers before creating window
   timeSync('main:registerIpcHandlers', 'main', () => registerIpcHandlers())
 
+  // Initialize auto-updater
+  timeSync('main:initAutoUpdater', 'main', () => initAutoUpdater())
+
   startTimer('main:createWindow', 'main')
   createWindow()
   endTimer('main:createWindow')
 
   endTimer('main:app-whenReady')
   milestone('main-ready')
+
+  // Check for updates on launch (async, non-blocking)
+  checkForUpdatesOnLaunch().then(() => {
+    startPeriodicChecks()
+  })
 
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
@@ -987,6 +1004,7 @@ app.on('window-all-closed', async () => {
   clearQueue()
   closeAllTerminals()
   closeAllSocketServers()
+  stopPeriodicChecks()
   await cleanupPlanManager()
   await cleanupDevHarness()
   destroyTray()

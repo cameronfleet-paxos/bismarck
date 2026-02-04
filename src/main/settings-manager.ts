@@ -60,6 +60,9 @@ export interface AppSettings {
   playbox: {
     bismarckMode: boolean       // Makes headless agents speak like a satirical German military officer
   }
+  updates: {
+    autoCheck: boolean          // Whether to automatically check for updates
+  }
 }
 
 // In-memory cache of settings
@@ -132,6 +135,9 @@ export function getDefaultSettings(): AppSettings {
     playbox: {
       bismarckMode: false,
     },
+    updates: {
+      autoCheck: true,
+    },
   }
 }
 
@@ -179,6 +185,7 @@ export async function loadSettings(): Promise<AppSettings> {
       planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
       tools: { ...defaults.tools, ...(loaded.tools || {}) },
       playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
+      updates: { ...defaults.updates, ...(loaded.updates || {}) },
     }
     settingsCache = merged
     return merged
@@ -241,6 +248,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     playbox: {
       ...(currentSettings.playbox || defaults.playbox),
       ...(updates.playbox || {}),
+    },
+    updates: {
+      ...(currentSettings.updates || defaults.updates),
+      ...(updates.updates || {}),
     },
   }
   await saveSettings(updatedSettings)

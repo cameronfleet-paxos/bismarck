@@ -76,16 +76,28 @@
       "icon": "assets/icon.icns",
       "target": [
         {
-          "target": "dir",
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "arm64"
           ]
         }
       ]
     },
+    "publish": {
+      "provider": "github",
+      "owner": "cameronfleet-paxos",
+      "repo": "bismarck"
+    },
     "asar": false
   },
   "dependencies": {
+    "electron-updater": "^6.3.0",
     "@codemirror/lang-json": "^6.0.2",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

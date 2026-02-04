@@ -24,6 +24,7 @@ import { PlanSidebar } from '@/renderer/components/PlanSidebar'
 import { PlanCreator } from '@/renderer/components/PlanCreator'
 import { HeadlessTerminal } from '@/renderer/components/HeadlessTerminal'
 import { DevConsole } from '@/renderer/components/DevConsole'
+import { UpdateNotificationBanner } from '@/renderer/components/UpdateNotificationBanner'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
@@ -3033,6 +3034,9 @@ function App() {
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
       />
+
+      {/* Update Notification Banner */}
+      <UpdateNotificationBanner />
     </div>
     </TutorialProvider>
   )

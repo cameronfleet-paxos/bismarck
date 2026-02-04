@@ -367,6 +367,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlayboxSettings: (): Promise<{ bismarckMode: boolean }> =>
     ipcRenderer.invoke('get-playbox-settings'),
 
+  // Auto-update management
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
+  getUpdateSettings: () => ipcRenderer.invoke('get-update-settings'),
+  setUpdateSettings: (settings: { autoCheck?: boolean }) =>
+    ipcRenderer.invoke('set-update-settings', settings),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  onUpdateStatus: (callback: (status: { state: string; version?: string; progress?: number; message?: string; releaseNotes?: string }) => void): void => {
+    ipcRenderer.removeAllListeners('update-status')
+    ipcRenderer.on('update-status', (_event, status) => callback(status))
+  },
+  removeUpdateStatusListener: (): void => {
+    ipcRenderer.removeAllListeners('update-status')
+  },
+
   // External URL handling
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('open-external', url),
@@ -417,6 +434,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('description-generation-progress')
     ipcRenderer.removeAllListeners('setup-terminal-data')
     ipcRenderer.removeAllListeners('setup-terminal-exit')
+    ipcRenderer.removeAllListeners('update-status')
   },
 
   // Dev test harness (development mode only)
