@@ -21,7 +21,7 @@ import {
   getWorkspaces,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab } from './state-manager'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -272,7 +272,8 @@ Type /exit when finished.`
 export async function startStandaloneHeadlessAgent(
   referenceAgentId: string,
   prompt: string,
-  model: 'opus' | 'sonnet' = 'sonnet'
+  model: 'opus' | 'sonnet' = 'sonnet',
+  targetTabId?: string
 ): Promise<{ headlessId: string; workspaceId: string }> {
   // Look up the reference agent to get its directory
   const referenceAgent = getWorkspaceById(referenceAgentId)
@@ -343,8 +344,8 @@ export async function startStandaloneHeadlessAgent(
   // Save the workspace
   saveWorkspace(newAgent)
 
-  // Place agent in next available grid slot
-  const tab = getOrCreateTabForWorkspace(workspaceId)
+  // Place agent in next available grid slot (prefer target tab if specified)
+  const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId, targetTabId)
   addWorkspaceToTab(workspaceId, tab.id)
   setActiveTab(tab.id)
 
@@ -697,7 +698,7 @@ export async function startFollowUpAgent(
   saveWorkspace(newAgent)
 
   // Place agent in next available grid slot
-  const tab = getOrCreateTabForWorkspace(workspaceId)
+  const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId)
   addWorkspaceToTab(workspaceId, tab.id)
   setActiveTab(tab.id)
 

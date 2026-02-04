@@ -370,7 +370,8 @@ async function handleGitRequest(
     proxyEvents.emit('git', { cwd, args })
 
     // Get git user config for identity to ensure commits have correct author/committer
-    const gitConfig = await getGitUserConfig()
+    // Pass cwd to get repo-local config (e.g., user.email from .git/config or inherited from parent repo)
+    const gitConfig = await getGitUserConfig(cwd)
     const env: Record<string, string> = {}
     if (gitConfig.userName) {
       env.GIT_AUTHOR_NAME = gitConfig.userName

@@ -374,6 +374,40 @@ export function getOrCreateTabForWorkspace(workspaceId: string): AgentTab {
   return createTab()
 }
 
+export function getOrCreateTabForWorkspaceWithPreference(
+  workspaceId: string,
+  preferredTabId?: string
+): AgentTab {
+  // Check if workspace is already in a tab
+  for (const tab of currentState.tabs) {
+    if (tab.workspaceIds.includes(workspaceId)) {
+      return tab
+    }
+  }
+
+  // If preferred tab specified and has space, use it
+  if (preferredTabId) {
+    const preferredTab = currentState.tabs.find(t => t.id === preferredTabId)
+    if (preferredTab) {
+      const actualCount = preferredTab.workspaceIds.filter(Boolean).length
+      if (actualCount < getMaxAgentsPerTab()) {
+        return preferredTab
+      }
+    }
+  }
+
+  // Fall back to first tab with space
+  for (const tab of currentState.tabs) {
+    const actualCount = tab.workspaceIds.filter(Boolean).length
+    if (actualCount < getMaxAgentsPerTab()) {
+      return tab
+    }
+  }
+
+  // All tabs full, create a new one
+  return createTab()
+}
+
 export function getTabForWorkspace(workspaceId: string): AgentTab | undefined {
   return currentState.tabs.find((t) => t.workspaceIds.includes(workspaceId))
 }
