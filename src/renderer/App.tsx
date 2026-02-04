@@ -2197,6 +2197,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2248,6 +2257,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2313,6 +2331,14 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {loopState.config.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  loopState.config.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {loopState.config.model === 'opus' ? 'Opus' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 iteration.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 iteration.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2534,6 +2560,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
