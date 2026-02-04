@@ -1097,6 +1097,10 @@ function App() {
 
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
+    // In expanded attention mode, clear maximized state when switching tabs
+    if (preferences.attentionMode === 'expand' && activeTabId && activeTabId !== tabId) {
+      setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+    }
     setActiveTabId(tabId)
     await window.electronAPI?.setActiveTab?.(tabId)
   }
