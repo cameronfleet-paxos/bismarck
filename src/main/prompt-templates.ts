@@ -35,6 +35,13 @@ export interface PromptVariables {
   // Discussion context
   discussionContext?: string
   discussionOutputPath?: string
+
+  // Task variables
+  taskId?: string
+  taskTitle?: string
+  baseBranch?: string
+  branchStrategy?: string
+  completionInstructions?: string
 }
 
 /**
@@ -248,6 +255,21 @@ Add dependency (task B depends on task A completing first):
 
 Once you've created all tasks and dependencies, let the user know:
 "Plan complete! Need to add tasks, change dependencies, or modify anything? Just ask."`,
+
+  task: `[BISMARCK TASK ASSIGNMENT]
+Task ID: {{taskId}}
+Title: {{taskTitle}}
+
+=== YOUR WORKING DIRECTORY ===
+You are working in a dedicated git worktree for this task.
+Branch: (see git branch)
+Base: {{baseBranch}}
+
+=== COMPLETION REQUIREMENTS ===
+1. Complete the work described in the task
+{{completionInstructions}}
+
+When finished, type /exit to signal completion.`,
 }
 
 /**
@@ -261,6 +283,8 @@ export function getAvailableVariables(type: PromptType): string[] {
       return ['planId', 'planTitle', 'repoList', 'maxParallel', 'referenceRepoName', 'referenceRepoPath', 'referenceAgentName']
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext']
+    case 'task':
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions']
     default:
       return []
   }

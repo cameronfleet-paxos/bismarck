@@ -1,7 +1,7 @@
 import type { AgentIconName } from './constants'
 
 // Prompt type for custom prompt configuration
-export type PromptType = 'orchestrator' | 'planner' | 'discussion'
+export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task'
 
 // Custom prompt configuration
 export interface CustomPrompt {
