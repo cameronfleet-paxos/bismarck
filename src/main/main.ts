@@ -152,6 +152,7 @@ import {
   cleanupRalphLoop,
   setMainWindowForRalphLoop,
   initRalphLoop,
+  getRalphLoopByTabId,
 } from './ralph-loop'
 import { initializeDockerEnvironment } from './docker-sandbox'
 import {
@@ -341,9 +342,24 @@ function registerIpcHandlers() {
     renameTab(tabId, name)
   })
 
-  ipcMain.handle('delete-tab', (_event, tabId: string) => {
+  ipcMain.handle('delete-tab', async (_event, tabId: string) => {
     const tab = getState().tabs.find((t) => t.id === tabId)
     if (tab) {
+      // Check if this is a Ralph Loop tab and clean it up
+      const ralphLoop = getRalphLoopByTabId(tabId)
+      if (ralphLoop) {
+        try {
+          // Cancel the running loop if any
+          if (ralphLoop.status === 'running' || ralphLoop.status === 'paused') {
+            await cancelRalphLoop(ralphLoop.id)
+          }
+          // Clean up all resources (worktree, branches, workspaces)
+          await cleanupRalphLoop(ralphLoop.id)
+        } catch (error) {
+          console.error('[main] Failed to cleanup Ralph Loop on tab delete:', error)
+        }
+      }
+
       // Return workspace IDs that need to be stopped
       const workspaceIds = [...tab.workspaceIds]
       const success = deleteTab(tabId)

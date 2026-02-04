@@ -597,6 +597,18 @@ export function getAllRalphLoops(): RalphLoopState[] {
 }
 
 /**
+ * Get Ralph Loop state by tab ID
+ */
+export function getRalphLoopByTabId(tabId: string): RalphLoopState | undefined {
+  for (const state of ralphLoops.values()) {
+    if (state.tabId === tabId) {
+      return state
+    }
+  }
+  return undefined
+}
+
+/**
  * Clean up a Ralph Loop's worktree, branches, and workspaces
  */
 export async function cleanupRalphLoop(loopId: string): Promise<void> {
