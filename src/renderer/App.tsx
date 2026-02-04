@@ -1266,6 +1266,26 @@ function App() {
     }
   }
 
+  const handleTabReorder = async (draggedTabId: string, targetTabId: string) => {
+    const currentOrder = tabs.map((t) => t.id)
+    const dragIndex = currentOrder.indexOf(draggedTabId)
+    const targetIndex = currentOrder.indexOf(targetTabId)
+
+    if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+      return
+    }
+
+    // Remove dragged item and insert at target position
+    const newOrder = [...currentOrder]
+    newOrder.splice(dragIndex, 1)
+    newOrder.splice(targetIndex, 0, draggedTabId)
+
+    // Persist the new order
+    await window.electronAPI?.reorderTabs?.(newOrder)
+    const state = await window.electronAPI.getState()
+    setTabs(state.tabs || [])
+  }
+
   const handleMoveAgentToTab = async (agentId: string, targetTabId: string) => {
     const success = await window.electronAPI?.moveWorkspaceToTab?.(agentId, targetTabId)
     if (success) {
@@ -1741,6 +1761,7 @@ function App() {
         onTabDragOver={(tabId) => setDropTargetTabId(tabId)}
         onTabDragLeave={() => setDropTargetTabId(null)}
         onTabDrop={handleDropOnTab}
+        onTabReorder={handleTabReorder}
       />
 
       {/* Main content */}

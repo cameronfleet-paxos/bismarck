@@ -59,6 +59,7 @@ import {
   setPreferences,
   reorderWorkspaceInTab,
   moveWorkspaceToTab,
+  reorderTabs,
   getTabs,
   setPlanSidebarOpen,
   setActivePlanId,
@@ -374,6 +375,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-tabs', () => {
     return getTabs()
+  })
+
+  ipcMain.handle('reorder-tabs', (_event, tabIds: string[]) => {
+    return reorderTabs(tabIds)
   })
 
   ipcMain.handle(

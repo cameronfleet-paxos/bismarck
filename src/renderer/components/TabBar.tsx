@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, X, Pencil } from 'lucide-react'
+import { Plus, X, Pencil, GripVertical } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import type { AgentTab } from '@/shared/types'
 
@@ -16,6 +16,8 @@ interface TabBarProps {
   onTabDragOver?: (tabId: string) => void
   onTabDragLeave?: () => void
   onTabDrop?: (workspaceId: string, tabId: string) => void
+  // Tab reordering support
+  onTabReorder?: (draggedTabId: string, targetTabId: string) => void
 }
 
 export function TabBar({
@@ -30,9 +32,12 @@ export function TabBar({
   onTabDragOver,
   onTabDragLeave,
   onTabDrop,
+  onTabReorder,
 }: TabBarProps) {
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
+  const [reorderDropTargetTabId, setReorderDropTargetTabId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -75,10 +80,14 @@ export function TabBar({
           !tab.workspaceIds.includes(draggedWorkspaceId) &&
           (tab.isPlanTab || agentCount < 4)
         const isDropTarget = dropTargetTabId === tab.id && canAcceptDrop
+        // Tab reordering state
+        const isDraggingThisTab = draggedTabId === tab.id
+        const isReorderDropTarget = reorderDropTargetTabId === tab.id && draggedTabId && draggedTabId !== tab.id
 
         return (
           <div
             key={tab.id}
+            draggable={!isEditing}
             className={`group flex items-center gap-1 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
               tab.isPlanTab
                 ? isActive
@@ -87,17 +96,44 @@ export function TabBar({
                 : isActive
                   ? 'bg-background border shadow-sm'
                   : 'hover:bg-muted/50'
-            } ${isDropTarget ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+            } ${isDropTarget ? 'ring-2 ring-primary ring-offset-1' : ''} ${isDraggingThisTab ? 'opacity-50' : ''} ${isReorderDropTarget ? 'ring-2 ring-blue-500' : ''}`}
             onClick={() => !isEditing && onTabSelect(tab.id)}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('tabId', tab.id)
+              e.dataTransfer.effectAllowed = 'move'
+              setDraggedTabId(tab.id)
+            }}
+            onDragEnd={() => {
+              setDraggedTabId(null)
+              setReorderDropTargetTabId(null)
+            }}
             onDragOver={(e) => {
-              if (canAcceptDrop) {
+              // Check if we're dragging a tab (for reordering)
+              const isTabDrag = e.dataTransfer.types.includes('tabid')
+              if (isTabDrag && draggedTabId && draggedTabId !== tab.id) {
+                e.preventDefault()
+                setReorderDropTargetTabId(tab.id)
+              } else if (canAcceptDrop) {
+                // Agent drop
                 e.preventDefault()
                 onTabDragOver?.(tab.id)
               }
             }}
-            onDragLeave={() => onTabDragLeave?.()}
+            onDragLeave={() => {
+              setReorderDropTargetTabId(null)
+              onTabDragLeave?.()
+            }}
             onDrop={(e) => {
               e.preventDefault()
+              // Check if it's a tab reorder
+              const droppedTabId = e.dataTransfer.getData('tabId')
+              if (droppedTabId && onTabReorder && droppedTabId !== tab.id) {
+                onTabReorder(droppedTabId, tab.id)
+                setDraggedTabId(null)
+                setReorderDropTargetTabId(null)
+                return
+              }
+              // Otherwise, it's an agent drop
               const workspaceId = e.dataTransfer.getData('workspaceId')
               if (workspaceId && onTabDrop && canAcceptDrop) {
                 onTabDrop(workspaceId, tab.id)
@@ -117,6 +153,7 @@ export function TabBar({
               />
             ) : (
               <>
+                <GripVertical className="w-3 h-3 text-muted-foreground/50 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span
                   onDoubleClick={(e) => {
                     e.stopPropagation()
