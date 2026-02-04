@@ -820,3 +820,43 @@ export async function deleteLocalBranch(
   logger.debug('git', 'Deleting local branch', ctx);
   await gitExec(`git branch -D "${branchName}"`, repoPath, ctx);
 }
+
+/**
+ * Git user configuration
+ */
+export interface GitUserConfig {
+  userName: string | null;
+  userEmail: string | null;
+}
+
+// Cached git user configuration
+let gitUserConfigCache: GitUserConfig | null = null;
+
+/**
+ * Get the host's git user configuration
+ * Returns user.name and user.email from global git config
+ */
+export async function getGitUserConfig(): Promise<GitUserConfig> {
+  // Return cached config if available
+  if (gitUserConfigCache) {
+    return gitUserConfigCache;
+  }
+
+  const getConfigValue = async (key: string): Promise<string | null> => {
+    try {
+      const { stdout } = await exec(`git config --global --get ${key}`);
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+
+  gitUserConfigCache = {
+    userName: await getConfigValue('user.name'),
+    userEmail: await getConfigValue('user.email'),
+  };
+
+  logger.debug('git', 'Loaded git user config', undefined, gitUserConfigCache);
+
+  return gitUserConfigCache;
+}

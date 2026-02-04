@@ -19,6 +19,7 @@ import { logger } from './logger'
 import { spawnWithPath, getEnvWithPath } from './exec-utils'
 import { getConfigDir } from './config'
 import { getGitHubToken } from './settings-manager'
+import { getGitUserConfig } from './git-utils'
 
 export interface ToolProxyConfig {
   port: number // Default: 9847
@@ -368,8 +369,23 @@ async function handleGitRequest(
     // Log the operation
     proxyEvents.emit('git', { cwd, args })
 
-    // Execute git command on host
-    const result = await executeCommand('git', args, body.stdin, { cwd })
+    // Get git user config for identity to ensure commits have correct author/committer
+    const gitConfig = await getGitUserConfig()
+    const env: Record<string, string> = {}
+    if (gitConfig.userName) {
+      env.GIT_AUTHOR_NAME = gitConfig.userName
+      env.GIT_COMMITTER_NAME = gitConfig.userName
+    }
+    if (gitConfig.userEmail) {
+      env.GIT_AUTHOR_EMAIL = gitConfig.userEmail
+      env.GIT_COMMITTER_EMAIL = gitConfig.userEmail
+    }
+
+    // Execute git command on host with identity environment
+    const result = await executeCommand('git', args, body.stdin, {
+      cwd,
+      env: Object.keys(env).length > 0 ? env : undefined,
+    })
 
     logger.info('proxy', `git request completed: git ${args.slice(0, 2).join(' ')}...`, { worktreePath: cwd }, {
       exitCode: result.exitCode,
