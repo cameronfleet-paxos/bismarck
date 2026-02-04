@@ -109,8 +109,17 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
       case 'available':
         return (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-medium">
-              Version {updateStatus.version} is available!
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span className="text-blue-600 dark:text-blue-400">
+                Version {updateStatus.version} is available!
+              </span>
+              <button
+                onClick={handleOpenGitHub}
+                className="text-blue-500 hover:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                Release notes
+                <ExternalLink className="h-3 w-3" />
+              </button>
             </div>
 
             <div className="space-y-3">
@@ -219,9 +228,9 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
       {/* Auto Check Toggle */}
       <div className="flex items-center justify-between py-2">
         <div className="space-y-0.5">
-          <Label className="text-base font-medium">Automatic Updates</Label>
+          <Label className="text-base font-medium">Check on Startup</Label>
           <p className="text-sm text-muted-foreground">
-            Check for updates automatically on launch
+            Automatically check for updates when Bismarck launches
           </p>
         </div>
         <Switch

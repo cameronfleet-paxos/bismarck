@@ -239,6 +239,7 @@ function App() {
 
   // Update available state for header notification
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string } | null>(null)
+  const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
 
   // Central registry of terminal writers - Map of terminalId -> write function
   const terminalWritersRef = useRef<Map<string, TerminalWriter>>(new Map())
@@ -1789,10 +1790,14 @@ function App() {
       />
       {/* Settings view - rendered on top when active */}
       {currentView === 'settings' && (
-        <SettingsPage onBack={() => {
-          loadPreferences() // Reload preferences to pick up any changes made in settings
-          setCurrentView('main')
-        }} />
+        <SettingsPage
+          onBack={() => {
+            loadPreferences() // Reload preferences to pick up any changes made in settings
+            setCurrentView('main')
+          }}
+          initialSection={settingsInitialSection}
+          onSectionChange={() => setSettingsInitialSection(undefined)}
+        />
       )}
 
       {/* Main workspace view - always rendered to preserve terminal state */}
@@ -1816,17 +1821,30 @@ function App() {
           onClick={() => setCommandSearchOpen(true)}
           className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
         >
-          search {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
+          search with {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
         </span>
         <div className="flex items-center gap-2">
           {updateAvailable && (
-            <span
-              className="text-xs text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
-              onClick={() => setCurrentView('settings')}
-              title={`Update v${updateAvailable.version} available - click to view`}
-            >
-              Update available
-            </span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
+                onClick={() => {
+                  setSettingsInitialSection('updates')
+                  setCurrentView('settings')
+                }}
+                title="Click to view update details"
+              >
+                Update available
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+              <span
+                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors underline"
+                onClick={() => window.electronAPI.openExternal(updateAvailable.releaseUrl)}
+                title="View release notes on GitHub"
+              >
+                v{updateAvailable.version}
+              </span>
+            </div>
           )}
           {waitingQueue.length > 1 && (
             <Button

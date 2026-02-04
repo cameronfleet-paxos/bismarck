@@ -121,10 +121,14 @@ interface ProxiedTool {
 
 interface SettingsPageProps {
   onBack: () => void
+  initialSection?: string
+  onSectionChange?: () => void
 }
 
-export function SettingsPage({ onBack }: SettingsPageProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('general')
+export function SettingsPage({ onBack, initialSection, onSectionChange }: SettingsPageProps) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>(
+    (initialSection as SettingsSection) || 'general'
+  )
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -167,6 +171,14 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   useEffect(() => {
     loadSettings()
   }, [])
+
+  // Handle navigation from external sources (e.g., header notification)
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection as SettingsSection)
+      onSectionChange?.()
+    }
+  }, [initialSection, onSectionChange])
 
   const loadSettings = async () => {
     setLoading(true)
