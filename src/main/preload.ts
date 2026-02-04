@@ -292,6 +292,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setupWizardGroupAgentsIntoTabs: (agents: Workspace[]): Promise<AgentTab[]> =>
     ipcRenderer.invoke('setup-wizard:group-agents-into-tabs', agents),
 
+  // Setup wizard terminal for "Fix with Claude" feature
+  setupWizardCreateFixTerminal: (): Promise<string> =>
+    ipcRenderer.invoke('setup-wizard:create-fix-terminal'),
+  setupWizardWriteFixTerminal: (terminalId: string, data: string): Promise<void> =>
+    ipcRenderer.invoke('setup-wizard:write-fix-terminal', terminalId, data),
+  setupWizardResizeFixTerminal: (terminalId: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke('setup-wizard:resize-fix-terminal', terminalId, cols, rows),
+  setupWizardCloseFixTerminal: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('setup-wizard:close-fix-terminal', terminalId),
+  onSetupTerminalData: (callback: (terminalId: string, data: string) => void): void => {
+    ipcRenderer.removeAllListeners('setup-terminal-data')
+    ipcRenderer.on('setup-terminal-data', (_event, terminalId, data) =>
+      callback(terminalId, data)
+    )
+  },
+  onSetupTerminalExit: (callback: (terminalId: string, code: number) => void): void => {
+    ipcRenderer.removeAllListeners('setup-terminal-exit')
+    ipcRenderer.on('setup-terminal-exit', (_event, terminalId, code) =>
+      callback(terminalId, code)
+    )
+  },
+  removeSetupTerminalListeners: (): void => {
+    ipcRenderer.removeAllListeners('setup-terminal-data')
+    ipcRenderer.removeAllListeners('setup-terminal-exit')
+  },
+
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('has-github-token'),
@@ -379,6 +405,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('ralph-loop-update')
     ipcRenderer.removeAllListeners('ralph-loop-event')
     ipcRenderer.removeAllListeners('description-generation-progress')
+    ipcRenderer.removeAllListeners('setup-terminal-data')
+    ipcRenderer.removeAllListeners('setup-terminal-exit')
   },
 
   // Dev test harness (development mode only)

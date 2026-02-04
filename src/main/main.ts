@@ -20,6 +20,10 @@ import {
   closeTerminal,
   closeAllTerminals,
   getTerminalForWorkspace,
+  createSetupTerminal,
+  writeSetupTerminal,
+  resizeSetupTerminal,
+  closeSetupTerminal,
 } from './terminal'
 import {
   queueTerminalCreationWithSetup,
@@ -102,6 +106,7 @@ import {
   checkPlanModeDependencies,
   enablePlanMode,
   detectAndSaveGitHubToken,
+  generateInstallationPrompt,
 } from './setup-wizard'
 import { generateDescriptions } from './description-generator'
 import { groupAgentsIntoTabs } from './repo-grouper'
@@ -705,6 +710,26 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:group-agents-into-tabs', async (_event, agents: Workspace[]) => {
     return groupAgentsIntoTabs(agents)
+  })
+
+  // Setup wizard terminal for "Fix with Claude" feature
+  ipcMain.handle('setup-wizard:create-fix-terminal', async () => {
+    const deps = await checkPlanModeDependencies()
+    const prompt = generateInstallationPrompt(deps)
+    const terminalId = createSetupTerminal(mainWindow, prompt)
+    return terminalId
+  })
+
+  ipcMain.handle('setup-wizard:write-fix-terminal', (_event, terminalId: string, data: string) => {
+    writeSetupTerminal(terminalId, data)
+  })
+
+  ipcMain.handle('setup-wizard:resize-fix-terminal', (_event, terminalId: string, cols: number, rows: number) => {
+    resizeSetupTerminal(terminalId, cols, rows)
+  })
+
+  ipcMain.handle('setup-wizard:close-fix-terminal', (_event, terminalId: string) => {
+    closeSetupTerminal(terminalId)
   })
 
   // GitHub token management

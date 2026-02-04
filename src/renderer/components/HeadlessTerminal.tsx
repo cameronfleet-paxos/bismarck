@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo, ReactNode } from 'react'
+import ReactMarkdown from 'react-markdown'
 import type {
   ThemeName,
   StreamEvent,
@@ -481,31 +482,37 @@ export function HeadlessTerminal({
     return ''
   }
 
-  // Render a message group with proper paragraph formatting
+  // Render a message group with markdown support
   const renderMessageGroup = (events: StreamEvent[], key: number) => {
     const text = events.map(extractText).filter(Boolean).join('')
     if (!text.trim()) return null
 
-    // Split on double newlines OR patterns like ".Let me" or ".Now I" where
-    // sentences run together (common when Claude's output lacks proper spacing)
-    const paragraphs = text
-      .replace(/\.(?=[A-Z][a-z])/g, '.\n\n')  // Add break after period followed by capital letter
-      .split(/\n\n+/)
-      .filter((p) => p.trim())
-
     return (
-      <div key={key} className="mb-4 space-y-3">
-        {paragraphs.map((para, i) => (
-          <div
-            key={i}
-            className="flex gap-2 font-mono text-sm leading-relaxed"
-          >
-            <span className="text-white flex-shrink-0">⏺</span>
-            <p className="whitespace-pre-wrap">
-              {makeLinksClickable(para.trim())}
-            </p>
+      <div key={key} className="mb-4">
+        <div className="flex gap-2 font-mono text-sm leading-relaxed">
+          <span className="text-white flex-shrink-0">⏺</span>
+          <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2">
+            <ReactMarkdown
+              components={{
+                // Override link rendering to use external opener
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      if (href) window.electronAPI?.openExternal?.(href)
+                    }}
+                    className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                  >
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {text.trim()}
+            </ReactMarkdown>
           </div>
-        ))}
+        </div>
       </div>
     )
   }

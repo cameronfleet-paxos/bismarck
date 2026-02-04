@@ -119,6 +119,15 @@ export interface ElectronAPI {
   setupWizardDetectAndSaveGitHubToken: () => Promise<{ success: boolean; source: string | null; reason?: string }>
   setupWizardGroupAgentsIntoTabs: (agents: Workspace[]) => Promise<AgentTab[]>
 
+  // Setup wizard terminal for "Fix with Claude" feature
+  setupWizardCreateFixTerminal: () => Promise<string>
+  setupWizardWriteFixTerminal: (terminalId: string, data: string) => Promise<void>
+  setupWizardResizeFixTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
+  setupWizardCloseFixTerminal: (terminalId: string) => Promise<void>
+  onSetupTerminalData: (callback: (terminalId: string, data: string) => void) => void
+  onSetupTerminalExit: (callback: (terminalId: string, code: number) => void) => void
+  removeSetupTerminalListeners: () => void
+
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>

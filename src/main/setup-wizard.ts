@@ -446,3 +446,41 @@ export async function enablePlanMode(enabled: boolean): Promise<void> {
     planMode: { enabled },
   })
 }
+
+/**
+ * Generate installation prompt for missing dependencies
+ * Used by the "Fix with Claude" feature in setup wizard
+ */
+export function generateInstallationPrompt(deps: PlanModeDependencies): string {
+  const missingDeps: DependencyStatus[] = []
+
+  // Collect missing dependencies in installation order
+  // Node.js prerequisites first, then Claude, Docker, Git, bd, gh
+  if (!deps.git.installed) missingDeps.push(deps.git)
+  if (!deps.claude.installed) missingDeps.push(deps.claude)
+  if (!deps.docker.installed) missingDeps.push(deps.docker)
+  if (!deps.bd.installed) missingDeps.push(deps.bd)
+  if (!deps.gh.installed) missingDeps.push(deps.gh)
+
+  if (missingDeps.length === 0) {
+    return 'All dependencies are already installed. You can close this terminal.'
+  }
+
+  const depList = missingDeps.map(dep => {
+    const requiredTag = dep.required ? ' (required)' : ' (optional)'
+    return `- ${dep.name}${requiredTag}: \`${dep.installCommand || 'No install command available'}\``
+  }).join('\n')
+
+  return `Help me install the following missing dependencies for Bismarck:
+
+${depList}
+
+Please:
+1. Install each dependency one at a time
+2. Verify each installation succeeds before moving to the next
+3. For macOS, use Homebrew where applicable
+4. For Node.js tools (claude), ensure Node.js 18+ is installed first
+5. After installing each tool, verify it's working with a version check
+
+Start with the first missing dependency and guide me through the installation process.`
+}

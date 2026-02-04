@@ -434,3 +434,130 @@ export function waitForTerminalOutput(
     terminal.emitter.on('data', handler)
   })
 }
+
+/**
+ * Setup terminal process (no workspace, ephemeral)
+ */
+interface SetupTerminalProcess {
+  pty: pty.IPty
+  emitter: EventEmitter
+}
+
+const setupTerminals: Map<string, SetupTerminalProcess> = new Map()
+
+/**
+ * Create a terminal for the setup wizard's "Fix with Claude" feature.
+ * This terminal is workspace-less and uses the home directory as cwd.
+ * It spawns Claude with the given installation prompt.
+ */
+export function createSetupTerminal(
+  mainWindow: BrowserWindow | null,
+  initialPrompt: string
+): string {
+  const terminalId = `setup-terminal-${Date.now()}`
+  const shell = process.env.SHELL || '/bin/zsh'
+  const cwd = os.homedir()
+
+  // Build Claude command with the prompt
+  const escapedPrompt = initialPrompt.replace(/'/g, "'\\''")
+  const claudeCmd = `claude '${escapedPrompt}'\n`
+
+  // Spawn interactive shell
+  const ptyProcess = pty.spawn(shell, ['-l'], {
+    name: 'xterm-256color',
+    cols: 100,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    },
+  })
+
+  // Create emitter for terminal output listening
+  const emitter = new EventEmitter()
+
+  setupTerminals.set(terminalId, {
+    pty: ptyProcess,
+    emitter,
+  })
+
+  // Forward data to renderer
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('setup-terminal-data', terminalId, data)
+    }
+  })
+
+  // Auto-start Claude when shell prompt is detected
+  let promptDetected = false
+  const promptHandler = (data: string) => {
+    // Detect common shell prompts
+    if (!promptDetected && (
+      /[$%>]\s*$/.test(data) ||
+      /\w+@\w+/.test(data) ||
+      data.includes(os.userInfo().username)
+    )) {
+      promptDetected = true
+      setTimeout(() => {
+        ptyProcess.write(claudeCmd)
+      }, 100)
+    }
+  }
+  ptyProcess.onData(promptHandler)
+
+  // Fallback: if no prompt detected after 3 seconds, send anyway
+  setTimeout(() => {
+    if (!promptDetected) {
+      promptDetected = true
+      ptyProcess.write(claudeCmd)
+    }
+  }, 3000)
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('setup-terminal-exit', terminalId, exitCode)
+    }
+    setupTerminals.delete(terminalId)
+  })
+
+  return terminalId
+}
+
+/**
+ * Write to a setup terminal
+ */
+export function writeSetupTerminal(terminalId: string, data: string): void {
+  const terminal = setupTerminals.get(terminalId)
+  if (terminal) {
+    terminal.pty.write(data)
+  }
+}
+
+/**
+ * Resize a setup terminal
+ */
+export function resizeSetupTerminal(
+  terminalId: string,
+  cols: number,
+  rows: number
+): void {
+  const terminal = setupTerminals.get(terminalId)
+  if (terminal) {
+    terminal.pty.resize(cols, rows)
+  }
+}
+
+/**
+ * Close a setup terminal
+ */
+export function closeSetupTerminal(terminalId: string): void {
+  const terminal = setupTerminals.get(terminalId)
+  if (terminal) {
+    terminal.pty.kill()
+    setupTerminals.delete(terminalId)
+  }
+}

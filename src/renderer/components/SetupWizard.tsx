@@ -3,8 +3,9 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle } from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
+import { SetupTerminal } from './SetupTerminal'
 
 // German/Bismarck-related fun facts for the loading screen
 const BISMARCK_FACTS = [
@@ -71,6 +72,9 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isDetectingToken, setIsDetectingToken] = useState(false)
   const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
+  // Fix with Claude terminal modal state
+  const [showFixTerminal, setShowFixTerminal] = useState(false)
+  const [fixTerminalId, setFixTerminalId] = useState<string | null>(null)
   // Ref to prevent double-clicks during async operations
   const isCreatingRef = useRef(false)
 
@@ -421,6 +425,33 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
+  // Open the "Fix with Claude" terminal modal
+  const handleFixWithClaude = async () => {
+    try {
+      const terminalId = await window.electronAPI.setupWizardCreateFixTerminal()
+      setFixTerminalId(terminalId)
+      setShowFixTerminal(true)
+    } catch (err) {
+      console.error('Failed to create fix terminal:', err)
+      setError('Failed to open Claude terminal')
+    }
+  }
+
+  // Close the fix terminal modal and re-check dependencies
+  const handleCloseFixTerminal = async () => {
+    if (fixTerminalId) {
+      try {
+        await window.electronAPI.setupWizardCloseFixTerminal(fixTerminalId)
+      } catch (err) {
+        console.error('Failed to close fix terminal:', err)
+      }
+    }
+    setFixTerminalId(null)
+    setShowFixTerminal(false)
+    // Re-check dependencies after closing
+    checkDependencies()
+  }
+
   const handleGoBack = () => {
     if (step === 'plan-mode') {
       setStep('descriptions')
@@ -542,6 +573,18 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                       </p>
                     </div>
                   </div>
+                )}
+
+                {/* Fix with Claude button - only shown if Claude is installed and there are missing deps */}
+                {dependencies && !dependencies.allRequiredInstalled && dependencies.claude.installed && (
+                  <Button
+                    onClick={handleFixWithClaude}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Fix with Claude
+                  </Button>
                 )}
               </div>
 
@@ -1160,6 +1203,36 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           </div>
         )}
       </div>
+
+      {/* Fix with Claude Modal */}
+      {showFixTerminal && fixTerminalId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-lg shadow-xl w-[90vw] max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-foreground">Fix with Claude</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Claude will help you install missing dependencies
+              </p>
+            </div>
+
+            {/* Terminal */}
+            <div className="flex-1 p-2 min-h-0">
+              <SetupTerminal terminalId={fixTerminalId} />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end px-4 py-3 border-t border-border">
+              <Button onClick={handleCloseFixTerminal}>
+                Close & Re-check
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
