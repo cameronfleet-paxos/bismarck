@@ -8,6 +8,7 @@ import { AgentIcon } from '@/renderer/components/AgentIcon'
 import { themes } from '@/shared/constants'
 import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
 import { RALPH_LOOP_PRESETS } from '@/shared/ralph-loop-presets'
+import { useTutorial } from '@/renderer/components/tutorial'
 
 interface ActiveTerminal {
   terminalId: string
@@ -57,6 +58,7 @@ export function CommandSearch({
   onStartPlan,
   onStartRalphLoop,
 }: CommandSearchProps) {
+  const { isActive: tutorialActive } = useTutorial()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [mode, setMode] = useState<CommandMode>('commands')
@@ -356,6 +358,7 @@ export function CommandSearch({
       <DialogContent
         data-tutorial="cmd-k"
         className="sm:max-w-xl p-0 gap-0 overflow-hidden top-[20%] translate-y-0"
+        preventCloseOnOutsideInteraction={tutorialActive}
         showCloseButton={false}
       >
         {/* Title bar for non-command modes */}

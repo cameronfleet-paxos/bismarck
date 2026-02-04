@@ -52,6 +52,11 @@ export function TutorialProvider({
   const [completedSteps, setCompletedSteps] = useState<TutorialStep[]>([])
   const [availableSteps, setAvailableSteps] = useState<TutorialStepDefinition[]>([])
   const previousStepRef = useRef<TutorialStepDefinition | null>(null)
+  const onEnterCalledForStepRef = useRef<string | null>(null)
+
+  // Use ref for onAction to avoid re-running effects when callback changes
+  const onActionRef = useRef(onAction)
+  onActionRef.current = onAction
 
   // Update available steps when operating mode changes
   useEffect(() => {
@@ -76,28 +81,41 @@ export function TutorialProvider({
     if (!isActive) {
       // Tutorial ended - run onExit for previous step if any
       if (previousStepRef.current?.onExit) {
-        onAction?.(previousStepRef.current.onExit)
+        onActionRef.current?.(previousStepRef.current.onExit)
       }
       previousStepRef.current = null
+      onEnterCalledForStepRef.current = null
       return
     }
 
-    // Run onExit for previous step
-    if (previousStepRef.current && previousStepRef.current.id !== currentStep?.id && previousStepRef.current.onExit) {
-      onAction?.(previousStepRef.current.onExit)
+    const currentStepId = currentStep?.id || null
+
+    // Run onExit for previous step (only if step actually changed)
+    if (previousStepRef.current && previousStepRef.current.id !== currentStepId && previousStepRef.current.onExit) {
+      onActionRef.current?.(previousStepRef.current.onExit)
+      onEnterCalledForStepRef.current = null // Reset so new step can call onEnter
     }
 
-    // Run onEnter for current step (with delay to allow DOM to update)
-    if (currentStep?.onEnter) {
+    // Run onEnter for current step (only once per step)
+    if (currentStep?.onEnter && onEnterCalledForStepRef.current !== currentStepId) {
+      let fired = false
       const timer = setTimeout(() => {
-        onAction?.(currentStep.onEnter!)
+        fired = true
+        onEnterCalledForStepRef.current = currentStepId
+        onActionRef.current?.(currentStep.onEnter!)
       }, 100)
       previousStepRef.current = currentStep
-      return () => clearTimeout(timer)
+      return () => {
+        clearTimeout(timer)
+        // Only keep the "called" marker if the action actually fired
+        if (!fired && onEnterCalledForStepRef.current === currentStepId) {
+          onEnterCalledForStepRef.current = null
+        }
+      }
     }
 
     previousStepRef.current = currentStep
-  }, [isActive, currentStep, onAction])
+  }, [isActive, currentStep])
 
   const startTutorial = useCallback(() => {
     if (tutorialCompleted) {
@@ -179,7 +197,7 @@ export function TutorialProvider({
     <TutorialContext.Provider value={value}>
       {children}
       {isActive && currentStep && (
-        <TutorialOverlay step={currentStep} isActive={isActive}>
+        <TutorialOverlay key={currentStep.id} step={currentStep} isActive={isActive}>
           <TutorialTooltip
             step={currentStep}
             currentStepIndex={currentStepIndex}
