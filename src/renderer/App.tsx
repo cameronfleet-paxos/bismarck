@@ -1664,12 +1664,15 @@ function App() {
                         <button
                           key={agent.id}
                           onClick={() => {
-                            setSidebarCollapsed(false)
                             if (isActive) {
+                              // Navigate to agent without expanding sidebar
                               if (agentTab && agentTab.id !== activeTabId) {
                                 handleTabSelect(agentTab.id)
                               }
                               handleFocusAgent(agent.id)
+                            } else {
+                              // For inactive agents, expand sidebar to show details
+                              setSidebarCollapsed(false)
                             }
                           }}
                           className={`p-1.5 rounded-md hover:brightness-110 transition-all ${
