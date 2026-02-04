@@ -81,13 +81,16 @@ Group these repositories into 2-5 logical categories based on their names, paths
 - Personal (side projects, experiments)
 - Documentation (docs, wikis)
 
-IMPORTANT: Each repository ID must appear in exactly one group.
+IMPORTANT:
+- Each repository ID must appear in exactly one group
+- Group names must be plain text only (NO markdown, NO asterisks, NO formatting)
+- Keep group names short (2-3 words max)
 
 Respond in this exact format (one group per line, comma-separated IDs):
-GROUP_NAME: id1, id2, id3
-ANOTHER_GROUP: id4, id5
+Group Name: id1, id2, id3
+Another Group: id4, id5
 
-Only output the groups, nothing else.`
+Only output the groups, nothing else. No markdown formatting.`
 
   const result = await runClaudePrompt(prompt)
 
@@ -99,7 +102,8 @@ Only output the groups, nothing else.`
   for (const line of lines) {
     const match = line.match(/^([^:]+):\s*(.+)$/)
     if (match) {
-      const name = match[1].trim()
+      // Strip any markdown formatting (asterisks, underscores, backticks)
+      const name = match[1].trim().replace(/[*_`#]/g, '')
       const ids = match[2].split(',').map(id => id.trim()).filter(id => {
         // Only include valid agent IDs that haven't been assigned yet
         const isValid = repoInfos.some(r => r.id === id) && !assignedIds.has(id)
@@ -204,6 +208,12 @@ function createDefaultGrouping(agents: Agent[]): GroupingResult {
  * Returns the created tabs
  */
 export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
+  // Capture IDs of empty tabs BEFORE creating new ones (to delete after)
+  const currentState = stateManager.getState()
+  const emptyTabIds = currentState.tabs
+    .filter(t => t.workspaceIds.length === 0)
+    .map(t => t.id)
+
   const createdTabs: AgentTab[] = []
 
   for (const group of groups) {
@@ -232,6 +242,11 @@ export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
         }
       }
     }
+  }
+
+  // NOW delete the empty tabs (safe because we've created new ones)
+  for (const tabId of emptyTabIds) {
+    stateManager.deleteTab(tabId)
   }
 
   return createdTabs

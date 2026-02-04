@@ -829,34 +829,55 @@ export interface GitUserConfig {
   userEmail: string | null;
 }
 
-// Cached git user configuration
+// Cached git user configuration (global fallback only)
 let gitUserConfigCache: GitUserConfig | null = null;
 
 /**
- * Get the host's git user configuration
- * Returns user.name and user.email from global git config
+ * Get git user configuration for a specific directory
+ * Returns user.name and user.email from git config (local + global merged)
+ * If cwd is provided, gets config in that directory context (inherits repo-local settings)
+ * If cwd is not provided, falls back to global config only (cached)
  */
-export async function getGitUserConfig(): Promise<GitUserConfig> {
-  // Return cached config if available
-  if (gitUserConfigCache) {
+export async function getGitUserConfig(cwd?: string): Promise<GitUserConfig> {
+  // If no cwd, use cached global config
+  if (!cwd) {
+    if (gitUserConfigCache) {
+      return gitUserConfigCache;
+    }
+
+    const getGlobalConfigValue = async (key: string): Promise<string | null> => {
+      try {
+        const { stdout } = await exec(`git config --global --get ${key}`);
+        return stdout.trim() || null;
+      } catch {
+        return null;
+      }
+    };
+
+    gitUserConfigCache = {
+      userName: await getGlobalConfigValue('user.name'),
+      userEmail: await getGlobalConfigValue('user.email'),
+    };
+
+    logger.debug('git', 'Loaded global git user config', undefined, gitUserConfigCache);
     return gitUserConfigCache;
   }
 
+  // Get config in directory context (includes local repo settings)
   const getConfigValue = async (key: string): Promise<string | null> => {
     try {
-      const { stdout } = await exec(`git config --global --get ${key}`);
+      const { stdout } = await exec(`git config --get ${key}`, { cwd });
       return stdout.trim() || null;
     } catch {
       return null;
     }
   };
 
-  gitUserConfigCache = {
+  const config = {
     userName: await getConfigValue('user.name'),
     userEmail: await getConfigValue('user.email'),
   };
 
-  logger.debug('git', 'Loaded git user config', undefined, gitUserConfigCache);
-
-  return gitUserConfigCache;
+  logger.debug('git', 'Loaded git user config for cwd', { worktreePath: cwd }, config);
+  return config;
 }
