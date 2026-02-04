@@ -2209,10 +2209,21 @@ export async function destroyHeadlessAgent(
     if (isStandalone) {
       // Import standalone functions to avoid circular dependency at module load
       const { stopStandaloneHeadlessAgent, cleanupStandaloneWorktree } = await import('./standalone-headless')
+      const { getWorkspaces, deleteWorkspace } = await import('./config')
+      // Find the workspace before cleanup
+      const workspaces = getWorkspaces()
+      const workspace = workspaces.find(w => w.taskId === taskId && w.isStandaloneHeadless)
       // Stop the agent if running
       await stopStandaloneHeadlessAgent(taskId)
-      // Clean up worktree and branches (existing function handles all cleanup)
+      // Clean up worktree and branches
       await cleanupStandaloneWorktree(taskId)
+      // Remove workspace from tab and active workspaces to release the layout slot
+      if (workspace) {
+        removeActiveWorkspace(workspace.id)
+        removeWorkspaceFromTab(workspace.id)
+        deleteWorkspace(workspace.id)
+        logger.info('agent', 'Released standalone agent layout slot', logCtx, { workspaceId: workspace.id })
+      }
     } else {
       // Get info before stopping (need planId for worktree lookup)
       const info = headlessAgentInfo.get(taskId)
