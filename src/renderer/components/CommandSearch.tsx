@@ -393,16 +393,16 @@ export function CommandSearch({
                 <button
                   onClick={() => handleSubmitPrompt('sonnet')}
                   disabled={!prompt.trim()}
-                  className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Sonnet
+                  Launch Sonnet
                 </button>
                 <button
                   onClick={() => handleSubmitPrompt('opus')}
                   disabled={!prompt.trim()}
-                  className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Opus
+                  Launch Opus
                 </button>
               </div>
             </div>
