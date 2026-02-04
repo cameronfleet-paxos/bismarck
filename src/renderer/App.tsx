@@ -1217,6 +1217,10 @@ function App() {
       prompt,
       model,
       startedAt: Date.now(),
+      // Capture metadata for resilient rendering (in case agent lookup fails later)
+      referenceName: referenceAgent.name,
+      referenceIcon: referenceAgent.icon,
+      referenceTheme: referenceAgent.theme,
     }
 
     // Add spawning placeholder immediately
@@ -1443,14 +1447,13 @@ function App() {
   }, [agents, headlessAgents])
 
   // Get spawning placeholders for a tab
-  const getSpawningPlaceholdersForTab = useCallback((tabId: string): Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> => {
-    const results: Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> = []
+  const getSpawningPlaceholdersForTab = useCallback((tabId: string): Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent | undefined }> => {
+    const results: Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent | undefined }> = []
     for (const [, spawningInfo] of spawningHeadless) {
       if (spawningInfo.tabId === tabId) {
         const referenceAgent = agents.find(a => a.id === spawningInfo.referenceAgentId)
-        if (referenceAgent) {
-          results.push({ spawningInfo, referenceAgent })
-        }
+        // Always include - spawningInfo has fallback metadata for resilient rendering
+        results.push({ spawningInfo, referenceAgent })
       }
     }
     return results
@@ -2078,7 +2081,7 @@ function App() {
                 key={tab.id}
                 className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'}`}
               >
-                {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 ? (
+                {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
                     const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {

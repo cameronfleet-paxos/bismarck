@@ -472,6 +472,10 @@ export interface SpawningHeadlessInfo {
   prompt: string              // Prompt being executed
   model: 'opus' | 'sonnet'    // Model being used
   startedAt: number           // Timestamp for display purposes
+  // Fallback metadata captured at spawn time (for resilient rendering)
+  referenceName: string       // Agent name for display
+  referenceIcon: AgentIconName // Agent icon
+  referenceTheme: ThemeName   // Agent theme color
 }
 
 // ============================================
