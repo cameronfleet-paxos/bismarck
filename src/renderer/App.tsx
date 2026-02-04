@@ -414,11 +414,14 @@ function App() {
         setCommandSearchOpen(false)
         break
       case 'simulateAttention':
-        // Find an agent to simulate attention for (prefer first non-headless agent)
-        const availableAgent = agents.find(a => !a.isHeadless && !a.isStandaloneHeadless && !a.isPlanAgent)
-        if (availableAgent) {
-          setSimulatedAttentionAgentId(availableAgent.id)
-          setWaitingQueue(prev => prev.includes(availableAgent.id) ? prev : [...prev, availableAgent.id])
+        // Find an agent visible in the grid (must be in activeTerminals)
+        const visibleAgentId = activeTerminals.find(t => {
+          const agent = agents.find(a => a.id === t.workspaceId)
+          return agent && !agent.isHeadless && !agent.isStandaloneHeadless && !agent.isPlanAgent
+        })?.workspaceId
+        if (visibleAgentId) {
+          setSimulatedAttentionAgentId(visibleAgentId)
+          setWaitingQueue(prev => prev.includes(visibleAgentId) ? prev : [...prev, visibleAgentId])
         }
         break
       case 'clearSimulatedAttention':
@@ -428,7 +431,7 @@ function App() {
         }
         break
     }
-  }, [agents, simulatedAttentionAgentId])
+  }, [agents, activeTerminals, simulatedAttentionAgentId])
 
   const setupEventListeners = () => {
     // Listen for initial state from main process
@@ -2259,6 +2262,7 @@ function App() {
                       return (
                         <div
                           key={`${terminal.terminalId}-${tab.id}`}
+                          data-tutorial={simulatedAttentionAgentId === workspaceId ? 'waiting-agent' : undefined}
                           style={{ gridRow, gridColumn: gridCol }}
                           draggable={!expandedAgentId}
                           onDragStart={(e) => {
