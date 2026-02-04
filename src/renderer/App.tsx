@@ -1167,9 +1167,22 @@ function App() {
 
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
-    // In expanded attention mode, clear maximized state when switching tabs
-    if (preferences.attentionMode === 'expand' && activeTabId && activeTabId !== tabId) {
-      setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+    if (activeTabId && activeTabId !== tabId) {
+      // In expanded attention mode, clear maximized state when switching tabs
+      if (preferences.attentionMode === 'expand') {
+        setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+      }
+
+      // If the auto-expanded agent (waitingQueue[0]) is in the old tab, acknowledge it
+      // This prevents fullscreen attention window from persisting when switching tabs
+      const oldTab = tabs.find(t => t.id === activeTabId)
+      if (oldTab && waitingQueue.length > 0) {
+        const autoExpandedAgentId = waitingQueue[0]
+        if (oldTab.workspaceIds.includes(autoExpandedAgentId)) {
+          window.electronAPI?.acknowledgeWaiting?.(autoExpandedAgentId)
+          setWaitingQueue(prev => prev.filter(id => id !== autoExpandedAgentId))
+        }
+      }
     }
     setActiveTabId(tabId)
     await window.electronAPI?.setActiveTab?.(tabId)
