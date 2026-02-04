@@ -1778,7 +1778,7 @@ function App() {
                               setSidebarCollapsed(false)
                             }
                           }}
-                          className={`p-1.5 rounded-md hover:brightness-110 transition-all ${
+                          className={`p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer ${
                             isWaiting ? 'ring-2 ring-yellow-500' : ''
                           } ${isFocused ? 'ring-2 ring-white/50' : ''}`}
                           style={{ backgroundColor: themeColors.bg }}
