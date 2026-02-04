@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Search } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -1629,17 +1629,13 @@ function App() {
             </span>
           )}
         </div>
-        {/* Centered search bar */}
-        <button
+        {/* Search hint */}
+        <span
           onClick={() => setCommandSearchOpen(true)}
-          className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-md border border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+          className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
         >
-          <Search className="h-3.5 w-3.5" />
-          <span>Search</span>
-          <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded bg-background border border-border font-mono">
-            {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
-          </kbd>
-        </button>
+          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} for search
+        </span>
         <div className="flex items-center gap-2">
           {waitingQueue.length > 1 && (
             <Button
