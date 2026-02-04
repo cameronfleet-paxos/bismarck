@@ -12,22 +12,14 @@ To build and install the app to `~/Applications`:
 
 ## Releasing New Versions
 
-Use the `/bismarck:release` skill to create a new GitHub release:
+Just bump version, tag, and push - GitHub Actions handles the rest:
 
+```bash
+npm version patch    # or minor/major
+git push origin main --tags
 ```
-/bismarck:release patch   # Bug fixes (0.0.x)
-/bismarck:release minor   # New features (0.x.0)
-/bismarck:release major   # Breaking changes (x.0.0)
-```
 
-The skill handles version bumping, building the DMG, and creating the GitHub release.
-
-**Manual release steps** (if not using the skill):
-1. `npm version patch --no-git-tag-version`
-2. `git add package.json package-lock.json && git commit -m "chore: bump version"`
-3. `git tag vX.X.X && git push origin main --tags`
-4. `npm run build && npm run dist` (must run outside sandbox)
-5. `gh release create vX.X.X dist/Bismarck-X.X.X-arm64.dmg --title "vX.X.X" --generate-notes`
+GitHub Actions will automatically build the DMG and create the release.
 
 ## Development
 
