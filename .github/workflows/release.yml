@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: macos-14  # Apple Silicon runner
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: |
+          npm run build
+          npm run dist
+
+      - name: Create release archive
+        run: |
+          cd dist/mac-arm64
+          tar -czvf ../../Bismarck-arm64.tar.gz Bismarck.app
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Bismarck ${{ steps.version.outputs.version }}
+          body: |
+            ## Installation
+
+            **One-line install:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/anthropics/bismarck/main/install.sh | bash
+            ```
+
+            **Or download manually:**
+            1. Download `Bismarck-arm64.tar.gz` below
+            2. Extract: `tar -xzf Bismarck-arm64.tar.gz`
+            3. Move to Applications: `mv Bismarck.app ~/Applications/`
+            4. Remove quarantine: `xattr -rd com.apple.quarantine ~/Applications/Bismarck.app`
+
+            ## Requirements
+            - macOS (Apple Silicon / arm64)
+          files: Bismarck-arm64.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
