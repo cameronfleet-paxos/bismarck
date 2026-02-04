@@ -302,8 +302,12 @@ function App() {
       const isAutoExpanded = expandedAgentId === autoExpandedAgentId && !activeTabMaximizedAgentId
 
       // Cmd/Ctrl+N to dismiss current waiting agent (and go to next if available)
+      // Works in both 'expand' and 'focus' attention modes
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        if (preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded) {
+        const isExpandMode = preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded
+        const isFocusMode = preferences.attentionMode === 'focus' && waitingQueue.length > 0
+
+        if (isExpandMode || isFocusMode) {
           e.preventDefault()
           const currentAgentId = waitingQueue[0]
 
