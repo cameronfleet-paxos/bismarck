@@ -37,6 +37,7 @@ import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, P
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
+import { terminalBuffer } from '@/renderer/utils/terminal-buffer'
 
 interface ActiveTerminal {
   terminalId: string
@@ -245,6 +246,11 @@ function App() {
 
   const unregisterWriter = useCallback((terminalId: string) => {
     terminalWritersRef.current.delete(terminalId)
+  }, [])
+
+  // Get buffered terminal content for restoring state after remount
+  const getBufferedContent = useCallback((terminalId: string) => {
+    return terminalBuffer.getBuffer(terminalId)
   }, [])
 
   // Load standalone headless agents from main process
@@ -551,6 +557,10 @@ function App() {
 
     // Global terminal data listener - routes data to the appropriate terminal writer
     window.electronAPI?.onTerminalData?.((terminalId: string, data: string) => {
+      // Buffer all terminal data so we can restore it when terminals are remounted
+      // (e.g., when moving agents between tabs)
+      terminalBuffer.append(terminalId, data)
+
       // Detect Claude banner to end boot phase early
       // Claude outputs "Claude Code" in its startup banner
       if (data.includes('Claude Code')) {
@@ -570,9 +580,13 @@ function App() {
 
     // Global terminal exit listener
     window.electronAPI?.onTerminalExit?.((terminalId: string, code: number) => {
+      const exitMessage = `\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`
+      // Buffer the exit message so it persists if terminal is remounted
+      terminalBuffer.append(terminalId, exitMessage)
+
       const writer = terminalWritersRef.current.get(terminalId)
       if (writer) {
-        writer(`\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`)
+        writer(exitMessage)
       }
     })
 
@@ -820,6 +834,8 @@ function App() {
       await window.electronAPI.closeTerminal(activeTerminal.terminalId)
       await window.electronAPI.stopWorkspace(id)
       setActiveTerminals((prev) => prev.filter((t) => t.workspaceId !== id))
+      // Clear the terminal buffer to free memory
+      terminalBuffer.clear(activeTerminal.terminalId)
     }
     await window.electronAPI.deleteWorkspace(id)
     await loadAgents()
@@ -2207,6 +2223,7 @@ function App() {
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 registerWriter={registerWriter}
                                 unregisterWriter={unregisterWriter}
+                                getBufferedContent={getBufferedContent}
                               />
                             </div>
                           </div>
@@ -2611,6 +2628,7 @@ function App() {
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               registerWriter={registerWriter}
                               unregisterWriter={unregisterWriter}
+                              getBufferedContent={getBufferedContent}
                             />
                           </div>
                         </div>
