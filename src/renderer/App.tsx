@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Search } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -26,16 +26,18 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
+import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
+import { terminalBuffer } from '@/renderer/utils/terminal-buffer'
 
 interface ActiveTerminal {
   terminalId: string
@@ -170,7 +172,7 @@ function App() {
   const [headlessAgentOrder, setHeadlessAgentOrder] = useState<Map<string, string[]>>(new Map())
 
   // Track headless agents that are currently spawning (show loading placeholder)
-  const [spawningHeadlessIds, setSpawningHeadlessIds] = useState<Set<string>>(new Set())
+  const [spawningHeadless, setSpawningHeadless] = useState<Map<string, SpawningHeadlessInfo>>(new Map())
 
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
@@ -244,6 +246,11 @@ function App() {
 
   const unregisterWriter = useCallback((terminalId: string) => {
     terminalWritersRef.current.delete(terminalId)
+  }, [])
+
+  // Get buffered terminal content for restoring state after remount
+  const getBufferedContent = useCallback((terminalId: string) => {
+    return terminalBuffer.getBuffer(terminalId)
   }, [])
 
   // Load standalone headless agents from main process
@@ -550,6 +557,10 @@ function App() {
 
     // Global terminal data listener - routes data to the appropriate terminal writer
     window.electronAPI?.onTerminalData?.((terminalId: string, data: string) => {
+      // Buffer all terminal data so we can restore it when terminals are remounted
+      // (e.g., when moving agents between tabs)
+      terminalBuffer.append(terminalId, data)
+
       // Detect Claude banner to end boot phase early
       // Claude outputs "Claude Code" in its startup banner
       if (data.includes('Claude Code')) {
@@ -569,9 +580,13 @@ function App() {
 
     // Global terminal exit listener
     window.electronAPI?.onTerminalExit?.((terminalId: string, code: number) => {
+      const exitMessage = `\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`
+      // Buffer the exit message so it persists if terminal is remounted
+      terminalBuffer.append(terminalId, exitMessage)
+
       const writer = terminalWritersRef.current.get(terminalId)
       if (writer) {
-        writer(`\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`)
+        writer(exitMessage)
       }
     })
 
@@ -819,6 +834,8 @@ function App() {
       await window.electronAPI.closeTerminal(activeTerminal.terminalId)
       await window.electronAPI.stopWorkspace(id)
       setActiveTerminals((prev) => prev.filter((t) => t.workspaceId !== id))
+      // Clear the terminal buffer to free memory
+      terminalBuffer.clear(activeTerminal.terminalId)
     }
     await window.electronAPI.deleteWorkspace(id)
     await loadAgents()
@@ -904,6 +921,22 @@ function App() {
   const handleEditAgent = (agent: Agent) => {
     setEditingAgent(agent)
     setModalOpen(true)
+  }
+
+  const handleCloneAgent = async (agent: Agent) => {
+    // Create cloned agent with new ID and modified name
+    const clonedAgent: Agent = {
+      id: crypto.randomUUID(),
+      name: `${agent.name} (Copy)`,
+      directory: agent.directory,
+      purpose: agent.purpose,
+      theme: agent.theme,
+      icon: agent.icon,
+      repositoryId: agent.repositoryId,
+      // Explicitly exclude session/runtime fields - they should not be cloned
+    }
+    await window.electronAPI.saveWorkspace(clonedAgent)
+    await loadAgents()
   }
 
   // Handle sidebar agent reorder via drag-and-drop
@@ -1131,8 +1164,26 @@ function App() {
 
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
-    // Show loading state immediately for visual feedback
-    setSpawningHeadlessIds(prev => new Set(prev).add(agentId))
+    // Generate a unique spawning ID for this placeholder
+    const spawningId = `spawning-${Date.now()}`
+    const referenceAgent = agents.find(a => a.id === agentId)
+    const tabId = activeTabId || tabs[0]?.id
+
+    if (!referenceAgent || !tabId) return
+
+    // Create spawning info for placeholder rendering
+    const spawningInfo: SpawningHeadlessInfo = {
+      id: spawningId,
+      referenceAgentId: agentId,
+      tabId,
+      prompt,
+      model,
+      startedAt: Date.now(),
+    }
+
+    // Add spawning placeholder immediately
+    setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
+
     try {
       const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
       if (result) {
@@ -1141,10 +1192,10 @@ function App() {
         // The workspace will be added to a tab via IPC event, which will trigger state update
       }
     } finally {
-      // Clear loading state
-      setSpawningHeadlessIds(prev => {
-        const next = new Set(prev)
-        next.delete(agentId)
+      // Clear loading state - the real terminal will now be visible
+      setSpawningHeadless(prev => {
+        const next = new Map(prev)
+        next.delete(spawningId)
         return next
       })
     }
@@ -1167,9 +1218,22 @@ function App() {
 
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
-    // In expanded attention mode, clear maximized state when switching tabs
-    if (preferences.attentionMode === 'expand' && activeTabId && activeTabId !== tabId) {
-      setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+    if (activeTabId && activeTabId !== tabId) {
+      // In expanded attention mode, clear maximized state when switching tabs
+      if (preferences.attentionMode === 'expand') {
+        setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+      }
+
+      // If the auto-expanded agent (waitingQueue[0]) is in the old tab, acknowledge it
+      // This prevents fullscreen attention window from persisting when switching tabs
+      const oldTab = tabs.find(t => t.id === activeTabId)
+      if (oldTab && waitingQueue.length > 0) {
+        const autoExpandedAgentId = waitingQueue[0]
+        if (oldTab.workspaceIds.includes(autoExpandedAgentId)) {
+          window.electronAPI?.acknowledgeWaiting?.(autoExpandedAgentId)
+          setWaitingQueue(prev => prev.filter(id => id !== autoExpandedAgentId))
+        }
+      }
     }
     setActiveTabId(tabId)
     await window.electronAPI?.setActiveTab?.(tabId)
@@ -1216,6 +1280,26 @@ function App() {
       setActiveTabId(newTab.id)
       await window.electronAPI?.setActiveTab?.(newTab.id)
     }
+  }
+
+  const handleTabReorder = async (draggedTabId: string, targetTabId: string) => {
+    const currentOrder = tabs.map((t) => t.id)
+    const dragIndex = currentOrder.indexOf(draggedTabId)
+    const targetIndex = currentOrder.indexOf(targetTabId)
+
+    if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+      return
+    }
+
+    // Remove dragged item and insert at target position
+    const newOrder = [...currentOrder]
+    newOrder.splice(dragIndex, 1)
+    newOrder.splice(targetIndex, 0, draggedTabId)
+
+    // Persist the new order
+    await window.electronAPI?.reorderTabs?.(newOrder)
+    const state = await window.electronAPI.getState()
+    setTabs(state.tabs || [])
   }
 
   const handleMoveAgentToTab = async (agentId: string, targetTabId: string) => {
@@ -1319,6 +1403,20 @@ function App() {
     }
     return results
   }, [agents, headlessAgents])
+
+  // Get spawning placeholders for a tab
+  const getSpawningPlaceholdersForTab = useCallback((tabId: string): Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> => {
+    const results: Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> = []
+    for (const [, spawningInfo] of spawningHeadless) {
+      if (spawningInfo.tabId === tabId) {
+        const referenceAgent = agents.find(a => a.id === spawningInfo.referenceAgentId)
+        if (referenceAgent) {
+          results.push({ spawningInfo, referenceAgent })
+        }
+      }
+    }
+    return results
+  }, [spawningHeadless, agents])
 
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
@@ -1556,8 +1654,12 @@ function App() {
                 }
               }
             }
+            // Reload preferences to get updated operatingMode from wizard
+            // This ensures the tutorial includes the correct steps based on plan mode selection
+            const freshPrefs = await window.electronAPI.getPreferences()
+            setPreferences(freshPrefs)
             // Trigger tutorial after setup wizard completes (if not already completed)
-            if (!preferences.tutorialCompleted) {
+            if (!freshPrefs.tutorialCompleted) {
               setShouldStartTutorial(true)
             }
           }}
@@ -1616,17 +1718,13 @@ function App() {
             </span>
           )}
         </div>
-        {/* Centered search bar */}
-        <button
+        {/* Search hint */}
+        <span
           onClick={() => setCommandSearchOpen(true)}
-          className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-md border border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+          className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
         >
-          <Search className="h-3.5 w-3.5" />
-          <span>Search</span>
-          <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded bg-background border border-border font-mono">
-            {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
-          </kbd>
-        </button>
+          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} for search
+        </span>
         <div className="flex items-center gap-2">
           {waitingQueue.length > 1 && (
             <Button
@@ -1683,6 +1781,7 @@ function App() {
         onTabDragOver={(tabId) => setDropTargetTabId(tabId)}
         onTabDragLeave={() => setDropTargetTabId(null)}
         onTabDrop={handleDropOnTab}
+        onTabReorder={handleTabReorder}
       />
 
       {/* Main content */}
@@ -1765,7 +1864,7 @@ function App() {
                               setSidebarCollapsed(false)
                             }
                           }}
-                          className={`p-1.5 rounded-md hover:brightness-110 transition-all ${
+                          className={`p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer ${
                             isWaiting ? 'ring-2 ring-yellow-500' : ''
                           } ${isFocused ? 'ring-2 ring-white/50' : ''}`}
                           style={{ backgroundColor: themeColors.bg }}
@@ -1818,6 +1917,7 @@ function App() {
                         onAgentClick={handleAgentClick}
                         onEditAgent={handleEditAgent}
                         onDeleteAgent={handleDeleteAgent}
+                        onCloneAgent={handleCloneAgent}
                         onLaunchAgent={handleLaunchAgent}
                         onStopAgent={handleStopAgent}
                         onMoveToTab={handleMoveAgentToTab}
@@ -1851,6 +1951,7 @@ function App() {
                           }}
                           onEdit={() => handleEditAgent(agent)}
                           onDelete={() => handleDeleteAgent(agent.id)}
+                          onClone={() => handleCloneAgent(agent)}
                           onLaunch={() => handleLaunchAgent(agent.id)}
                           onStop={() => handleStopAgent(agent.id)}
                           onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
@@ -2122,6 +2223,7 @@ function App() {
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 registerWriter={registerWriter}
                                 unregisterWriter={unregisterWriter}
+                                getBufferedContent={getBufferedContent}
                               />
                             </div>
                           </div>
@@ -2188,6 +2290,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2239,6 +2350,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2279,6 +2399,17 @@ function App() {
                         </div>
                       )
                     })}
+                    {/* Spawning placeholders for plan view */}
+                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }) => (
+                      <div
+                        key={`spawning-${spawningInfo.id}`}
+                        className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          expandedAgentId ? 'invisible' : ''
+                        }`}
+                      >
+                        <SpawningPlaceholder info={spawningInfo} referenceAgent={referenceAgent} />
+                      </div>
+                    ))}
                     {/* Ralph Loop iterations (stored in ralphLoops state, not headlessAgents) */}
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
@@ -2304,6 +2435,14 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {loopState.config.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  loopState.config.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {loopState.config.model === 'opus' ? 'Opus' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 iteration.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 iteration.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2489,6 +2628,7 @@ function App() {
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               registerWriter={registerWriter}
                               unregisterWriter={unregisterWriter}
+                              getBufferedContent={getBufferedContent}
                             />
                           </div>
                         </div>
@@ -2525,6 +2665,15 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {info.model && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                  info.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                  'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {info.model === 'opus' ? 'Opus' : info.model === 'haiku' ? 'Haiku' : 'Sonnet'}
+                                </span>
+                              )}
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 info.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
                                 info.status === 'completed' ? 'bg-green-500/20 text-green-400' :
@@ -2571,9 +2720,32 @@ function App() {
                       )
                     })}
 
+                    {/* Render spawning placeholders */}
+                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }, index) => {
+                      // Position after existing workspaces
+                      const position = tabWorkspaceIds.length + index
+                      if (position >= gridConfig.maxAgents) return null
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
+
+                      return (
+                        <div
+                          key={`spawning-${spawningInfo.id}`}
+                          style={{ gridRow, gridColumn: gridCol }}
+                          className={`transition-all duration-200 ${
+                            expandedAgentId ? 'invisible' : ''
+                          }`}
+                        >
+                          <SpawningPlaceholder info={spawningInfo} referenceAgent={referenceAgent} />
+                        </div>
+                      )
+                    })}
+
                     {/* Render empty slots separately - keyed by position */}
                     {gridPositions.map((position) => {
                       if (tabWorkspaceIds[position]) return null // Skip if occupied
+                      // Also skip if there's a spawning placeholder in this position
+                      const spawningCount = getSpawningPlaceholdersForTab(tab.id).length
+                      if (position >= tabWorkspaceIds.length && position < tabWorkspaceIds.length + spawningCount) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
 

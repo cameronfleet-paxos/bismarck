@@ -16,6 +16,7 @@ import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
 import { findBinary, detectGitHubToken, detectGitHubTokenWithReason } from './exec-utils'
+import { setPreferences } from './state-manager'
 
 /**
  * Status of a single dependency for plan mode
@@ -455,11 +456,18 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
 
 /**
  * Enable or disable plan mode in settings
+ * Also updates operatingMode in preferences so the Plans button is visible immediately
  */
 export async function enablePlanMode(enabled: boolean): Promise<void> {
+  // Update planMode.enabled in settings.json
   await updateSettings({
     planMode: { enabled },
   })
+
+  // Also update operatingMode in state.json preferences
+  // This makes the Plans button visible immediately when headless agents are enabled
+  const operatingMode = enabled ? 'team' : 'solo'
+  setPreferences({ operatingMode })
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical } from 'lucide-react'
+import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ interface AgentCardProps {
   currentTabId?: string
   onEdit: () => void
   onDelete: () => void
+  onClone: () => void
   onLaunch: () => void
   onStop: () => void
   onClick: () => void
@@ -49,6 +50,7 @@ export function AgentCard({
   currentTabId,
   onEdit,
   onDelete,
+  onClone,
   onLaunch,
   onStop,
   onClick,
@@ -146,6 +148,17 @@ export function AgentCard({
           }}
         >
           <Pencil className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClone()
+          }}
+          title="Clone agent"
+        >
+          <Copy className="h-3 w-3" />
         </Button>
         <Button
           variant="ghost"

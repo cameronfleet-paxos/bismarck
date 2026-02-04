@@ -29,7 +29,7 @@ export function CollapsedPlanGroup({
   return (
     <button
       onClick={onExpandSidebar}
-      className={`relative p-1.5 rounded-md hover:brightness-110 transition-all bg-accent/50 ${
+      className={`relative p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer bg-accent/50 ${
         waitingCount > 0 ? 'ring-2 ring-yellow-500' : ''
       }`}
       title={`${plan.title} (${agents.length} agents)`}

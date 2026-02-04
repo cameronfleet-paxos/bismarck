@@ -13,6 +13,7 @@ interface TerminalProps {
   isVisible?: boolean
   registerWriter: (terminalId: string, writer: (data: string) => void) => void
   unregisterWriter: (terminalId: string) => void
+  getBufferedContent?: (terminalId: string) => string | null
 }
 
 export function Terminal({
@@ -22,6 +23,7 @@ export function Terminal({
   isVisible = true,
   registerWriter,
   unregisterWriter,
+  getBufferedContent,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
@@ -61,6 +63,15 @@ export function Terminal({
 
     xtermRef.current = xterm
     fitAddonRef.current = fitAddon
+
+    // Replay buffered content before registering the writer
+    // This restores terminal history when the component is remounted (e.g., after tab move)
+    if (getBufferedContent) {
+      const bufferedContent = getBufferedContent(terminalId)
+      if (bufferedContent) {
+        xterm.write(bufferedContent)
+      }
+    }
 
     // Handle user input
     xterm.onData((data) => {

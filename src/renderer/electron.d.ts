@@ -31,6 +31,7 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; workspaceIds: string[] }>
   setActiveTab: (tabId: string) => Promise<void>
   getTabs: () => Promise<AgentTab[]>
+  reorderTabs: (tabIds: string[]) => Promise<boolean>
   reorderWorkspaceInTab: (
     tabId: string,
     workspaceId: string,
@@ -148,7 +149,7 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 

@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setActiveTab: (tabId: string): Promise<void> =>
     ipcRenderer.invoke('set-active-tab', tabId),
   getTabs: (): Promise<AgentTab[]> => ipcRenderer.invoke('get-tabs'),
+  reorderTabs: (tabIds: string[]): Promise<boolean> =>
+    ipcRenderer.invoke('reorder-tabs', tabIds),
   reorderWorkspaceInTab: (
     tabId: string,
     workspaceId: string,
@@ -352,7 +354,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
-  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }> =>
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null }> =>
     ipcRenderer.invoke('get-custom-prompts'),
   setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
     ipcRenderer.invoke('set-custom-prompt', type, template),

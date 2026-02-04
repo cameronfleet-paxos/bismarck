@@ -139,6 +139,26 @@ export function renameTab(tabId: string, name: string): void {
   }
 }
 
+export function reorderTabs(tabIds: string[]): boolean {
+  // Build new tabs array in specified order
+  const newTabs: AgentTab[] = []
+  for (const tabId of tabIds) {
+    const tab = currentState.tabs.find((t) => t.id === tabId)
+    if (tab) {
+      newTabs.push(tab)
+    }
+  }
+
+  // Verify all tabs are accounted for
+  if (newTabs.length !== currentState.tabs.length) {
+    return false
+  }
+
+  currentState.tabs = newTabs
+  persistState()
+  return true
+}
+
 export function deleteTab(tabId: string): boolean {
   // Cannot delete the last tab
   if (currentState.tabs.length <= 1) {

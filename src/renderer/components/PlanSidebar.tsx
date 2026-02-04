@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, X, Trash2, Copy, Eye } from 'lucide-react'
+import { Plus, X, Trash2, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { PlanCard } from '@/renderer/components/PlanCard'
 import { PlanDetailView } from '@/renderer/components/PlanDetailView'
@@ -226,23 +226,10 @@ export function PlanSidebar({
             </div>
             <div className="flex items-center gap-1">
               {selectedPlanIds.size === 1 && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setDetailPlanId([...selectedPlanIds][0])
-                      clearSelection()
-                    }}
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    View
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleCloneClick}>
-                    <Copy className="h-4 w-4 mr-1" />
-                    Clone
-                  </Button>
-                </>
+                <Button size="sm" variant="outline" onClick={handleCloneClick}>
+                  <Copy className="h-4 w-4 mr-1" />
+                  Clone
+                </Button>
               )}
               <Button
                 size="sm"
