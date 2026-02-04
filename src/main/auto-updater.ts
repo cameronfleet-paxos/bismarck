@@ -208,6 +208,15 @@ export function initAutoUpdater(): void {
  * Register IPC handlers for renderer communication
  */
 function registerIpcHandlers(): void {
+  // Handle renderer-ready signal to re-send current status
+  // This fixes the race condition where the renderer mounts after the launch check completes
+  ipcMain.on('renderer-ready', () => {
+    if (currentStatus.state !== 'idle') {
+      console.log('[AutoUpdater] Renderer ready, re-sending current status:', currentStatus.state)
+      sendStatusToRenderer(currentStatus)
+    }
+  })
+
   // Check for updates manually
   ipcMain.handle('check-for-updates', async () => {
     return await checkForUpdates()

@@ -366,6 +366,11 @@ function App() {
       }
     })
 
+    // Signal to main process that renderer is ready to receive updates
+    // This fixes the race condition where the 5-second launch check completes
+    // before the renderer mounts and sets up its listener
+    window.electronAPI?.signalRendererReady?.()
+
     return () => {
       window.electronAPI?.removeUpdateStatusListener?.()
     }

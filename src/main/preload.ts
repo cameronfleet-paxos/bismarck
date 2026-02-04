@@ -381,6 +381,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeUpdateStatusListener: (): void => {
     ipcRenderer.removeAllListeners('update-status')
   },
+  signalRendererReady: (): void => {
+    ipcRenderer.send('renderer-ready')
+  },
 
   // Clipboard management
   copyToClipboard: (text: string) => ipcRenderer.invoke('copy-to-clipboard', text),

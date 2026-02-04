@@ -173,6 +173,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
   removeUpdateStatusListener: () => void
+  signalRendererReady?: () => void
 
   // Clipboard management
   copyToClipboard: (text: string) => Promise<void>
