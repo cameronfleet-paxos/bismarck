@@ -77,7 +77,7 @@ export interface ElectronAPI {
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean) => Promise<{ success: boolean; error?: string }>
 
   // Standalone headless agent management
-  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
+  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string) => Promise<{ headlessId: string; workspaceId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>

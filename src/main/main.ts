@@ -563,8 +563,8 @@ function registerIpcHandlers() {
   })
 
   // Standalone headless agent management
-  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
-    return startStandaloneHeadlessAgent(agentId, prompt, model)
+  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string) => {
+    return startStandaloneHeadlessAgent(agentId, prompt, model, tabId)
   })
 
   ipcMain.handle('get-standalone-headless-agents', () => {
