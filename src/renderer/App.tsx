@@ -2192,11 +2192,13 @@ function App() {
             // For manual maximize, the tab must be active (handled above by nulling tabMaximizedAgentId)
             const tabContainsAutoExpandedAgent = autoExpandedAgentId && tabWorkspaceIds.includes(autoExpandedAgentId)
             const shouldShowTab = tabContainsAutoExpandedAgent ? true : isActiveTab
+            // When a waiting agent is on a different tab, render that tab on top
+            const shouldShowOnTop = tabContainsAutoExpandedAgent && !isActiveTab
 
             return (
               <div
                 key={tab.id}
-                className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'}`}
+                className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'} ${shouldShowOnTop ? 'z-20' : ''}`}
               >
                 {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
