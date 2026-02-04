@@ -907,16 +907,12 @@ function App() {
   }
 
   const handleStopHeadlessAgent = async (agent: Agent) => {
+    // Trigger the destroy confirmation dialog (same behavior as delete button)
     if (agent.taskId) {
-      await window.electronAPI?.stopHeadlessAgent?.(agent.taskId)
-      // Remove from headless agents map
-      setHeadlessAgents((prev) => {
-        const newMap = new Map(prev)
-        newMap.delete(agent.taskId!)
-        return newMap
-      })
-      // Reload agents to remove the headless agent workspace
-      await loadAgents()
+      const info = headlessAgents.get(agent.taskId)
+      if (info) {
+        setDestroyAgentTarget({ info, isStandalone: false })
+      }
     }
   }
 
