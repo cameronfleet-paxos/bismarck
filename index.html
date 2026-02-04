@@ -7,9 +7,275 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@800&display=swap" rel="stylesheet">
+    <style>
+      #splash-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #1a1a1a;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.3s ease-out;
+      }
+      #splash-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #splash-logo {
+        position: absolute;
+        height: 180px;
+        width: auto;
+        opacity: 0.35;
+        pointer-events: none;
+      }
+    </style>
   </head>
-  <body>
+  <body style="margin: 0; padding: 0; background-color: #1a1a1a;">
+    <!-- Splash screen with particle animation -->
+    <div id="splash-screen">
+      <canvas id="splash-canvas"></canvas>
+      <!-- Pickelhaube SVG logo overlay -->
+      <svg id="splash-logo" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Spike -->
+        <path d="M12 0L14 8H10L12 0Z" fill="white"/>
+        <!-- Main dome -->
+        <ellipse cx="12" cy="14" rx="8" ry="6" fill="white"/>
+        <rect x="4" y="14" width="16" height="8" fill="white"/>
+        <ellipse cx="12" cy="22" rx="8" ry="4" fill="white"/>
+        <!-- Left brim -->
+        <path d="M4 16C4 16 2 18 2 20C2 22 4 22 4 22L6 18L4 16Z" fill="white"/>
+        <!-- Right brim -->
+        <path d="M20 16C20 16 22 18 22 20C22 22 20 22 20 22L18 18L20 16Z" fill="white"/>
+        <!-- Chin strap -->
+        <path d="M6 24Q12 32 18 24" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        <!-- Cockade detail -->
+        <circle cx="12" cy="16" r="2" fill="#1a1a1a" opacity="0.3"/>
+      </svg>
+    </div>
+
     <div id="root"></div>
+
+    <!-- Inline splash screen animation - no dependencies, runs immediately -->
+    <script>
+      (function() {
+        const canvas = document.getElementById('splash-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        // Full viewport sizing
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        canvas.width = W;
+        canvas.height = H;
+
+        // Seeded random for consistency
+        let seed = 1871;
+        function random(min = 0, max = 1) {
+          seed = (seed * 9301 + 49297) % 233280;
+          return min + (seed / 233280) * (max - min);
+        }
+
+        // Dynamic logo scale based on viewport (logo is ~24x32 units)
+        const logoScale = Math.min(W, H) * 0.008;
+        const logoOffsetX = W/2 - 12*logoScale;
+        const logoOffsetY = H/2 - 16*logoScale;
+
+        // Pickelhaube shape test - returns true if point is inside logo
+        function insideLogo(x, y) {
+          const lx = (x - logoOffsetX) / logoScale;
+          const ly = (y - logoOffsetY) / logoScale;
+
+          // Spike (triangle)
+          if (ly >= 0 && ly < 8) {
+            const hw = 2 * (ly / 8);
+            if (lx >= 12 - hw && lx <= 12 + hw) return true;
+          }
+
+          // Main dome
+          if (ly >= 8 && ly <= 26) {
+            const t = (ly - 8) / 18;
+            let hw;
+            if (t < 0.33) hw = 4 + t * 12;
+            else if (t < 0.67) hw = 8;
+            else hw = 8 * (1 - (t - 0.67) / 0.33);
+            if (lx >= 12 - hw && lx <= 12 + hw) return true;
+          }
+
+          // Left brim
+          if (lx >= 2 && lx <= 7 && ly >= 15 && ly <= 22) return true;
+
+          // Right brim
+          if (lx >= 17 && lx <= 22 && ly >= 15 && ly <= 22) return true;
+
+          // Chin strap
+          if (ly >= 24 && ly <= 30 && lx >= 6 && lx <= 18) {
+            const t = (lx - 6) / 12;
+            const strapY = 24 + 6 * 4 * t * (1 - t);
+            if (Math.abs(ly - strapY) < 2.5) return true;
+          }
+
+          return false;
+        }
+
+        // Pre-calculate valid logo points (do this once, fast)
+        const logoPoints = [];
+        const step = logoScale * 0.8; // Sample grid
+        for (let x = logoOffsetX; x < logoOffsetX + 24 * logoScale; x += step) {
+          for (let y = logoOffsetY; y < logoOffsetY + 32 * logoScale; y += step) {
+            if (insideLogo(x, y)) {
+              logoPoints.push({ x, y });
+            }
+          }
+        }
+
+        // Create particles by sampling from valid points
+        const PARTICLE_COUNT = Math.min(800, logoPoints.length);
+        const particles = [];
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const pt = logoPoints[Math.floor(random(0, logoPoints.length))];
+          // Add small random offset for organic feel
+          const x = pt.x + random(-3, 3);
+          const y = pt.y + random(-3, 3);
+
+          particles.push({
+            x: x,
+            y: y,
+            homeX: x,
+            homeY: y,
+            vx: random(-0.3, 0.3),
+            vy: random(-0.3, 0.3),
+            alpha: random(0.5, 1),
+            size: random(1.2, 2.2),
+            phase: random(0, Math.PI * 2)
+          });
+        }
+
+        let time = 0;
+        let animationId;
+
+        function animate() {
+          // Clear canvas
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(0, 0, W, H);
+
+          time += 0.03;
+
+          // Global pulse for loading indicator feel
+          const pulse = Math.sin(time * 2) * 0.3 + 0.7;  // 0.4 to 1.0
+
+          for (const p of particles) {
+            // Gentle spring force back to home position
+            const dx = p.homeX - p.x;
+            const dy = p.homeY - p.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            // Spring force - stronger when far from home
+            const springForce = 0.02;
+            p.vx += dx * springForce;
+            p.vy += dy * springForce;
+
+            // Add gentle wandering motion (individual rhythm)
+            const wanderStrength = 0.15;
+            p.vx += Math.sin(time * 1.5 + p.phase) * wanderStrength;
+            p.vy += Math.cos(time * 1.2 + p.phase * 1.3) * wanderStrength;
+
+            // Breathing/pulsing motion - particles expand/contract from center
+            const centerX = W / 2;
+            const centerY = H / 2;
+            const toCenterX = p.homeX - centerX;
+            const toCenterY = p.homeY - centerY;
+            const breathe = Math.sin(time * 1.5) * 0.008;
+            p.vx += toCenterX * breathe;
+            p.vy += toCenterY * breathe;
+
+            // Damping
+            p.vx *= 0.92;
+            p.vy *= 0.92;
+
+            // Update position
+            p.x += p.vx;
+            p.y += p.vy;
+
+            // Draw particle with pulsing brightness
+            const brightness = pulse * p.alpha;
+            ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          animationId = requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, W, H);
+        animate();
+
+        // Minimum display time tracking
+        const MIN_DISPLAY_MS = 3000;
+        const startTime = Date.now();
+        let appReady = false;
+        let dismissed = false;
+
+        function dismissSplash() {
+          if (dismissed) return;
+          const elapsed = Date.now() - startTime;
+
+          // MUST wait minimum time
+          if (elapsed < MIN_DISPLAY_MS) {
+            setTimeout(dismissSplash, MIN_DISPLAY_MS - elapsed + 50);
+            return;
+          }
+          if (!appReady) return;
+
+          dismissed = true;
+          const splash = document.getElementById('splash-screen');
+          if (splash) {
+            splash.classList.add('hidden');
+            setTimeout(() => {
+              splash.remove();
+              cancelAnimationFrame(animationId);
+            }, 300);
+          }
+        }
+
+        // Observe when React mounts
+        const root = document.getElementById('root');
+        if (root && root.children.length > 0) {
+          appReady = true;
+          dismissSplash();
+        } else {
+          const observer = new MutationObserver(() => {
+            if (root.children.length > 0) {
+              appReady = true;
+              observer.disconnect();
+              dismissSplash();
+            }
+          });
+          observer.observe(root, { childList: true });
+        }
+
+        // Fallback: hide after 10 seconds
+        setTimeout(() => {
+          appReady = true;
+          dismissSplash();
+        }, 10000);
+      })();
+    </script>
+
     <script type="module" src="/src/renderer/main.tsx"></script>
   </body>
 </html>
