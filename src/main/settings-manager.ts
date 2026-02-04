@@ -49,6 +49,7 @@ export interface AppSettings {
     orchestrator: string | null  // null = use default
     planner: string | null
     discussion: string | null
+    task: string | null
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -120,6 +121,7 @@ export function getDefaultSettings(): AppSettings {
       orchestrator: null,
       planner: null,
       discussion: null,
+      task: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -425,7 +427,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion'): Promise<string | null> {
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task'): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -435,7 +437,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task', template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {

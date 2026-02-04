@@ -4,67 +4,50 @@
   <img src="assets/icon.svg" alt="Bismarck Logo" width="128" height="128">
 </p>
 
-A desktop application for monitoring and managing Claude Code agent workspaces.
+A desktop app for managing multiple Claude Code agents from a single dashboard.
 
-## Features
-
-- **Workspace Management** - Monitor multiple Claude Code sessions from a single dashboard
-- **Real-time Updates** - Receive live status updates via Unix socket hooks
-- **Automatic Hook Configuration** - Hooks are automatically installed on first launch
-- **Session Persistence** - Workspaces persist across app restarts
-
-## Prerequisites
-
-- Node.js 18+
-- npm
-
-## Installation
+## Quick Install
 
 ```bash
-# Install dependencies
+git clone https://github.com/anthropics/bismarck.git
+cd bismarck
 npm install
-
-# Build and install to ~/Applications
-./scripts/deploy-local.sh
+./scripts/install.sh
 ```
 
-The app will be installed to `~/Applications/Bismarck.app`.
+The app installs to `~/Applications/Bismarck.app`.
+
+### Let Claude Install It
+
+Paste this into Claude Code:
+
+> Clone and install Bismarck from https://github.com/anthropics/bismarck - run `npm install` then `./scripts/install.sh`
+
+## Requirements
+
+- Node.js 22+
+- macOS (arm64)
 
 ## Development
 
 ```bash
-# Install dependencies
 npm install
 
-# Start Vite dev server (terminal 1)
+# Terminal 1: Start Vite dev server
 npm run dev
 
-# Start Electron (terminal 2)
+# Terminal 2: Start Electron
 npm run dev:electron
 ```
 
-## Build Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Build both main and renderer processes |
-| `npm run dist` | Create distributable package |
-| `npm run pack` | Create unpacked directory |
-
 ## Configuration
 
-Bismarck stores its configuration in `~/.bismarck/`:
-
-- `settings.json` - Application settings
+Bismarck stores data in `~/.bismarck/`:
+- `settings.json` - App settings
 - `sockets/` - Unix sockets for agent communication
 - `hooks/` - Auto-generated hook scripts
 
-## Claude Code Integration
-
-On first launch, Bismarck automatically configures Claude Code hooks in `~/.claude/settings.json`:
-
-- **Stop Hook** - Notifies when an agent stops and needs input
-- **Notification Hook** - Notifies when an agent requires permission approval
+On first launch, Bismarck configures Claude Code hooks in `~/.claude/settings.json` to receive agent notifications.
 
 ## License
 

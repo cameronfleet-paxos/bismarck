@@ -207,8 +207,9 @@ export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
   const createdTabs: AgentTab[] = []
 
   for (const group of groups) {
-    // Create tab with the group name
-    const tab = stateManager.createTab(group.name)
+    // Create tab with the group name - use lowercase for consistency
+    const tabName = group.name.toLowerCase()
+    const tab = stateManager.createTab(tabName)
     createdTabs.push(tab)
 
     // Add agents to the tab (up to 4 per regular tab)
@@ -223,7 +224,7 @@ export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
       for (let i = 0; i < remaining.length; i += 4) {
         const batch = remaining.slice(i, i + 4)
         const overflowNum = Math.floor(i / 4) + 2
-        const overflowTab = stateManager.createTab(`${group.name} ${overflowNum}`)
+        const overflowTab = stateManager.createTab(`${tabName} ${overflowNum}`)
         createdTabs.push(overflowTab)
         for (const agentId of batch) {
           stateManager.addActiveWorkspace(agentId)

@@ -1606,7 +1606,7 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
     // Interactive mode: create terminal (existing behavior)
     if (mainWindow && plan.orchestratorTabId) {
       try {
-        const taskPrompt = buildTaskPrompt(planId, task, repository)
+        const taskPrompt = await buildTaskPrompt(planId, task, repository)
         const planDir = getPlanDir(planId)
         const claudeFlags = `--add-dir "${worktree.path}" --add-dir "${planDir}"`
 
@@ -1665,7 +1665,7 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
  * Build the prompt to inject into a worker agent's terminal for a task
  * Returns only instructions with trailing newline (no /clear - handled separately)
  */
-function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository): string {
+async function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository): Promise<string> {
   const plan = getPlanById(planId)
   const planDir = getPlanDir(planId)
   // Prefer repository's detected defaultBranch over plan's potentially incorrect default
@@ -1684,22 +1684,15 @@ function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository
 3. Close task: cd ${planDir} && bd --sandbox close ${task.id} --message "Completed"`
   }
 
-  const instructions = `[BISMARCK TASK ASSIGNMENT]
-Task ID: ${task.id}
-Title: ${task.title}
+  const variables: PromptVariables = {
+    taskId: task.id,
+    taskTitle: task.title,
+    baseBranch,
+    planDir,
+    completionInstructions,
+  }
 
-=== YOUR WORKING DIRECTORY ===
-You are working in a dedicated git worktree for this task.
-Branch: (see git branch)
-Base: ${baseBranch}
-
-=== COMPLETION REQUIREMENTS ===
-1. Complete the work described in the task
-${completionInstructions}
-
-When finished, type /exit to signal completion.`
-
-  return instructions
+  return buildPrompt('task', variables)
 }
 
 /**
@@ -2001,6 +1994,9 @@ async function startHeadlessTaskAgent(
   const taskPrompt = await buildTaskPromptForHeadless(planId, task, repository, worktree)
   logger.debug('agent', 'Built task prompt', logCtx, { promptLength: taskPrompt.length })
 
+  // Get model from preferences
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
   // Create headless agent info for tracking
   const agentInfo: HeadlessAgentInfo = {
     id: `headless-${task.id}`,
@@ -2010,6 +2006,7 @@ async function startHeadlessTaskAgent(
     worktreePath: worktree.path,
     events: [],
     startedAt: new Date().toISOString(),
+    model: agentModel, // Store model for UI display
   }
   headlessAgentInfo.set(task.id, agentInfo)
 
@@ -2090,7 +2087,6 @@ async function startHeadlessTaskAgent(
 
   // Start the agent
   try {
-    const agentModel = getPreferences().agentModel || 'sonnet'
     await agent.start({
       prompt: taskPrompt,
       worktreePath: worktree.path,
@@ -2207,10 +2203,21 @@ export async function destroyHeadlessAgent(
     if (isStandalone) {
       // Import standalone functions to avoid circular dependency at module load
       const { stopStandaloneHeadlessAgent, cleanupStandaloneWorktree } = await import('./standalone-headless')
+      const { getWorkspaces, deleteWorkspace } = await import('./config')
+      // Find the workspace before cleanup
+      const workspaces = getWorkspaces()
+      const workspace = workspaces.find(w => w.taskId === taskId && w.isStandaloneHeadless)
       // Stop the agent if running
       await stopStandaloneHeadlessAgent(taskId)
-      // Clean up worktree and branches (existing function handles all cleanup)
+      // Clean up worktree and branches
       await cleanupStandaloneWorktree(taskId)
+      // Remove workspace from tab and active workspaces to release the layout slot
+      if (workspace) {
+        removeActiveWorkspace(workspace.id)
+        removeWorkspaceFromTab(workspace.id)
+        deleteWorkspace(workspace.id)
+        logger.info('agent', 'Released standalone agent layout slot', logCtx, { workspaceId: workspace.id })
+      }
     } else {
       // Get info before stopping (need planId for worktree lookup)
       const info = headlessAgentInfo.get(taskId)
@@ -2872,6 +2879,9 @@ ${conflictError.message}
     'Resolving rebase conflicts'
   )
 
+  // Get model from preferences for display
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
   // Create headless agent info for tracking
   const agentInfo: HeadlessAgentInfo = {
     id: `headless-${mergeTaskId}`,
@@ -2881,6 +2891,7 @@ ${conflictError.message}
     worktreePath: worktree.path,
     events: [],
     startedAt: new Date().toISOString(),
+    model: agentModel, // Store model for UI display
   }
   headlessAgentInfo.set(mergeTaskId, agentInfo)
   emitHeadlessAgentUpdate(agentInfo)
@@ -2962,7 +2973,6 @@ ${conflictError.message}
 
   // Start the agent
   const planDir = getPlanDir(plan.id)
-  const agentModel = getPreferences().agentModel || 'sonnet'
   const selectedImage = await getSelectedDockerImage()
 
   await agent.start({

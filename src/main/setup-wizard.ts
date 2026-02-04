@@ -11,7 +11,7 @@ import { dialog } from 'electron'
 import { randomUUID } from 'crypto'
 import type { DiscoveredRepo, Agent, ThemeName } from '../shared/types'
 import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-utils'
-import { saveWorkspace, getWorkspaces } from './config'
+import { saveWorkspace, getWorkspaces, getClaudeOAuthToken } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
@@ -39,6 +39,13 @@ export interface GitHubTokenStatus {
 }
 
 /**
+ * Claude OAuth token status
+ */
+export interface ClaudeOAuthTokenStatus {
+  configured: boolean     // true if a token is saved
+}
+
+/**
  * Collection of all plan mode dependencies
  */
 export interface PlanModeDependencies {
@@ -48,6 +55,7 @@ export interface PlanModeDependencies {
   git: DependencyStatus
   claude: DependencyStatus
   githubToken: GitHubTokenStatus
+  claudeOAuthToken: ClaudeOAuthTokenStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 
@@ -377,6 +385,12 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     detectGitHubTokenStatus(),
   ])
 
+  // Check Claude OAuth token status
+  const claudeOAuthToken = getClaudeOAuthToken()
+  const claudeOAuthTokenStatus = {
+    configured: claudeOAuthToken !== null,
+  }
+
   const docker: DependencyStatus = {
     name: 'Docker',
     required: true,
@@ -434,6 +448,7 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     git,
     claude,
     githubToken: githubTokenStatus,
+    claudeOAuthToken: claudeOAuthTokenStatus,
     allRequiredInstalled,
   }
 }

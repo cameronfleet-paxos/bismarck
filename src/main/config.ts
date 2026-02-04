@@ -172,12 +172,21 @@ export function ensureConfigDirExists(): void {
   }
 }
 
+export function getDefaultKeyboardShortcuts() {
+  return {
+    commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
+    dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
+    devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+  }
+}
+
 export function getDefaultPreferences(): AppPreferences {
   return {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
     gridSize: '2x2',
+    keyboardShortcuts: getDefaultKeyboardShortcuts(),
   }
 }
 
@@ -297,6 +306,11 @@ export function loadState(): AppState {
     // Migration: add gridSize if missing (default to '2x2')
     if (!state.preferences.gridSize) {
       state.preferences.gridSize = '2x2'
+      needsSave = true
+    }
+    // Migration: add keyboardShortcuts if missing
+    if (!state.preferences.keyboardShortcuts) {
+      state.preferences.keyboardShortcuts = getDefaultKeyboardShortcuts()
       needsSave = true
     }
     // Persist migrations

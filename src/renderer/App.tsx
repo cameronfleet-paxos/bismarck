@@ -1,7 +1,7 @@
 import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Search } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -32,7 +32,7 @@ import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -40,6 +40,42 @@ import { extractPRUrl } from '@/shared/pr-utils'
 interface ActiveTerminal {
   terminalId: string
   workspaceId: string
+}
+
+// Check if a keyboard event matches a configured shortcut
+function matchesShortcut(e: KeyboardEvent, shortcut: KeyboardShortcut | undefined): boolean {
+  if (!shortcut) return false
+  const metaOrCtrl = e.metaKey || e.ctrlKey
+  return (
+    e.key.toLowerCase() === shortcut.key.toLowerCase() &&
+    (shortcut.modifiers.meta ? metaOrCtrl : !metaOrCtrl) &&
+    (shortcut.modifiers.shift ? e.shiftKey : !e.shiftKey) &&
+    (shortcut.modifiers.alt ? e.altKey : !e.altKey)
+  )
+}
+
+// Default keyboard shortcuts for use when preferences haven't loaded
+const defaultKeyboardShortcuts: KeyboardShortcuts = {
+  commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
+  dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
+  devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+}
+
+// Format a keyboard shortcut for compact display (e.g., "⌘K")
+function formatShortcutCompact(shortcut: KeyboardShortcut): string {
+  const isMac = navigator.platform.includes('Mac')
+  const parts: string[] = []
+  if (shortcut.modifiers.meta) {
+    parts.push(isMac ? '⌘' : 'Ctrl+')
+  }
+  if (shortcut.modifiers.alt) {
+    parts.push(isMac ? '⌥' : 'Alt+')
+  }
+  if (shortcut.modifiers.shift) {
+    parts.push(isMac ? '⇧' : 'Shift+')
+  }
+  parts.push(shortcut.key.toUpperCase())
+  return parts.join('')
 }
 
 // App-level routing
@@ -82,6 +118,7 @@ function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeTerminals, setActiveTerminals] = useState<ActiveTerminal[]>([])
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null)
+  const focusedAgentIdRef = useRef<string | null>(null)  // Ref for synchronous access in event handlers
   const [tabs, setTabs] = useState<AgentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -131,6 +168,9 @@ function App() {
   const [dropTargetHeadlessId, setDropTargetHeadlessId] = useState<string | null>(null)
   // Custom order for headless agents per plan (id -> display index)
   const [headlessAgentOrder, setHeadlessAgentOrder] = useState<Map<string, string[]>>(new Map())
+
+  // Track headless agents that are currently spawning (show loading placeholder)
+  const [spawningHeadlessIds, setSpawningHeadlessIds] = useState<Set<string>>(new Set())
 
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
@@ -236,6 +276,11 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Keep focusedAgentIdRef in sync with focusedAgentId state
+  useEffect(() => {
+    focusedAgentIdRef.current = focusedAgentId
+  }, [focusedAgentId])
+
   // Mark terminals as booted after 10 seconds
   useEffect(() => {
     const timers: NodeJS.Timeout[] = []
@@ -271,23 +316,32 @@ function App() {
 
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
+    const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape to return to main view from settings
-      if (e.key === 'Escape' && currentView === 'settings') {
-        e.preventDefault()
-        setCurrentView('main')
-        return
+      // Escape to return to main view from settings or close command search
+      if (e.key === 'Escape') {
+        if (currentView === 'settings') {
+          e.preventDefault()
+          setCurrentView('main')
+          return
+        }
+        if (commandSearchOpen) {
+          e.preventDefault()
+          setCommandSearchOpen(false)
+          return
+        }
       }
 
-      // Cmd/Ctrl+Shift+D to toggle dev console (development only)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
+      // Dev console shortcut (development only)
+      if (matchesShortcut(e, shortcuts.devConsole)) {
         e.preventDefault()
         setDevConsoleOpen(prev => !prev)
         return
       }
 
-      // Cmd/Ctrl+K to open command search
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      // Command palette shortcut
+      if (matchesShortcut(e, shortcuts.commandPalette)) {
         e.preventDefault()
         setCommandSearchOpen(true)
         return
@@ -301,42 +355,43 @@ function App() {
       const expandedAgentId = activeTabMaximizedAgentId || autoExpandedAgentId
       const isAutoExpanded = expandedAgentId === autoExpandedAgentId && !activeTabMaximizedAgentId
 
-      // Cmd/Ctrl+D to dismiss current waiting agent in expand mode
-      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
-        if (preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded) {
-          e.preventDefault()
-          handleFocusAgent(expandedAgentId)
-        }
-      }
+      // Dismiss agent shortcut
+      // Works in both 'expand' and 'focus' attention modes
+      if (matchesShortcut(e, shortcuts.dismissAgent)) {
+        const isExpandMode = preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded
+        const isFocusMode = preferences.attentionMode === 'focus' && waitingQueue.length > 0
 
-      // Cmd/Ctrl+N for next waiting agent
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        if (preferences.attentionMode === 'expand' && waitingQueue.length > 1) {
+        if (isExpandMode || isFocusMode) {
           e.preventDefault()
           const currentAgentId = waitingQueue[0]
-          const nextAgentId = waitingQueue[1]
 
           // Acknowledge/dismiss the current agent
           window.electronAPI?.acknowledgeWaiting?.(currentAgentId)
           setWaitingQueue((prev) => prev.filter((id) => id !== currentAgentId))
+          handleFocusAgent(currentAgentId)
 
-          // Switch to tab containing next agent
-          const tab = tabs.find((t) => t.workspaceIds.includes(nextAgentId))
-          if (tab && tab.id !== activeTabId) {
-            window.electronAPI?.setActiveTab?.(tab.id)
-            setActiveTabId(tab.id)
+          // If there's a next agent, switch to it
+          if (waitingQueue.length > 1) {
+            const nextAgentId = waitingQueue[1]
+
+            // Switch to tab containing next agent
+            const tab = tabs.find((t) => t.workspaceIds.includes(nextAgentId))
+            if (tab && tab.id !== activeTabId) {
+              window.electronAPI?.setActiveTab?.(tab.id)
+              setActiveTabId(tab.id)
+            }
+
+            // Focus on next agent but DON'T acknowledge it
+            setFocusedAgentId(nextAgentId)
+            window.electronAPI?.setFocusedWorkspace?.(nextAgentId)
           }
-
-          // Focus on next agent but DON'T acknowledge it
-          setFocusedAgentId(nextAgentId)
-          window.electronAPI?.setFocusedWorkspace?.(nextAgentId)
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -473,6 +528,14 @@ function App() {
     // Listen for agent waiting events
     window.electronAPI?.onAgentWaiting?.((agentId: string) => {
       console.log(`[Renderer] Received agent-waiting event for ${agentId}`)
+      // Check if user is already focused on this agent using the ref
+      if (focusedAgentIdRef.current === agentId) {
+        console.log(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
+        window.electronAPI?.acknowledgeWaiting?.(agentId)
+        return  // Don't add to waiting queue or trigger attention
+      }
+
+      // Add to waiting queue since user isn't focused on this agent
       setWaitingQueue((prev) => {
         console.log(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
         if (!prev.includes(agentId)) {
@@ -907,16 +970,12 @@ function App() {
   }
 
   const handleStopHeadlessAgent = async (agent: Agent) => {
+    // Trigger the destroy confirmation dialog (same behavior as delete button)
     if (agent.taskId) {
-      await window.electronAPI?.stopHeadlessAgent?.(agent.taskId)
-      // Remove from headless agents map
-      setHeadlessAgents((prev) => {
-        const newMap = new Map(prev)
-        newMap.delete(agent.taskId!)
-        return newMap
-      })
-      // Reload agents to remove the headless agent workspace
-      await loadAgents()
+      const info = headlessAgents.get(agent.taskId)
+      if (info) {
+        setDestroyAgentTarget({ info, isStandalone: false })
+      }
     }
   }
 
@@ -1072,11 +1131,22 @@ function App() {
 
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
-    const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
-    if (result) {
-      // Reload agents to pick up the new headless agent workspace
-      await loadAgents()
-      // The workspace will be added to a tab via IPC event, which will trigger state update
+    // Show loading state immediately for visual feedback
+    setSpawningHeadlessIds(prev => new Set(prev).add(agentId))
+    try {
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
+      if (result) {
+        // Reload agents to pick up the new headless agent workspace
+        await loadAgents()
+        // The workspace will be added to a tab via IPC event, which will trigger state update
+      }
+    } finally {
+      // Clear loading state
+      setSpawningHeadlessIds(prev => {
+        const next = new Set(prev)
+        next.delete(agentId)
+        return next
+      })
     }
   }
 
@@ -1097,6 +1167,10 @@ function App() {
 
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
+    // In expanded attention mode, clear maximized state when switching tabs
+    if (preferences.attentionMode === 'expand' && activeTabId && activeTabId !== tabId) {
+      setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+    }
     setActiveTabId(tabId)
     await window.electronAPI?.setActiveTab?.(tabId)
   }
@@ -1529,7 +1603,7 @@ function App() {
       {/* Main workspace view - always rendered to preserve terminal state */}
       <div className={`h-screen bg-background flex flex-col ${currentView === 'settings' ? 'hidden' : ''}`}>
       {/* Header */}
-      <header className="border-b px-4 py-2 flex items-center justify-between">
+      <header className="relative border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo />
           <BootProgressIndicator
@@ -1542,6 +1616,17 @@ function App() {
             </span>
           )}
         </div>
+        {/* Centered search bar */}
+        <button
+          onClick={() => setCommandSearchOpen(true)}
+          className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-md border border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+        >
+          <Search className="h-3.5 w-3.5" />
+          <span>Search</span>
+          <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded bg-background border border-border font-mono">
+            {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
+          </kbd>
+        </button>
         <div className="flex items-center gap-2">
           {waitingQueue.length > 1 && (
             <Button
@@ -1612,6 +1697,15 @@ function App() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={handleAddAgent}
+                  className="h-5 w-5"
+                  title="Add new agent"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setSidebarEditMode(!sidebarEditMode)}
                   className={`h-5 w-5 ${sidebarEditMode ? 'bg-primary/20 text-primary' : ''}`}
                   title={sidebarEditMode ? 'Exit reorder mode' : 'Reorder agents'}
@@ -1660,12 +1754,15 @@ function App() {
                         <button
                           key={agent.id}
                           onClick={() => {
-                            setSidebarCollapsed(false)
                             if (isActive) {
+                              // Navigate to agent without expanding sidebar
                               if (agentTab && agentTab.id !== activeTabId) {
                                 handleTabSelect(agentTab.id)
                               }
                               handleFocusAgent(agent.id)
+                            } else {
+                              // For inactive agents, expand sidebar to show details
+                              setSidebarCollapsed(false)
                             }
                           }}
                           className={`p-1.5 rounded-md hover:brightness-110 transition-all ${
@@ -1997,7 +2094,7 @@ function App() {
                                       className="h-6 text-xs"
                                     >
                                       <Check className="h-3 w-3 mr-1" />
-                                      Dismiss {navigator.platform.includes('Mac') ? '⌘D' : 'Ctrl+D'}
+                                      Dismiss {navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'}
                                     </Button>
                                     {waitingQueue.length > 1 && (
                                       <Button
@@ -2113,7 +2210,7 @@ function App() {
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
-                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} model={info.model} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
                           </div>
                         </div>
                       )
@@ -2168,6 +2265,7 @@ function App() {
                               events={info.events}
                               theme={agent.theme}
                               status={info.status}
+                              model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
@@ -2223,6 +2321,7 @@ function App() {
                               events={iteration.events}
                               theme={agent?.theme || 'purple'}
                               status={iteration.status === 'pending' ? 'starting' : iteration.status}
+                              model={loopState.config.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                             />
                           </div>
@@ -2362,7 +2461,7 @@ function App() {
                                     className="h-6 text-xs"
                                   >
                                     <Check className="h-3 w-3 mr-1" />
-                                    Dismiss {navigator.platform.includes('Mac') ? '⌘D' : 'Ctrl+D'}
+                                    Dismiss {navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'}
                                   </Button>
                                   {waitingQueue.length > 1 && (
                                     <Button
@@ -2457,6 +2556,7 @@ function App() {
                               events={info.events}
                               theme={agent.theme}
                               status={info.status}
+                              model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}

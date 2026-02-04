@@ -362,6 +362,7 @@ export async function startStandaloneHeadlessAgent(
     startedAt: new Date().toISOString(),
     worktreeInfo: worktreeInfo,
     originalPrompt: prompt, // Store original prompt for restart capability
+    model: model, // Store model for UI display
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
 

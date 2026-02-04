@@ -24,18 +24,21 @@ interface PromptStatus {
   orchestrator: boolean
   planner: boolean
   discussion: boolean
+  task: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
   orchestrator: 'Orchestrator',
   planner: 'Planner',
   discussion: 'Discussion',
+  task: 'Task Agent',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   orchestrator: 'Coordinates task assignment and monitors progress',
   planner: 'Creates tasks and sets up dependencies',
   discussion: 'Facilitates design discussions before implementation',
+  task: 'Executes individual tasks in worktrees',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -47,6 +50,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     orchestrator: false,
     planner: false,
     discussion: false,
+    task: false,
   })
   const [editingPrompt, setEditingPrompt] = useState<PromptType | null>(null)
 
@@ -64,6 +68,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           orchestrator: !!customPrompts.orchestrator,
           planner: !!customPrompts.planner,
           discussion: !!customPrompts.discussion,
+          task: !!customPrompts.task,
         })
       } catch (error) {
         console.error('Failed to load preferences:', error)
@@ -192,7 +197,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
 
         {promptsExpanded && (
           <div className="mt-4 space-y-3 pl-6">
-            {(['orchestrator', 'planner', 'discussion'] as PromptType[]).map((type) => (
+            {(['orchestrator', 'planner', 'discussion', 'task'] as PromptType[]).map((type) => (
               <div
                 key={type}
                 className="flex items-center justify-between py-2 px-3 rounded-lg border bg-muted/20"

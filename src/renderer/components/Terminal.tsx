@@ -115,9 +115,9 @@ export function Terminal({
     }
   }, [theme])
 
-  // Re-fit terminal when it becomes visible
+  // Re-fit and refresh terminal when it becomes visible
   // Uses multiple fit attempts with increasing delays to handle race conditions
-  // when returning from settings view (CSS hidden class removal + isVisible change)
+  // when returning from settings view or moving between tabs
   useEffect(() => {
     if (isVisible && fitAddonRef.current && xtermRef.current) {
       const fitTerminal = () => {
@@ -125,6 +125,8 @@ export function Terminal({
           fitAddonRef.current.fit()
           const { cols, rows } = xtermRef.current
           window.electronAPI.resizeTerminal(terminalId, cols, rows)
+          // Force a full redraw of the terminal canvas
+          xtermRef.current.refresh(0, rows - 1)
         }
       }
 
