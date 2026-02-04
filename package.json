@@ -1,6 +1,6 @@
 {
   "name": "bismarck",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {

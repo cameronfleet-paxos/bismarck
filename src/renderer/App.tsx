@@ -1826,7 +1826,7 @@ function App() {
           onClick={() => setCommandSearchOpen(true)}
           className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
         >
-          search with {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
+          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
         </span>
         <div className="flex items-center gap-2">
           {updateAvailable && (
