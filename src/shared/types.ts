@@ -464,6 +464,16 @@ export interface AgentWithMode extends Agent {
   headlessInfo?: HeadlessAgentInfo
 }
 
+// Tracks a spawning headless agent (for placeholder rendering)
+export interface SpawningHeadlessInfo {
+  id: string                  // Temporary ID like "spawning-1234567890"
+  referenceAgentId: string    // The agent used as reference
+  tabId: string               // Which tab to show the placeholder in
+  prompt: string              // Prompt being executed
+  model: 'opus' | 'sonnet'    // Model being used
+  startedAt: number           // Timestamp for display purposes
+}
+
 // ============================================
 // Bead Task Types (from bd CLI)
 // ============================================

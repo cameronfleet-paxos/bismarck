@@ -26,13 +26,14 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
+import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -170,7 +171,7 @@ function App() {
   const [headlessAgentOrder, setHeadlessAgentOrder] = useState<Map<string, string[]>>(new Map())
 
   // Track headless agents that are currently spawning (show loading placeholder)
-  const [spawningHeadlessIds, setSpawningHeadlessIds] = useState<Set<string>>(new Set())
+  const [spawningHeadless, setSpawningHeadless] = useState<Map<string, SpawningHeadlessInfo>>(new Map())
 
   // Manual maximize state per tab (independent of waiting queue expand mode)
   const [maximizedAgentIdByTab, setMaximizedAgentIdByTab] = useState<Record<string, string | null>>({})
@@ -1131,8 +1132,26 @@ function App() {
 
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
-    // Show loading state immediately for visual feedback
-    setSpawningHeadlessIds(prev => new Set(prev).add(agentId))
+    // Generate a unique spawning ID for this placeholder
+    const spawningId = `spawning-${Date.now()}`
+    const referenceAgent = agents.find(a => a.id === agentId)
+    const tabId = activeTabId || tabs[0]?.id
+
+    if (!referenceAgent || !tabId) return
+
+    // Create spawning info for placeholder rendering
+    const spawningInfo: SpawningHeadlessInfo = {
+      id: spawningId,
+      referenceAgentId: agentId,
+      tabId,
+      prompt,
+      model,
+      startedAt: Date.now(),
+    }
+
+    // Add spawning placeholder immediately
+    setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
+
     try {
       const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model)
       if (result) {
@@ -1141,10 +1160,10 @@ function App() {
         // The workspace will be added to a tab via IPC event, which will trigger state update
       }
     } finally {
-      // Clear loading state
-      setSpawningHeadlessIds(prev => {
-        const next = new Set(prev)
-        next.delete(agentId)
+      // Clear loading state - the real terminal will now be visible
+      setSpawningHeadless(prev => {
+        const next = new Map(prev)
+        next.delete(spawningId)
         return next
       })
     }
@@ -1332,6 +1351,20 @@ function App() {
     }
     return results
   }, [agents, headlessAgents])
+
+  // Get spawning placeholders for a tab
+  const getSpawningPlaceholdersForTab = useCallback((tabId: string): Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> => {
+    const results: Array<{ spawningInfo: SpawningHeadlessInfo; referenceAgent: Agent }> = []
+    for (const [, spawningInfo] of spawningHeadless) {
+      if (spawningInfo.tabId === tabId) {
+        const referenceAgent = agents.find(a => a.id === spawningInfo.referenceAgentId)
+        if (referenceAgent) {
+          results.push({ spawningInfo, referenceAgent })
+        }
+      }
+    }
+    return results
+  }, [spawningHeadless, agents])
 
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
@@ -2306,6 +2339,17 @@ function App() {
                         </div>
                       )
                     })}
+                    {/* Spawning placeholders for plan view */}
+                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }) => (
+                      <div
+                        key={`spawning-${spawningInfo.id}`}
+                        className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          expandedAgentId ? 'invisible' : ''
+                        }`}
+                      >
+                        <SpawningPlaceholder info={spawningInfo} referenceAgent={referenceAgent} />
+                      </div>
+                    ))}
                     {/* Ralph Loop iterations (stored in ralphLoops state, not headlessAgents) */}
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
@@ -2615,9 +2659,32 @@ function App() {
                       )
                     })}
 
+                    {/* Render spawning placeholders */}
+                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }, index) => {
+                      // Position after existing workspaces
+                      const position = tabWorkspaceIds.length + index
+                      if (position >= gridConfig.maxAgents) return null
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
+
+                      return (
+                        <div
+                          key={`spawning-${spawningInfo.id}`}
+                          style={{ gridRow, gridColumn: gridCol }}
+                          className={`transition-all duration-200 ${
+                            expandedAgentId ? 'invisible' : ''
+                          }`}
+                        >
+                          <SpawningPlaceholder info={spawningInfo} referenceAgent={referenceAgent} />
+                        </div>
+                      )
+                    })}
+
                     {/* Render empty slots separately - keyed by position */}
                     {gridPositions.map((position) => {
                       if (tabWorkspaceIds[position]) return null // Skip if occupied
+                      // Also skip if there's a spawning placeholder in this position
+                      const spawningCount = getSpawningPlaceholdersForTab(tab.id).length
+                      if (position >= tabWorkspaceIds.length && position < tabWorkspaceIds.length + spawningCount) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
 
