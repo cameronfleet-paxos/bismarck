@@ -5,10 +5,8 @@ import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseNotes?: string }
-  | { state: 'not-available' }
-  | { state: 'downloading'; progress: number }
-  | { state: 'downloaded'; version: string }
+  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
 export interface ElectronAPI {
@@ -169,14 +167,15 @@ export interface ElectronAPI {
 
   // Auto-update management
   checkForUpdates: () => Promise<UpdateStatus>
-  downloadUpdate: () => Promise<UpdateStatus>
-  installUpdate: () => Promise<void>
   getUpdateStatus: () => Promise<UpdateStatus>
   getUpdateSettings: () => Promise<{ autoCheck: boolean }>
   setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
   getAppVersion: () => Promise<string>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
   removeUpdateStatusListener: () => void
+
+  // Clipboard management
+  copyToClipboard: (text: string) => Promise<void>
 
   // Terminal events
   onTerminalData: (

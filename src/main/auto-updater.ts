@@ -1,23 +1,25 @@
 /**
  * Auto-Updater Module
  *
- * Handles automatic updates using electron-updater with GitHub Releases.
- * Users can toggle auto-updates in Settings, and a non-intrusive notification
- * banner prompts them to restart when updates are downloaded.
+ * Checks for updates using the GitHub Releases API and notifies users
+ * when a new version is available. Users manually install updates via
+ * the one-line curl command.
  */
 
-import { app, ipcMain, BrowserWindow } from 'electron'
-import { autoUpdater, UpdateInfo, ProgressInfo, UpdateDownloadedEvent } from 'electron-updater'
+import { app, ipcMain, BrowserWindow, clipboard, shell } from 'electron'
 import { loadSettings, updateSettings } from './settings-manager'
+import * as https from 'https'
+
+// GitHub repository info
+const GITHUB_OWNER = 'cameronfleet-paxos'
+const GITHUB_REPO = 'bismarck'
 
 // Update status that gets sent to renderer
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseNotes?: string }
-  | { state: 'not-available' }
-  | { state: 'downloading'; progress: number }
-  | { state: 'downloaded'; version: string }
+  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
 let mainWindow: BrowserWindow | null = null
@@ -62,57 +64,142 @@ function isDevelopment(): boolean {
 }
 
 /**
+ * Compare two semver versions
+ * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+ */
+function compareVersions(v1: string, v2: string): number {
+  // Remove leading 'v' if present
+  const clean1 = v1.replace(/^v/, '')
+  const clean2 = v2.replace(/^v/, '')
+
+  const parts1 = clean1.split('.').map(Number)
+  const parts2 = clean2.split('.').map(Number)
+
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const p1 = parts1[i] || 0
+    const p2 = parts2[i] || 0
+    if (p1 > p2) return 1
+    if (p1 < p2) return -1
+  }
+  return 0
+}
+
+/**
+ * Fetch the latest release from GitHub API
+ */
+async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: string } | null> {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      method: 'GET',
+      headers: {
+        'User-Agent': `Bismarck/${getAppVersion()}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    }
+
+    const req = https.request(options, (res) => {
+      let data = ''
+
+      res.on('data', (chunk) => {
+        data += chunk
+      })
+
+      res.on('end', () => {
+        if (res.statusCode === 404) {
+          // No releases yet
+          resolve(null)
+          return
+        }
+
+        if (res.statusCode !== 200) {
+          reject(new Error(`GitHub API returned status ${res.statusCode}`))
+          return
+        }
+
+        try {
+          const release = JSON.parse(data)
+          resolve({
+            version: release.tag_name,
+            releaseUrl: release.html_url
+          })
+        } catch (e) {
+          reject(new Error('Failed to parse GitHub response'))
+        }
+      })
+    })
+
+    req.on('error', (e) => {
+      reject(e)
+    })
+
+    req.setTimeout(10000, () => {
+      req.destroy()
+      reject(new Error('Request timed out'))
+    })
+
+    req.end()
+  })
+}
+
+/**
+ * Check for updates
+ */
+async function checkForUpdates(): Promise<UpdateStatus> {
+  console.log('[AutoUpdater] Checking for updates...')
+  sendStatusToRenderer({ state: 'checking' })
+
+  try {
+    const latestRelease = await fetchLatestRelease()
+
+    if (!latestRelease) {
+      console.log('[AutoUpdater] No releases found')
+      const status: UpdateStatus = { state: 'up-to-date' }
+      sendStatusToRenderer(status)
+      return status
+    }
+
+    const currentVersion = getAppVersion()
+    const latestVersion = latestRelease.version.replace(/^v/, '')
+
+    console.log(`[AutoUpdater] Current: v${currentVersion}, Latest: v${latestVersion}`)
+
+    if (compareVersions(latestVersion, currentVersion) > 0) {
+      console.log('[AutoUpdater] Update available:', latestVersion)
+      const status: UpdateStatus = {
+        state: 'available',
+        version: latestVersion,
+        releaseUrl: latestRelease.releaseUrl
+      }
+      sendStatusToRenderer(status)
+      return status
+    } else {
+      console.log('[AutoUpdater] Already up to date')
+      const status: UpdateStatus = { state: 'up-to-date' }
+      sendStatusToRenderer(status)
+      return status
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[AutoUpdater] Error checking for updates:', message)
+    const status: UpdateStatus = { state: 'error', message }
+    sendStatusToRenderer(status)
+    return status
+  }
+}
+
+/**
  * Initialize the auto-updater
- * Sets up event handlers and IPC communication
+ * Sets up IPC communication
  */
 export function initAutoUpdater(): void {
-  // Skip in development mode
-  if (isDevelopment()) {
-    console.log('[AutoUpdater] Skipping initialization in development mode')
-    return
-  }
-
-  // Configure auto-updater
-  autoUpdater.autoDownload = false // We'll handle downloads manually
-  autoUpdater.autoInstallOnAppQuit = true
-
-  // Event handlers
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[AutoUpdater] Checking for update...')
-    sendStatusToRenderer({ state: 'checking' })
-  })
-
-  autoUpdater.on('update-available', (info: UpdateInfo) => {
-    console.log('[AutoUpdater] Update available:', info.version)
-    sendStatusToRenderer({
-      state: 'available',
-      version: info.version,
-      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
-    })
-  })
-
-  autoUpdater.on('update-not-available', () => {
-    console.log('[AutoUpdater] No update available')
-    sendStatusToRenderer({ state: 'not-available' })
-  })
-
-  autoUpdater.on('download-progress', (progress: ProgressInfo) => {
-    console.log('[AutoUpdater] Download progress:', Math.round(progress.percent), '%')
-    sendStatusToRenderer({ state: 'downloading', progress: progress.percent })
-  })
-
-  autoUpdater.on('update-downloaded', (event: UpdateDownloadedEvent) => {
-    console.log('[AutoUpdater] Update downloaded:', event.version)
-    sendStatusToRenderer({ state: 'downloaded', version: event.version })
-  })
-
-  autoUpdater.on('error', (error: Error) => {
-    console.error('[AutoUpdater] Error:', error.message)
-    sendStatusToRenderer({ state: 'error', message: error.message })
-  })
-
-  // Register IPC handlers
+  // Register IPC handlers (even in dev mode for testing)
   registerIpcHandlers()
+
+  if (isDevelopment()) {
+    console.log('[AutoUpdater] Running in development mode')
+  }
 
   console.log('[AutoUpdater] Initialized')
 }
@@ -123,41 +210,7 @@ export function initAutoUpdater(): void {
 function registerIpcHandlers(): void {
   // Check for updates manually
   ipcMain.handle('check-for-updates', async () => {
-    if (isDevelopment()) {
-      console.log('[AutoUpdater] Skipping check in development mode')
-      return { state: 'not-available' }
-    }
-    try {
-      await autoUpdater.checkForUpdates()
-      return currentStatus
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { state: 'error', message }
-    }
-  })
-
-  // Download update
-  ipcMain.handle('download-update', async () => {
-    if (isDevelopment()) {
-      console.log('[AutoUpdater] Skipping download in development mode')
-      return { state: 'not-available' }
-    }
-    try {
-      await autoUpdater.downloadUpdate()
-      return currentStatus
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { state: 'error', message }
-    }
-  })
-
-  // Install update (quit and install)
-  ipcMain.handle('install-update', () => {
-    if (isDevelopment()) {
-      console.log('[AutoUpdater] Skipping install in development mode')
-      return
-    }
-    autoUpdater.quitAndInstall(false, true)
+    return await checkForUpdates()
   })
 
   // Get current update status
@@ -191,6 +244,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('get-app-version', () => {
     return getAppVersion()
   })
+
+  // Copy text to clipboard
+  ipcMain.handle('copy-to-clipboard', (_event, text: string) => {
+    clipboard.writeText(text)
+  })
+
+  // Open URL in external browser
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    await shell.openExternal(url)
+  })
 }
 
 /**
@@ -198,11 +261,6 @@ function registerIpcHandlers(): void {
  * Only checks if auto-check is enabled in settings
  */
 export async function checkForUpdatesOnLaunch(): Promise<void> {
-  if (isDevelopment()) {
-    console.log('[AutoUpdater] Skipping launch check in development mode')
-    return
-  }
-
   const settings = await loadSettings()
   if (!settings.updates.autoCheck) {
     console.log('[AutoUpdater] Auto-check disabled, skipping launch check')
@@ -213,7 +271,7 @@ export async function checkForUpdatesOnLaunch(): Promise<void> {
   setTimeout(async () => {
     try {
       console.log('[AutoUpdater] Performing launch check...')
-      await autoUpdater.checkForUpdates()
+      await checkForUpdates()
     } catch (error) {
       console.error('[AutoUpdater] Launch check failed:', error)
     }
@@ -224,11 +282,6 @@ export async function checkForUpdatesOnLaunch(): Promise<void> {
  * Start periodic update checks
  */
 export function startPeriodicChecks(): void {
-  if (isDevelopment()) {
-    console.log('[AutoUpdater] Skipping periodic checks in development mode')
-    return
-  }
-
   // Don't start if already running
   if (periodicCheckInterval) {
     return
@@ -243,7 +296,7 @@ export function startPeriodicChecks(): void {
 
     try {
       console.log('[AutoUpdater] Performing periodic check...')
-      await autoUpdater.checkForUpdates()
+      await checkForUpdates()
     } catch (error) {
       console.error('[AutoUpdater] Periodic check failed:', error)
     }

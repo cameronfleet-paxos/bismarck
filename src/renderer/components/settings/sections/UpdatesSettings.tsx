@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, Download, RefreshCw, RotateCcw } from 'lucide-react'
+import { Check, RefreshCw, ExternalLink, Copy } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
 import { Button } from '@/renderer/components/ui/button'
 import { Switch } from '@/renderer/components/ui/switch'
@@ -9,11 +9,14 @@ interface UpdatesSettingsProps {
   onSettingsChange?: () => void
 }
 
+const INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash'
+
 export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
   const [autoCheck, setAutoCheck] = useState(true)
   const [appVersion, setAppVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' })
   const [showSaved, setShowSaved] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // Load settings and version on mount
   useEffect(() => {
@@ -70,20 +73,19 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
     }
   }
 
-  const handleDownloadUpdate = async () => {
+  const handleCopyCommand = async () => {
     try {
-      await window.electronAPI.downloadUpdate()
+      await window.electronAPI.copyToClipboard(INSTALL_COMMAND)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error('Failed to download update:', error)
-      setUpdateStatus({ state: 'error', message: 'Failed to download update' })
+      console.error('Failed to copy to clipboard:', error)
     }
   }
 
-  const handleInstallUpdate = async () => {
-    try {
-      await window.electronAPI.installUpdate()
-    } catch (error) {
-      console.error('Failed to install update:', error)
+  const handleOpenGitHub = async () => {
+    if (updateStatus.state === 'available') {
+      await window.electronAPI.openExternal(updateStatus.releaseUrl)
     }
   }
 
@@ -104,7 +106,7 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
           </div>
         )
 
-      case 'not-available':
+      case 'up-to-date':
         return (
           <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
             <Check className="h-4 w-4" />
@@ -114,51 +116,63 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
 
       case 'available':
         return (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-              <Download className="h-4 w-4" />
-              Version {updateStatus.version} is available
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-medium">
+              Version {updateStatus.version} is available!
             </div>
-            <Button onClick={handleDownloadUpdate} size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Download Update
-            </Button>
-          </div>
-        )
 
-      case 'downloading':
-        return (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Download className="h-4 w-4 animate-pulse" />
-              Downloading update...
-            </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-300"
-                style={{ width: `${updateStatus.progress}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {Math.round(updateStatus.progress)}% complete
-            </p>
-          </div>
-        )
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                To update, quit Bismarck and run this command in your terminal:
+              </p>
 
-      case 'downloaded':
-        return (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              <Check className="h-4 w-4" />
-              Version {updateStatus.version} is ready to install
+              <div className="relative">
+                <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto pr-12">
+                  {INSTALL_COMMAND}
+                </pre>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="absolute right-1 top-1 h-8 w-8 p-0"
+                  onClick={handleCopyCommand}
+                  title="Copy command"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopyCommand}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 mr-2 text-green-500" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Command
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenGitHub}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View on GitHub
+                </Button>
+              </div>
             </div>
-            <Button onClick={handleInstallUpdate} size="sm">
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Restart to Update
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              The app will restart automatically to apply the update.
-            </p>
           </div>
         )
 
@@ -236,7 +250,7 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
           <Button
             onClick={handleCheckForUpdates}
             variant="outline"
-            disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
+            disabled={updateStatus.state === 'checking'}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${updateStatus.state === 'checking' ? 'animate-spin' : ''}`} />
             Check Now

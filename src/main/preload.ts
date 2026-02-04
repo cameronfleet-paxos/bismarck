@@ -369,20 +369,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Auto-update management
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  downloadUpdate: () => ipcRenderer.invoke('download-update'),
-  installUpdate: () => ipcRenderer.invoke('install-update'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   getUpdateSettings: () => ipcRenderer.invoke('get-update-settings'),
   setUpdateSettings: (settings: { autoCheck?: boolean }) =>
     ipcRenderer.invoke('set-update-settings', settings),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  onUpdateStatus: (callback: (status: { state: string; version?: string; progress?: number; message?: string; releaseNotes?: string }) => void): void => {
+  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): void => {
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.on('update-status', (_event, status) => callback(status))
   },
   removeUpdateStatusListener: (): void => {
     ipcRenderer.removeAllListeners('update-status')
   },
+
+  // Clipboard management
+  copyToClipboard: (text: string) => ipcRenderer.invoke('copy-to-clipboard', text),
 
   // External URL handling
   openExternal: (url: string): Promise<void> =>

@@ -24,7 +24,7 @@ import { PlanSidebar } from '@/renderer/components/PlanSidebar'
 import { PlanCreator } from '@/renderer/components/PlanCreator'
 import { HeadlessTerminal } from '@/renderer/components/HeadlessTerminal'
 import { DevConsole } from '@/renderer/components/DevConsole'
-import { UpdateNotificationBanner } from '@/renderer/components/UpdateNotificationBanner'
+import type { UpdateStatus } from '@/renderer/electron.d'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
@@ -237,6 +237,9 @@ function App() {
   // Terminal queue status for boot progress indicator
   const [terminalQueueStatus, setTerminalQueueStatus] = useState<{ queued: number; active: number }>({ queued: 0, active: 0 })
 
+  // Update available state for header notification
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string } | null>(null)
+
   // Central registry of terminal writers - Map of terminalId -> write function
   const terminalWritersRef = useRef<Map<string, TerminalWriter>>(new Map())
 
@@ -343,6 +346,29 @@ function App() {
       timers.forEach((timer) => clearTimeout(timer))
     }
   }, [activeTerminals, bootedTerminals])
+
+  // Subscribe to update status for header notification
+  useEffect(() => {
+    // Get initial status
+    window.electronAPI?.getUpdateStatus?.().then((status: UpdateStatus) => {
+      if (status.state === 'available') {
+        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+      }
+    })
+
+    // Listen for status updates
+    window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
+      if (status.state === 'available') {
+        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+      } else {
+        setUpdateAvailable(null)
+      }
+    })
+
+    return () => {
+      window.electronAPI?.removeUpdateStatusListener?.()
+    }
+  }, [])
 
   const handleFocusAgent = useCallback((agentId: string) => {
     // If switching away from a waiting agent we were focused on, acknowledge it
@@ -1790,9 +1816,18 @@ function App() {
           onClick={() => setCommandSearchOpen(true)}
           className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
         >
-          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} for search
+          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
         </span>
         <div className="flex items-center gap-2">
+          {updateAvailable && (
+            <span
+              className="text-xs text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
+              onClick={() => setCurrentView('settings')}
+              title={`Update v${updateAvailable.version} available - click to view`}
+            >
+              Update available
+            </span>
+          )}
           {waitingQueue.length > 1 && (
             <Button
               variant="outline"
@@ -3035,8 +3070,6 @@ function App() {
         onStartRalphLoop={handleStartRalphLoop}
       />
 
-      {/* Update Notification Banner */}
-      <UpdateNotificationBanner />
     </div>
     </TutorialProvider>
   )

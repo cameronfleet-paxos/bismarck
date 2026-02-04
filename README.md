@@ -10,12 +10,12 @@ A desktop app for managing multiple Claude Code agents from a single dashboard.
 
 **One-line install (pre-built):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/anthropics/bismarck/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash
 ```
 
 **Build from source:**
 ```bash
-git clone https://github.com/anthropics/bismarck.git
+git clone https://github.com/cameronfleet-paxos/bismarck.git
 cd bismarck
 npm install
 ./scripts/install.sh
@@ -27,7 +27,7 @@ The app installs to `~/Applications/Bismarck.app`.
 
 Paste this into Claude Code:
 
-> Install Bismarck: `curl -fsSL https://raw.githubusercontent.com/anthropics/bismarck/main/install.sh | bash`
+> Install Bismarck: `curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash`
 
 ## Requirements
 

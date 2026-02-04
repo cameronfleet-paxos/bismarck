@@ -19,16 +19,8 @@ export function AuthenticationSettings() {
     try {
       const configured = await window.electronAPI.hasOAuthToken()
       setHasToken(configured)
-
-      if (configured) {
-        // Try to get token details for timestamp
-        const token = await window.electronAPI.getOAuthToken()
-        if (token?.createdAt) {
-          setTokenCreatedAt(new Date(token.createdAt).toLocaleString())
-        }
-      } else {
-        setTokenCreatedAt(null)
-      }
+      // Note: We don't have token creation timestamp - the API returns just the token string
+      setTokenCreatedAt(null)
     } catch (err) {
       console.error('Failed to check token status:', err)
     }
