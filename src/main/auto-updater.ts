@@ -44,8 +44,12 @@ export function setAutoUpdaterWindow(window: BrowserWindow | null): void {
  */
 function sendStatusToRenderer(status: UpdateStatus): void {
   currentStatus = status
+  console.log('[AutoUpdater] sendStatusToRenderer:', status.state, 'mainWindow:', !!mainWindow)
   if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log('[AutoUpdater] Sending update-status IPC to renderer')
     mainWindow.webContents.send('update-status', status)
+  } else {
+    console.log('[AutoUpdater] WARNING: mainWindow not available, cannot send status')
   }
 }
 
@@ -211,9 +215,12 @@ function registerIpcHandlers(): void {
   // Handle renderer-ready signal to re-send current status
   // This fixes the race condition where the renderer mounts after the launch check completes
   ipcMain.on('renderer-ready', () => {
+    console.log('[AutoUpdater] Received renderer-ready signal, currentStatus:', currentStatus.state)
     if (currentStatus.state !== 'idle') {
-      console.log('[AutoUpdater] Renderer ready, re-sending current status:', currentStatus.state)
+      console.log('[AutoUpdater] Re-sending current status to renderer')
       sendStatusToRenderer(currentStatus)
+    } else {
+      console.log('[AutoUpdater] Status is idle, not re-sending')
     }
   })
 

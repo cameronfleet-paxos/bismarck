@@ -351,15 +351,20 @@ function App() {
   // Subscribe to update status for header notification
   useEffect(() => {
     // Get initial status
+    console.log('[App] Setting up update status listener')
     window.electronAPI?.getUpdateStatus?.().then((status: UpdateStatus) => {
+      console.log('[App] Initial update status:', status.state)
       if (status.state === 'available') {
+        console.log('[App] Update available on init:', status.version)
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
       }
     })
 
     // Listen for status updates
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
+      console.log('[App] Received update status:', status.state, status.state === 'available' ? status.version : '')
       if (status.state === 'available') {
+        console.log('[App] Setting updateAvailable:', status.version)
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
       } else {
         setUpdateAvailable(null)
@@ -369,6 +374,7 @@ function App() {
     // Signal to main process that renderer is ready to receive updates
     // This fixes the race condition where the 5-second launch check completes
     // before the renderer mounts and sets up its listener
+    console.log('[App] Signaling renderer ready')
     window.electronAPI?.signalRendererReady?.()
 
     return () => {
