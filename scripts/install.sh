@@ -3,6 +3,9 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+echo "Installing dependencies..."
+npm ci
+
 echo "Building Bismarck..."
 npm run build
 npm run dist

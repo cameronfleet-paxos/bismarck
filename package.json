@@ -4,6 +4,10 @@
   "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {
+    "postinstall": "electron-rebuild",
+    "rebuild": "electron-rebuild",
+    "rebuild:force": "electron-rebuild --force",
+    "check-native": "node scripts/check-native-modules.js",
     "dev": "vite",
     "dev:electron": "NODE_ENV=development electron .",
     "build": "tsc -p tsconfig.main.json && vite build",
@@ -32,6 +36,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.39.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.1.0",

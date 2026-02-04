@@ -178,6 +178,32 @@ cd ~/.bismarck/plans/<planId>
 bd --sandbox list --json | jq '.[] | {id, status, labels}'
 ```
 
+## Troubleshooting Native Modules
+
+Native modules like `node-pty` must be compiled for Electron's Node ABI version, not the system Node.js version.
+
+### Automatic Rebuild
+
+After `npm install`, the `postinstall` hook automatically runs `electron-rebuild` to compile native modules for Electron. This happens automatically - no manual intervention needed.
+
+### Manual Rebuild Commands
+
+If you encounter `posix_spawnp failed` or similar errors when starting in dev mode:
+
+```bash
+npm run rebuild          # Rebuild native modules for Electron
+npm run rebuild:force    # Force rebuild (clears cache first)
+npm run check-native     # Verify native modules are correctly built
+```
+
+### Why This Happens
+
+- `npm install` compiles native modules for your system's Node.js version
+- `npm run dev:electron` runs in Electron's Node.js runtime (different ABI)
+- The `postinstall` hook fixes this automatically by rebuilding for Electron
+
+**Note:** Production builds (`npm run dist`) are not affected - `electron-builder` automatically rebuilds native modules during packaging.
+
 ### Useful CDP Patterns
 
 ```javascript
