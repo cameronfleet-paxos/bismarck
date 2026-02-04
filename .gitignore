@@ -6,3 +6,4 @@ dist/
 .env.local
 .vite/
 .claude/ralph-loop.local.md
+CLAUDE.local.md
