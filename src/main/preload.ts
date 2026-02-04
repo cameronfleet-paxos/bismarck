@@ -333,6 +333,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultPrompt: (type: PromptType): Promise<string> =>
     ipcRenderer.invoke('get-default-prompt', type),
 
+  // Playbox settings
+  updatePlayboxSettings: (settings: { bismarckMode?: boolean }): Promise<void> =>
+    ipcRenderer.invoke('update-playbox-settings', settings),
+  getPlayboxSettings: (): Promise<{ bismarckMode: boolean }> =>
+    ipcRenderer.invoke('get-playbox-settings'),
+
   // External URL handling
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('open-external', url),

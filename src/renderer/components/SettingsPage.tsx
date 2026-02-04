@@ -9,6 +9,7 @@ import { GeneralSettings } from '@/renderer/components/settings/sections/General
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
 import { RawJsonSettings } from '@/renderer/components/settings/sections/RawJsonSettings'
 import { AuthenticationSettings } from '@/renderer/components/settings/sections/AuthenticationSettings'
+import { PlayboxSettings } from '@/renderer/components/settings/sections/PlayboxSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -24,7 +25,7 @@ function getGitHubUrlFromRemote(remoteUrl: string): string | null {
   return null
 }
 
-type SettingsSection = 'general' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
+type SettingsSection = 'general' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'playbox' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -62,6 +63,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'repositories',
     label: 'Repositories',
     description: 'View and edit repository settings',
+  },
+  {
+    id: 'playbox',
+    label: 'Playbox',
+    description: 'Experimental and fun features',
   },
   {
     id: 'advanced',
@@ -1186,6 +1192,13 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 })}
               </div>
             )}
+          </div>
+        )
+
+      case 'playbox':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <PlayboxSettings onSettingsChange={loadSettings} />
           </div>
         )
 

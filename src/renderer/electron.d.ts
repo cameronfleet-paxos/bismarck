@@ -143,6 +143,10 @@ export interface ElectronAPI {
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 
+  // Playbox settings
+  updatePlayboxSettings: (settings: { bismarckMode?: boolean }) => Promise<void>
+  getPlayboxSettings: () => Promise<{ bismarckMode: boolean }>
+
   // Terminal events
   onTerminalData: (
     callback: (terminalId: string, data: string) => void

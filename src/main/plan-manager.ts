@@ -57,7 +57,8 @@ import { runSetupToken } from './oauth-setup'
 import { startToolProxy, stopToolProxy, isProxyRunning, proxyEvents } from './tool-proxy'
 import { checkDockerAvailable, checkImageExists, stopAllContainers } from './docker-sandbox'
 import { execWithPath } from './exec-utils'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, isBismarckModeEnabled } from './settings-manager'
+import { BISMARCK_MODE_PROMPT } from './bismarck-prompt'
 
 let mainWindow: BrowserWindow | null = null
 let pollInterval: NodeJS.Timeout | null = null
@@ -1997,7 +1998,7 @@ async function startHeadlessTaskAgent(
     repo: repository.name,
     image: selectedImage,
   })
-  const taskPrompt = buildTaskPromptForHeadless(planId, task, repository, worktree)
+  const taskPrompt = await buildTaskPromptForHeadless(planId, task, repository, worktree)
   logger.debug('agent', 'Built task prompt', logCtx, { promptLength: taskPrompt.length })
 
   // Create headless agent info for tracking
@@ -2294,10 +2295,13 @@ async function stopAllHeadlessAgents(planId: string): Promise<void> {
 /**
  * Build task prompt for headless mode (includes container-specific instructions)
  */
-function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?: Repository, worktree?: PlanWorktree): string {
+async function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?: Repository, worktree?: PlanWorktree): Promise<string> {
   const plan = getPlanById(planId)
   // Use worktree's baseBranch if available (handles PR stacking), fall back to repository default
   const baseBranch = worktree?.baseBranch || repository?.defaultBranch || 'main'
+
+  // Check if Bismarck Mode is enabled
+  const bismarckPrefix = (await isBismarckModeEnabled()) ? BISMARCK_MODE_PROMPT : ''
 
   // Build completion instructions based on branch strategy
   let completionInstructions: string
@@ -2314,7 +2318,7 @@ function buildTaskPromptForHeadless(planId: string, task: BeadTask, repository?:
    bd close ${task.id} --message "Completed: <brief summary>"`
   }
 
-  return `[BISMARCK TASK - HEADLESS MODE]
+  return `${bismarckPrefix}[BISMARCK TASK - HEADLESS MODE]
 Task ID: ${task.id}
 Title: ${task.title}
 

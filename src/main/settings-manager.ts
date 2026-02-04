@@ -56,6 +56,9 @@ export interface AppSettings {
   tools: {
     githubToken: string | null  // GitHub token for gh CLI (needed for SAML SSO orgs)
   }
+  playbox: {
+    bismarckMode: boolean       // Makes headless agents speak like a satirical German military officer
+  }
 }
 
 // In-memory cache of settings
@@ -124,6 +127,9 @@ export function getDefaultSettings(): AppSettings {
     tools: {
       githubToken: null,
     },
+    playbox: {
+      bismarckMode: false,
+    },
   }
 }
 
@@ -170,6 +176,7 @@ export async function loadSettings(): Promise<AppSettings> {
       prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
       planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
       tools: { ...defaults.tools, ...(loaded.tools || {}) },
+      playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
     }
     settingsCache = merged
     return merged
@@ -228,6 +235,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     tools: {
       ...(currentSettings.tools || defaults.tools),
       ...(updates.tools || {}),
+    },
+    playbox: {
+      ...(currentSettings.playbox || defaults.playbox),
+      ...(updates.playbox || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -507,4 +518,25 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Update playbox settings
+ */
+export async function updatePlayboxSettings(playboxSettings: Partial<AppSettings['playbox']>): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    ...playboxSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Check if Bismarck Mode is enabled
+ */
+export async function isBismarckModeEnabled(): Promise<boolean> {
+  const settings = await loadSettings()
+  return settings.playbox?.bismarckMode ?? false
 }

@@ -121,6 +121,8 @@ import {
   setCustomPrompt,
   hasGitHubToken,
   setGitHubToken,
+  updatePlayboxSettings,
+  loadSettings,
 } from './settings-manager'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
@@ -772,6 +774,16 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion') => {
     return getDefaultPrompt(type)
+  })
+
+  // Playbox settings
+  ipcMain.handle('update-playbox-settings', async (_event, settings: { bismarckMode?: boolean }) => {
+    return updatePlayboxSettings(settings)
+  })
+
+  ipcMain.handle('get-playbox-settings', async () => {
+    const appSettings = await loadSettings()
+    return appSettings.playbox
   })
 
   // Dev test harness (development mode only)
