@@ -1627,6 +1627,15 @@ function App() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={handleAddAgent}
+                  className="h-5 w-5"
+                  title="Add new agent"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setSidebarEditMode(!sidebarEditMode)}
                   className={`h-5 w-5 ${sidebarEditMode ? 'bg-primary/20 text-primary' : ''}`}
                   title={sidebarEditMode ? 'Exit reorder mode' : 'Reorder agents'}
