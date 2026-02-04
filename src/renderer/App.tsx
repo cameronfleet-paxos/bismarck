@@ -349,35 +349,73 @@ function App() {
   }, [activeTerminals, bootedTerminals])
 
   // Subscribe to update status for header notification
+  // Uses polling to handle the race condition where the 5-second launch check
+  // completes after the renderer mounts but before listeners are stable
   useEffect(() => {
-    // Get initial status
-    console.log('[App] Setting up update status listener')
-    window.electronAPI?.getUpdateStatus?.().then((status: UpdateStatus) => {
-      console.log('[App] Initial update status:', status.state)
-      if (status.state === 'available') {
-        console.log('[App] Update available on init:', status.version)
-        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
-      }
-    })
+    let pollInterval: NodeJS.Timeout | null = null
+    let mounted = true
 
-    // Listen for status updates
+    // Poll for update status until we get a definitive result
+    const pollForStatus = async () => {
+      if (!mounted) return
+
+      try {
+        const status = await window.electronAPI?.getUpdateStatus?.()
+        if (!mounted) return
+
+        console.log('[App] Polled update status:', status?.state)
+
+        if (status?.state === 'available') {
+          console.log('[App] Update available:', status.version)
+          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+          // Stop polling once we have a result
+          if (pollInterval) {
+            clearInterval(pollInterval)
+            pollInterval = null
+          }
+        } else if (status?.state === 'up-to-date' || status?.state === 'error') {
+          // Stop polling on definitive results
+          if (pollInterval) {
+            clearInterval(pollInterval)
+            pollInterval = null
+          }
+        }
+        // Keep polling if state is 'idle' or 'checking'
+      } catch (error) {
+        console.error('[App] Error polling update status:', error)
+      }
+    }
+
+    // Initial check
+    pollForStatus()
+
+    // Poll every 2 seconds for up to 30 seconds (covers the 5-second delay + buffer)
+    pollInterval = setInterval(pollForStatus, 2000)
+
+    // Stop polling after 30 seconds regardless
+    const maxPollTimeout = setTimeout(() => {
+      if (pollInterval) {
+        clearInterval(pollInterval)
+        pollInterval = null
+      }
+    }, 30000)
+
+    // Also listen for push updates (for manual checks from Settings)
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
-      console.log('[App] Received update status:', status.state, status.state === 'available' ? status.version : '')
+      console.log('[App] Received update status push:', status.state)
       if (status.state === 'available') {
-        console.log('[App] Setting updateAvailable:', status.version)
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
       } else {
         setUpdateAvailable(null)
       }
     })
 
-    // Signal to main process that renderer is ready to receive updates
-    // This fixes the race condition where the 5-second launch check completes
-    // before the renderer mounts and sets up its listener
-    console.log('[App] Signaling renderer ready')
-    window.electronAPI?.signalRendererReady?.()
-
     return () => {
+      mounted = false
+      if (pollInterval) {
+        clearInterval(pollInterval)
+      }
+      clearTimeout(maxPollTimeout)
       window.electronAPI?.removeUpdateStatusListener?.()
     }
   }, [])
