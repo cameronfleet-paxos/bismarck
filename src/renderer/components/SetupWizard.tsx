@@ -320,7 +320,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
-      onComplete(agents)
+      await onComplete(agents)
     } catch (err) {
       console.error('Failed to create agents:', err)
       setError('Failed to create agents')
@@ -375,7 +375,9 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     try {
       // Save plan mode preference
+      console.log('[SetupWizard] Saving plan mode preference:', planModeEnabled)
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
+      console.log('[SetupWizard] Plan mode preference saved')
 
       // Build repos with all details
       const reposToCreate = discoveredRepos
@@ -386,11 +388,15 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           completionCriteria: repoCompletionCriteria.get(r.path) || '',
           protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
+      console.log('[SetupWizard] Creating', reposToCreate.length, 'agents...')
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
-      onComplete(agents)
+      console.log('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
+      await onComplete(agents)
+      console.log('[SetupWizard] onComplete finished successfully')
     } catch (err) {
-      console.error('Failed to create agents:', err)
-      setError('Failed to create agents')
+      console.error('[SetupWizard] Failed to create agents:', err)
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setError(`Failed to create agents: ${errorMessage}`)
     } finally {
       isCreatingRef.current = false
       setIsCreating(false)

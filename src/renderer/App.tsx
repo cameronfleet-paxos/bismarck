@@ -1634,34 +1634,59 @@ function App() {
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
+            console.log('[App.onComplete] Starting with', newAgents?.length, 'agents')
+
             // Group agents into logical tabs using Haiku analysis
             if (newAgents && newAgents.length > 0) {
+              console.log('[App.onComplete] Grouping agents into tabs...')
               await window.electronAPI.setupWizardGroupAgentsIntoTabs(newAgents)
+              console.log('[App.onComplete] Agents grouped into tabs')
             }
-            // Reload agents after wizard creates them
-            await loadAgents()
-            // Refresh tabs to get the grouped state
-            const state = await window.electronAPI.getState()
-            setTabs(state.tabs || [])
-            setActiveTabId(state.activeTabId)
-            // Auto-launch all agents to give user a ready-to-go experience
+
+            // Create terminals BEFORE loadAgents triggers the wizard → main app transition
+            // This prevents race conditions where terminals aren't created because
+            // loadAgents() sets agents.length > 0 which unmounts the wizard
+            const createdTerminals: { terminalId: string; workspaceId: string }[] = []
             if (newAgents && newAgents.length > 0) {
+              console.log('[App.onComplete] Creating terminals for', newAgents.length, 'agents...')
               for (const agent of newAgents) {
                 // Skip headless agents - they don't use terminals
                 if (!agent.isHeadless && !agent.isStandaloneHeadless) {
+                  console.log('[App.onComplete] Creating terminal for agent:', agent.id, agent.name)
                   const terminalId = await window.electronAPI.createTerminal(agent.id)
-                  setActiveTerminals((prev) => [...prev, { terminalId, workspaceId: agent.id }])
+                  console.log('[App.onComplete] Terminal created:', terminalId)
+                  createdTerminals.push({ terminalId, workspaceId: agent.id })
                 }
               }
+              console.log('[App.onComplete] All terminals created:', createdTerminals.length)
             }
+
+            // NOW load agents - this triggers the wizard → main app transition
+            console.log('[App.onComplete] Loading agents...')
+            await loadAgents()
+            console.log('[App.onComplete] Agents loaded')
+
+            // Set terminals state after loadAgents (state updates are batched)
+            if (createdTerminals.length > 0) {
+              setActiveTerminals((prev) => [...prev, ...createdTerminals])
+            }
+
+            // Refresh tabs to get the grouped state
+            console.log('[App.onComplete] Refreshing tabs state...')
+            const state = await window.electronAPI.getState()
+            setTabs(state.tabs || [])
+            setActiveTabId(state.activeTabId)
+
             // Reload preferences to get updated operatingMode from wizard
             // This ensures the tutorial includes the correct steps based on plan mode selection
+            console.log('[App.onComplete] Loading preferences...')
             const freshPrefs = await window.electronAPI.getPreferences()
             setPreferences(freshPrefs)
             // Trigger tutorial after setup wizard completes (if not already completed)
             if (!freshPrefs.tutorialCompleted) {
               setShouldStartTutorial(true)
             }
+            console.log('[App.onComplete] Complete!')
           }}
           onSkip={() => {
             // Open the manual agent creation modal

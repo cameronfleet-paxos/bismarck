@@ -289,8 +289,16 @@ function registerIpcHandlers() {
 
   // Terminal management
   ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
-    // Use the queue for terminal creation with full setup
-    return queueTerminalCreationWithSetup(workspaceId, mainWindow)
+    console.log('[Main] create-terminal called for workspace:', workspaceId)
+    try {
+      // Use the queue for terminal creation with full setup
+      const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
+      console.log('[Main] create-terminal succeeded:', terminalId)
+      return terminalId
+    } catch (err) {
+      console.error('[Main] create-terminal FAILED for workspace', workspaceId, ':', err)
+      throw err
+    }
   })
 
   ipcMain.handle('write-terminal', (_event, terminalId: string, data: string) => {
@@ -700,7 +708,15 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:bulk-create-agents', async (_event, repos: DiscoveredRepo[]) => {
-    return bulkCreateAgents(repos)
+    console.log('[Main] setup-wizard:bulk-create-agents called with', repos.length, 'repos')
+    try {
+      const result = await bulkCreateAgents(repos)
+      console.log('[Main] setup-wizard:bulk-create-agents succeeded, created', result.length, 'agents')
+      return result
+    } catch (err) {
+      console.error('[Main] setup-wizard:bulk-create-agents FAILED:', err)
+      throw err
+    }
   })
 
   ipcMain.handle('setup-wizard:save-default-repos-path', async (_event, reposPath: string) => {
@@ -722,7 +738,15 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:enable-plan-mode', async (_event, enabled: boolean) => {
-    return enablePlanMode(enabled)
+    console.log('[Main] setup-wizard:enable-plan-mode called with', enabled)
+    try {
+      const result = await enablePlanMode(enabled)
+      console.log('[Main] setup-wizard:enable-plan-mode succeeded')
+      return result
+    } catch (err) {
+      console.error('[Main] setup-wizard:enable-plan-mode FAILED:', err)
+      throw err
+    }
   })
 
   ipcMain.handle('setup-wizard:detect-and-save-github-token', async () => {
@@ -730,7 +754,15 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:group-agents-into-tabs', async (_event, agents: Workspace[]) => {
-    return groupAgentsIntoTabs(agents)
+    console.log('[Main] setup-wizard:group-agents-into-tabs called with', agents.length, 'agents')
+    try {
+      const result = await groupAgentsIntoTabs(agents)
+      console.log('[Main] setup-wizard:group-agents-into-tabs succeeded, created', result.length, 'tabs')
+      return result
+    } catch (err) {
+      console.error('[Main] setup-wizard:group-agents-into-tabs FAILED:', err)
+      throw err
+    }
   })
 
   // Setup wizard terminal for "Fix with Claude" feature
