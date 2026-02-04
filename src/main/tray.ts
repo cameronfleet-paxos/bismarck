@@ -1,14 +1,28 @@
+import path from 'path'
 import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron'
 import { getWaitingQueue, getNextWaitingWorkspace } from './socket-server'
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 
+// Determine asset path based on environment
+const getAssetPath = (filename: string): string => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', filename)
+  }
+  // In development, assets are at project root
+  return path.join(__dirname, '..', '..', '..', 'assets', filename)
+}
+
 export function createTray(window: BrowserWindow): void {
   mainWindow = window
 
-  // Create tray with empty image (will show as a dot on macOS)
-  tray = new Tray(nativeImage.createEmpty())
+  // Load the template icon for macOS menu bar
+  const iconPath = getAssetPath('trayTemplate.png')
+  const trayIcon = nativeImage.createFromPath(iconPath)
+  trayIcon.setTemplateImage(true) // Tell macOS this is a template image
+
+  tray = new Tray(trayIcon)
 
   updateTray(0)
 }

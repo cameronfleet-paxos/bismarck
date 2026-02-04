@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
+  <!-- Pickelhaube silhouette for macOS menu bar (template image) -->
+  <!-- White on transparent - macOS will auto-adjust for light/dark mode -->
+  <g fill="#000000">
+    <!-- Spike on top -->
+    <path d="M11 1 L12.5 6 L9.5 6 Z"/>
+
+    <!-- Helmet dome -->
+    <path d="M4 10 Q4 6 11 6 Q18 6 18 10 L18 14 Q18 17 11 18.5 Q4 17 4 14 Z"/>
+
+    <!-- Visor/brim - left -->
+    <path d="M2 12.5 Q2 11 5 10.5 L5 12 Q3.5 12.25 3.5 13 Q3.5 14 5 14 L5 15.5 Q2 15 2 12.5 Z"/>
+
+    <!-- Visor/brim - right -->
+    <path d="M20 12.5 Q20 11 17 10.5 L17 12 Q18.5 12.25 18.5 13 Q18.5 14 17 14 L17 15.5 Q20 15 20 12.5 Z"/>
+
+    <!-- Chin strap hint -->
+    <path d="M5 17 Q5 19.5 11 21 Q17 19.5 17 17" fill="none" stroke="#000000" stroke-width="1.2"/>
+  </g>
+</svg>

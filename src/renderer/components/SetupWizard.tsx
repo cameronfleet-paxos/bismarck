@@ -72,6 +72,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isDetectingToken, setIsDetectingToken] = useState(false)
   const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
+  const [isReloadingToken, setIsReloadingToken] = useState(false)
   // Fix with Claude terminal modal state
   const [showFixTerminal, setShowFixTerminal] = useState(false)
   const [fixTerminalId, setFixTerminalId] = useState<string | null>(null)
@@ -424,6 +425,24 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setTokenDetectResult({ success: false, source: null })
     } finally {
       setIsDetectingToken(false)
+    }
+  }
+
+  // Reload to re-detect GitHub token from shell profile
+  const handleReloadToken = async () => {
+    setIsReloadingToken(true)
+    setTokenDetectResult(null)
+    try {
+      // Try to detect and save the token - this gives us reason for failure
+      const result = await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+      setTokenDetectResult(result)
+      // Refresh dependencies to update token status
+      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+      setDependencies(deps)
+    } catch (err) {
+      console.error('Failed to reload token:', err)
+    } finally {
+      setIsReloadingToken(false)
     }
   }
 
@@ -1161,11 +1180,52 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                           </div>
                         ) : (
                           <div className="mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              No token found in environment or shell profile.
+                            {tokenDetectResult?.reason === 'command_substitution' ? (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  Token appears to be set via a command (e.g., <code className="text-[10px] bg-muted px-1 py-0.5 rounded">$(op ...)</code>).
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  For security, we can't execute shell commands. Please configure the token manually in Settings &gt; Tools.
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  No token found in environment or shell profile.
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Add to your shell profile (<code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.zshrc</code> or <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.bashrc</code>):
+                                </p>
+                                <pre className="text-[10px] bg-muted text-muted-foreground px-2 py-1.5 rounded mt-1 overflow-x-auto">
+                                  export GITHUB_TOKEN="ghp_your_token_here"
+                                </pre>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Then reload to detect the token.
+                                </p>
+                              </>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={handleReloadToken}
+                              disabled={isReloadingToken}
+                            >
+                              {isReloadingToken ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Reloading...
+                                </>
+                              ) : (
+                                'Reload'
+                              )}
+                            </Button>
+                            <p className="text-xs text-muted-foreground mt-3">
+                              <span className="font-medium">Note:</span> If your org uses SAML SSO, headless agents won't be able to use <code className="text-[10px] bg-muted px-1 py-0.5 rounded">gh auth</code>.
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Configure in Settings &gt; Tools if needed for SAML SSO organizations.
+                              You can also configure manually in Settings &gt; Tools.
                             </p>
                           </div>
                         )}

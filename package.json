@@ -63,6 +63,9 @@
       "dist/renderer/**/*",
       "package.json"
     ],
+    "extraResources": [
+      { "from": "assets", "to": "assets" }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns",

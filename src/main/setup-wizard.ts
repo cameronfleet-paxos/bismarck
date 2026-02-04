@@ -15,7 +15,7 @@ import { saveWorkspace, getWorkspaces, getClaudeOAuthToken } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
-import { findBinary, detectGitHubToken } from './exec-utils'
+import { findBinary, detectGitHubToken, detectGitHubTokenWithReason } from './exec-utils'
 
 /**
  * Status of a single dependency for plan mode
@@ -352,22 +352,22 @@ async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
 /**
  * Detect and save GitHub token directly (token never crosses IPC)
  * Returns success status, source, and reason for failure
- * Uses the shared detectGitHubToken from exec-utils
+ * Uses the shared detectGitHubTokenWithReason from exec-utils
  */
 export async function detectAndSaveGitHubToken(): Promise<{
   success: boolean
   source: string | null
   reason?: string  // Why detection failed - used by UI to show appropriate message
 }> {
-  const result = await detectGitHubToken()
-  if (result) {
+  const result = await detectGitHubTokenWithReason()
+  if (result.token) {
     await setGitHubToken(result.token)
     return { success: true, source: result.source }
   }
   return {
     success: false,
     source: null,
-    reason: 'no_env_var',  // Environment variable not found (GITHUB_TOKEN, GH_TOKEN, etc.)
+    reason: result.reason || 'not_found',
   }
 }
 

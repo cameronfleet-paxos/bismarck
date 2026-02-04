@@ -666,8 +666,29 @@ export function HeadlessTerminal({
     return (
       <div key={key} className="mt-4 pt-4 border-t border-white/10 text-sm font-mono">
         {resultEvent.result && (
-          <div className="mb-2 text-green-400">
-            Result: {resultEvent.result}
+          <div className="mb-2">
+            <span className="text-green-400">Result: </span>
+            <div className="mt-2 prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-headings:text-green-400">
+              <ReactMarkdown
+                components={{
+                  // Override link rendering to use external opener
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        if (href) window.electronAPI?.openExternal?.(href)
+                      }}
+                      className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                    >
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
+                {resultEvent.result}
+              </ReactMarkdown>
+            </div>
           </div>
         )}
         {resultEvent.cost && (
