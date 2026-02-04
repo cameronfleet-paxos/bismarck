@@ -137,8 +137,11 @@ export function TutorialOverlay({ step, isActive, children }: TutorialOverlayPro
   }, [isActive, step.target])
 
   // Calculate spotlight position on mount and when step changes
+  // Calculate spotlight position on mount and when step changes
+  // Delay calculation to allow onEnter actions to execute first
   useEffect(() => {
-    calculateSpotlight()
+    const timer = setTimeout(calculateSpotlight, 150)
+    return () => clearTimeout(timer)
   }, [calculateSpotlight])
 
   // Recalculate on window resize with debounce
