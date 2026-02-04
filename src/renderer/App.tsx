@@ -82,6 +82,7 @@ function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeTerminals, setActiveTerminals] = useState<ActiveTerminal[]>([])
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null)
+  const focusedAgentIdRef = useRef<string | null>(null)  // Ref for synchronous access in event handlers
   const [tabs, setTabs] = useState<AgentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -235,6 +236,11 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Keep focusedAgentIdRef in sync with focusedAgentId state
+  useEffect(() => {
+    focusedAgentIdRef.current = focusedAgentId
+  }, [focusedAgentId])
 
   // Mark terminals as booted after 10 seconds
   useEffect(() => {
@@ -474,6 +480,14 @@ function App() {
     // Listen for agent waiting events
     window.electronAPI?.onAgentWaiting?.((agentId: string) => {
       console.log(`[Renderer] Received agent-waiting event for ${agentId}`)
+      // Check if user is already focused on this agent using the ref
+      if (focusedAgentIdRef.current === agentId) {
+        console.log(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
+        window.electronAPI?.acknowledgeWaiting?.(agentId)
+        return  // Don't add to waiting queue or trigger attention
+      }
+
+      // Add to waiting queue since user isn't focused on this agent
       setWaitingQueue((prev) => {
         console.log(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
         if (!prev.includes(agentId)) {
