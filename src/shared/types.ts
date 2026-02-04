@@ -548,6 +548,11 @@ export interface GitHubTokenStatus {
   configured: boolean     // true if a token is saved in settings
 }
 
+// Claude OAuth token status
+export interface ClaudeOAuthTokenStatus {
+  configured: boolean     // true if a token is saved
+}
+
 // Collection of all plan mode dependencies
 export interface PlanModeDependencies {
   docker: DependencyStatus
@@ -556,6 +561,7 @@ export interface PlanModeDependencies {
   git: DependencyStatus
   claude: DependencyStatus
   githubToken: GitHubTokenStatus
+  claudeOAuthToken: ClaudeOAuthTokenStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 

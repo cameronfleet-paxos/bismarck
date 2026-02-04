@@ -71,6 +71,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [isDetectingToken, setIsDetectingToken] = useState(false)
   const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
+  const [isSettingUpOAuth, setIsSettingUpOAuth] = useState(false)
+  const [oauthSetupResult, setOAuthSetupResult] = useState<{ success: boolean; error?: string } | null>(null)
   // Ref to prevent double-clicks during async operations
   const isCreatingRef = useRef(false)
 
@@ -418,6 +420,24 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setTokenDetectResult({ success: false, source: null })
     } finally {
       setIsDetectingToken(false)
+    }
+  }
+
+  // Setup Claude OAuth token
+  const handleSetupOAuth = async () => {
+    setIsSettingUpOAuth(true)
+    setOAuthSetupResult(null)
+    try {
+      await window.electronAPI.runOAuthSetup()
+      setOAuthSetupResult({ success: true })
+      // Refresh dependencies to update token status
+      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+      setDependencies(deps)
+    } catch (err) {
+      console.error('Failed to setup OAuth token:', err)
+      setOAuthSetupResult({ success: false, error: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setIsSettingUpOAuth(false)
     }
   }
 
@@ -1104,6 +1124,66 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                             <p className="text-xs text-muted-foreground mt-1">
                               Configure in Settings &gt; Tools if needed for SAML SSO organizations.
                             </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Claude OAuth Token Section */}
+              {planModeEnabled && dependencies && (
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {dependencies.claudeOAuthToken.configured ? (
+                          <Check className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">Claude OAuth Token</span>
+                          <span className="text-xs text-muted-foreground">(required for headless agents)</span>
+                        </div>
+                        {dependencies.claudeOAuthToken.configured ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Token configured
+                          </p>
+                        ) : (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              OAuth token is required for headless agents to authenticate with Claude.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={handleSetupOAuth}
+                              disabled={isSettingUpOAuth}
+                            >
+                              {isSettingUpOAuth ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Setting up...
+                                </>
+                              ) : (
+                                'Setup OAuth Token'
+                              )}
+                            </Button>
+                            {oauthSetupResult?.success && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                OAuth token saved successfully
+                              </p>
+                            )}
+                            {oauthSetupResult?.error && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                Failed: {oauthSetupResult.error}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
