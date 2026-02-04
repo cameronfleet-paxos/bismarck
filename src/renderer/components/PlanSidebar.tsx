@@ -214,35 +214,36 @@ export function PlanSidebar({
       <div className="flex items-center justify-between p-3 border-b">
         {isSelectionMode ? (
           <>
-            <h2 className="font-medium text-sm">
-              {selectedPlanIds.size} selected
-            </h2>
+            <div>
+              <h2 className="font-medium text-sm">
+                {selectedPlanIds.size} selected
+              </h2>
+              {selectedPlanIds.size === 1 && (
+                <p className="text-[10px] text-muted-foreground">
+                  {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click to select more
+                </p>
+              )}
+            </div>
             <div className="flex items-center gap-1">
-              {selectedPlanIds.size === 1 && (() => {
-                const selectedPlan = plans.find(p => p.id === [...selectedPlanIds][0])
-                const isCompletedOrFailed = selectedPlan && (selectedPlan.status === 'completed' || selectedPlan.status === 'failed')
-                return (
-                  <>
-                    {isCompletedOrFailed && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setDetailPlanId([...selectedPlanIds][0])
-                          clearSelection()
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={handleCloneClick}>
-                      <Copy className="h-4 w-4 mr-1" />
-                      Clone
-                    </Button>
-                  </>
-                )
-              })()}
+              {selectedPlanIds.size === 1 && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setDetailPlanId([...selectedPlanIds][0])
+                      clearSelection()
+                    }}
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    View
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleCloneClick}>
+                    <Copy className="h-4 w-4 mr-1" />
+                    Clone
+                  </Button>
+                </>
+              )}
               <Button
                 size="sm"
                 variant="destructive"
@@ -304,7 +305,10 @@ export function PlanSidebar({
                     onCancelDiscussion={() => onCancelDiscussion(plan.id)}
                     onCancel={() => onCancelPlan(plan.id)}
                     onComplete={async () => onCompletePlan(plan.id)}
-                    onClick={() => onSelectPlan(activePlanId === plan.id ? null : plan.id)}
+                    onClick={() => {
+                      // Single click selects the plan for View/Clone/Delete actions
+                      setSelectedPlanIds(new Set([plan.id]))
+                    }}
                     onExpand={() => setDetailPlanId(plan.id)}
                   />
                 ))}
@@ -331,7 +335,10 @@ export function PlanSidebar({
                     onCancelDiscussion={() => onCancelDiscussion(plan.id)}
                     onCancel={() => onCancelPlan(plan.id)}
                     onComplete={async () => onCompletePlan(plan.id)}
-                    onClick={() => onSelectPlan(activePlanId === plan.id ? null : plan.id)}
+                    onClick={() => {
+                      // Single click selects the plan for View/Clone/Delete actions
+                      setSelectedPlanIds(new Set([plan.id]))
+                    }}
                     onExpand={() => setDetailPlanId(plan.id)}
                   />
                 ))}
@@ -359,7 +366,10 @@ export function PlanSidebar({
                     onCancel={() => onCancelPlan(plan.id)}
                     onRestart={plan.status === 'failed' ? () => onRestartPlan(plan.id) : undefined}
                     onComplete={async () => onCompletePlan(plan.id)}
-                    onClick={() => onSelectPlan(activePlanId === plan.id ? null : plan.id)}
+                    onClick={() => {
+                      // Single click selects the plan for View/Clone/Delete actions
+                      setSelectedPlanIds(new Set([plan.id]))
+                    }}
                     onExpand={() => setDetailPlanId(plan.id)}
                   />
                 ))}

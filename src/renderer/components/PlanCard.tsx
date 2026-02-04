@@ -158,10 +158,12 @@ export function PlanCard({
             : 'hover:border-primary/50'
       }`}
       onClick={(e) => {
+        e.stopPropagation()
         if (e.metaKey || e.ctrlKey) {
-          e.stopPropagation()
+          // CMD/Ctrl-click: Add/remove from multi-selection
           onToggleSelect?.()
         } else {
+          // Regular click: Select single plan (handled by parent via onClick)
           onClick()
         }
       }}
