@@ -225,7 +225,9 @@
         animate();
 
         // Minimum display time tracking
-        const MIN_DISPLAY_MS = 3000;
+        // Skip splash in dev mode (localhost) for faster iteration
+        const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const MIN_DISPLAY_MS = isDev ? 0 : 3000;
         const startTime = Date.now();
         let appReady = false;
         let dismissed = false;
