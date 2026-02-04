@@ -32,36 +32,12 @@
         width: 100%;
         height: 100%;
       }
-      #splash-logo {
-        position: absolute;
-        height: 180px;
-        width: auto;
-        opacity: 0.35;
-        pointer-events: none;
-      }
     </style>
   </head>
   <body style="margin: 0; padding: 0; background-color: #1a1a1a;">
     <!-- Splash screen with particle animation -->
     <div id="splash-screen">
       <canvas id="splash-canvas"></canvas>
-      <!-- Pickelhaube SVG logo overlay -->
-      <svg id="splash-logo" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Spike -->
-        <path d="M12 0L14 8H10L12 0Z" fill="white"/>
-        <!-- Main dome -->
-        <ellipse cx="12" cy="14" rx="8" ry="6" fill="white"/>
-        <rect x="4" y="14" width="16" height="8" fill="white"/>
-        <ellipse cx="12" cy="22" rx="8" ry="4" fill="white"/>
-        <!-- Left brim -->
-        <path d="M4 16C4 16 2 18 2 20C2 22 4 22 4 22L6 18L4 16Z" fill="white"/>
-        <!-- Right brim -->
-        <path d="M20 16C20 16 22 18 22 20C22 22 20 22 20 22L18 18L20 16Z" fill="white"/>
-        <!-- Chin strap -->
-        <path d="M6 24Q12 32 18 24" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-        <!-- Cockade detail -->
-        <circle cx="12" cy="16" r="2" fill="#1a1a1a" opacity="0.3"/>
-      </svg>
     </div>
 
     <div id="root"></div>
@@ -162,6 +138,25 @@
           });
         }
 
+        // Ring configuration - particles orbit around the helmet
+        const ringRadius = logoScale * 24;  // Further outside the helmet shape
+        const ringCenterX = W / 2;
+        const ringCenterY = H / 2 + logoScale * 2;  // Slightly lower (helmet center is offset)
+        const RING_PARTICLE_COUNT = 120;  // More particles for thicker ring
+        const ringParticles = [];
+
+        for (let i = 0; i < RING_PARTICLE_COUNT; i++) {
+          const angle = (i / RING_PARTICLE_COUNT) * Math.PI * 2;
+          const radiusOffset = random(-4, 4);  // 2-3 particle thickness variation
+          ringParticles.push({
+            angle: angle,
+            radiusOffset: radiusOffset,
+            alpha: random(0.35, 0.65),  // More visible
+            size: random(1.2, 1.8),
+            speedOffset: random(-0.003, 0.003)  // Small speed variation for organic feel
+          });
+        }
+
         let time = 0;
         let animationId;
 
@@ -176,33 +171,23 @@
           const pulse = Math.sin(time * 2) * 0.3 + 0.7;  // 0.4 to 1.0
 
           for (const p of particles) {
-            // Gentle spring force back to home position
+            // Strong spring force back to home position - keep helmet stable
             const dx = p.homeX - p.x;
             const dy = p.homeY - p.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
 
-            // Spring force - stronger when far from home
-            const springForce = 0.02;
+            // Spring force - stronger to keep particles near home
+            const springForce = 0.08;
             p.vx += dx * springForce;
             p.vy += dy * springForce;
 
-            // Add gentle wandering motion (individual rhythm)
-            const wanderStrength = 0.15;
+            // Very subtle wandering motion (individual rhythm)
+            const wanderStrength = 0.03;
             p.vx += Math.sin(time * 1.5 + p.phase) * wanderStrength;
             p.vy += Math.cos(time * 1.2 + p.phase * 1.3) * wanderStrength;
 
-            // Breathing/pulsing motion - particles expand/contract from center
-            const centerX = W / 2;
-            const centerY = H / 2;
-            const toCenterX = p.homeX - centerX;
-            const toCenterY = p.homeY - centerY;
-            const breathe = Math.sin(time * 1.5) * 0.008;
-            p.vx += toCenterX * breathe;
-            p.vy += toCenterY * breathe;
-
-            // Damping
-            p.vx *= 0.92;
-            p.vy *= 0.92;
+            // Heavy damping for stability
+            p.vx *= 0.85;
+            p.vy *= 0.85;
 
             // Update position
             p.x += p.vx;
@@ -213,6 +198,21 @@
             ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Draw rotating ring particles
+          for (const rp of ringParticles) {
+            // Rotate clockwise (positive angle increment) - visibly fast
+            rp.angle += 0.025 + rp.speedOffset;  // ~4 second revolution, clearly visible
+
+            const r = ringRadius + rp.radiusOffset;
+            const x = ringCenterX + Math.cos(rp.angle) * r;
+            const y = ringCenterY + Math.sin(rp.angle) * r;
+
+            ctx.fillStyle = `rgba(255, 255, 255, ${rp.alpha * pulse})`;
+            ctx.beginPath();
+            ctx.arc(x, y, rp.size, 0, Math.PI * 2);
             ctx.fill();
           }
 
