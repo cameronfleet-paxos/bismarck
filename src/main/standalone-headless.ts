@@ -274,7 +274,7 @@ export async function startStandaloneHeadlessAgent(
   prompt: string,
   model: 'opus' | 'sonnet' = 'sonnet',
   targetTabId?: string
-): Promise<{ headlessId: string; workspaceId: string }> {
+): Promise<{ headlessId: string; workspaceId: string; tabId: string }> {
   // Look up the reference agent to get its directory
   const referenceAgent = getWorkspaceById(referenceAgentId)
   if (!referenceAgent) {
@@ -455,7 +455,7 @@ export async function startStandaloneHeadlessAgent(
     throw error
   }
 
-  return { headlessId, workspaceId }
+  return { headlessId, workspaceId, tabId: tab.id }
 }
 
 /**

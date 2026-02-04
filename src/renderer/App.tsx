@@ -1306,6 +1306,20 @@ function App() {
     try {
       const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, tabId)
       if (result) {
+        // Update skeleton's tabId if the actual tab differs from what we predicted
+        // Note: The main process already navigates to the correct tab via setActiveTab(),
+        // and the renderer's onStateUpdate handler processes that before we get here.
+        // We just need to move the skeleton to match.
+        if (result.tabId !== tabId) {
+          setSpawningHeadless(prev => {
+            const next = new Map(prev)
+            const info = next.get(spawningId)
+            if (info) {
+              next.set(spawningId, { ...info, tabId: result.tabId })
+            }
+            return next
+          })
+        }
         // Reload agents to pick up the new headless agent workspace
         await loadAgents()
         // The workspace will be added to a tab via IPC event, which will trigger state update
