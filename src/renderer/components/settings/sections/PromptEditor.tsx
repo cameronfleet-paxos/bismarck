@@ -38,12 +38,20 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{codebasePath}}', description: 'Path to the codebase being analyzed' },
     { name: '{{discussionContext}}', description: 'Context from discussion phase (if completed)' },
   ],
+  task: [
+    { name: '{{taskId}}', description: 'Unique identifier for the task' },
+    { name: '{{taskTitle}}', description: 'Title of the task' },
+    { name: '{{baseBranch}}', description: 'Base branch for the worktree' },
+    { name: '{{planDir}}', description: 'Directory where plan files are stored' },
+    { name: '{{completionInstructions}}', description: 'Instructions for task completion' },
+  ],
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
   discussion: 'Discussion Agent',
   orchestrator: 'Orchestrator Agent',
   planner: 'Planner',
+  task: 'Task Agent',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {

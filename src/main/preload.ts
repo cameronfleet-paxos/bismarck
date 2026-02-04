@@ -352,7 +352,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
-  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null }> =>
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null }> =>
     ipcRenderer.invoke('get-custom-prompts'),
   setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
     ipcRenderer.invoke('set-custom-prompt', type, template),

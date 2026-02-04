@@ -793,11 +793,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: 'orchestrator' | 'planner' | 'discussion', template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task', template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion') => {
+  ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task') => {
     return getDefaultPrompt(type)
   })
 
