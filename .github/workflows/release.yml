@@ -29,14 +29,10 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: |
-          npm run build
-          npm run dist -- --publish never
+        run: npm run build
 
-      - name: Create release archive
-        run: |
-          cd dist/mac-arm64
-          tar -czvf ../../Bismarck-arm64.tar.gz Bismarck.app
+      - name: Package with electron-builder
+        run: npx electron-builder --publish never
 
       - name: Determine version
         id: version
@@ -46,6 +42,13 @@ jobs:
           else
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Get DMG filename
+        id: dmg
+        run: |
+          VERSION_NUMBER="${{ steps.version.outputs.version }}"
+          VERSION_NUMBER="${VERSION_NUMBER#v}"
+          echo "filename=Bismarck-${VERSION_NUMBER}-arm64.dmg" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -57,18 +60,17 @@ jobs:
 
             **One-line install:**
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/anthropics/bismarck/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash
             ```
 
             **Or download manually:**
-            1. Download `Bismarck-arm64.tar.gz` below
-            2. Extract: `tar -xzf Bismarck-arm64.tar.gz`
-            3. Move to Applications: `mv Bismarck.app ~/Applications/`
-            4. Remove quarantine: `xattr -rd com.apple.quarantine ~/Applications/Bismarck.app`
+            1. Download `${{ steps.dmg.outputs.filename }}` below
+            2. Open the DMG and drag Bismarck to Applications
+            3. Remove quarantine: `xattr -rd com.apple.quarantine ~/Applications/Bismarck.app`
 
             ## Requirements
             - macOS (Apple Silicon / arm64)
-          files: Bismarck-arm64.tar.gz
+          files: dist/${{ steps.dmg.outputs.filename }}
           draft: false
           prerelease: false
         env:
