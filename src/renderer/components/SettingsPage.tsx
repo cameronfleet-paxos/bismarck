@@ -9,6 +9,7 @@ import { GeneralSettings } from '@/renderer/components/settings/sections/General
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
 import { RawJsonSettings } from '@/renderer/components/settings/sections/RawJsonSettings'
 import { AuthenticationSettings } from '@/renderer/components/settings/sections/AuthenticationSettings'
+import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sections/KeyboardShortcutsSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -24,7 +25,7 @@ function getGitHubUrlFromRemote(remoteUrl: string): string | null {
   return null
 }
 
-type SettingsSection = 'general' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
+type SettingsSection = 'general' | 'keyboard' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -37,6 +38,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'general',
     label: 'General',
     description: 'Display and attention preferences',
+  },
+  {
+    id: 'keyboard',
+    label: 'Keyboard',
+    description: 'Customize keyboard shortcuts',
   },
   {
     id: 'authentication',
@@ -439,6 +445,13 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         return (
           <div className="bg-card border rounded-lg p-6">
             <GeneralSettings onPreferencesChange={() => {}} />
+          </div>
+        )
+
+      case 'keyboard':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <KeyboardShortcutsSettings onPreferencesChange={() => {}} />
           </div>
         )
 

@@ -32,7 +32,7 @@ import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration } from '@/shared/types'
+import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -40,6 +40,42 @@ import { extractPRUrl } from '@/shared/pr-utils'
 interface ActiveTerminal {
   terminalId: string
   workspaceId: string
+}
+
+// Check if a keyboard event matches a configured shortcut
+function matchesShortcut(e: KeyboardEvent, shortcut: KeyboardShortcut | undefined): boolean {
+  if (!shortcut) return false
+  const metaOrCtrl = e.metaKey || e.ctrlKey
+  return (
+    e.key.toLowerCase() === shortcut.key.toLowerCase() &&
+    (shortcut.modifiers.meta ? metaOrCtrl : !metaOrCtrl) &&
+    (shortcut.modifiers.shift ? e.shiftKey : !e.shiftKey) &&
+    (shortcut.modifiers.alt ? e.altKey : !e.altKey)
+  )
+}
+
+// Default keyboard shortcuts for use when preferences haven't loaded
+const defaultKeyboardShortcuts: KeyboardShortcuts = {
+  commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
+  dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
+  devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+}
+
+// Format a keyboard shortcut for compact display (e.g., "⌘K")
+function formatShortcutCompact(shortcut: KeyboardShortcut): string {
+  const isMac = navigator.platform.includes('Mac')
+  const parts: string[] = []
+  if (shortcut.modifiers.meta) {
+    parts.push(isMac ? '⌘' : 'Ctrl+')
+  }
+  if (shortcut.modifiers.alt) {
+    parts.push(isMac ? '⌥' : 'Alt+')
+  }
+  if (shortcut.modifiers.shift) {
+    parts.push(isMac ? '⇧' : 'Shift+')
+  }
+  parts.push(shortcut.key.toUpperCase())
+  return parts.join('')
 }
 
 // App-level routing
@@ -280,23 +316,32 @@ function App() {
 
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
+    const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape to return to main view from settings
-      if (e.key === 'Escape' && currentView === 'settings') {
-        e.preventDefault()
-        setCurrentView('main')
-        return
+      // Escape to return to main view from settings or close command search
+      if (e.key === 'Escape') {
+        if (currentView === 'settings') {
+          e.preventDefault()
+          setCurrentView('main')
+          return
+        }
+        if (commandSearchOpen) {
+          e.preventDefault()
+          setCommandSearchOpen(false)
+          return
+        }
       }
 
-      // Cmd/Ctrl+Shift+D to toggle dev console (development only)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
+      // Dev console shortcut (development only)
+      if (matchesShortcut(e, shortcuts.devConsole)) {
         e.preventDefault()
         setDevConsoleOpen(prev => !prev)
         return
       }
 
-      // Cmd/Ctrl+K to open command search
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      // Command palette shortcut
+      if (matchesShortcut(e, shortcuts.commandPalette)) {
         e.preventDefault()
         setCommandSearchOpen(true)
         return
@@ -310,9 +355,9 @@ function App() {
       const expandedAgentId = activeTabMaximizedAgentId || autoExpandedAgentId
       const isAutoExpanded = expandedAgentId === autoExpandedAgentId && !activeTabMaximizedAgentId
 
-      // Cmd/Ctrl+N to dismiss current waiting agent (and go to next if available)
+      // Dismiss agent shortcut
       // Works in both 'expand' and 'focus' attention modes
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      if (matchesShortcut(e, shortcuts.dismissAgent)) {
         const isExpandMode = preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded
         const isFocusMode = preferences.attentionMode === 'focus' && waitingQueue.length > 0
 
@@ -346,7 +391,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, preferences.attentionMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -1571,14 +1616,16 @@ function App() {
             </span>
           )}
         </div>
-        {/* Centered CMD-K search bar */}
+        {/* Centered search bar */}
         <button
           onClick={() => setCommandSearchOpen(true)}
           className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-md border border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
         >
           <Search className="h-3.5 w-3.5" />
           <span>Search</span>
-          <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded bg-background border border-border font-mono">⌘K</kbd>
+          <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded bg-background border border-border font-mono">
+            {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)}
+          </kbd>
         </button>
         <div className="flex items-center gap-2">
           {waitingQueue.length > 1 && (

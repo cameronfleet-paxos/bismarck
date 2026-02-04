@@ -104,6 +104,23 @@ export type OperatingMode = 'solo' | 'team'
 // Model for headless task agents
 export type AgentModel = 'opus' | 'sonnet' | 'haiku'
 
+// Keyboard shortcut configuration
+export interface KeyboardShortcut {
+  key: string          // The key (e.g., 'k', 'n', 'd')
+  modifiers: {
+    meta: boolean      // Cmd on Mac, Ctrl on Windows/Linux
+    shift: boolean
+    alt: boolean
+  }
+}
+
+// Keyboard shortcuts configuration
+export interface KeyboardShortcuts {
+  commandPalette: KeyboardShortcut    // Default: Cmd/Ctrl+K
+  dismissAgent: KeyboardShortcut      // Default: Cmd/Ctrl+N
+  devConsole?: KeyboardShortcut       // Default: Cmd/Ctrl+Shift+D (dev only)
+}
+
 // App preferences (stored in ~/.bismarck/state.json)
 export interface AppPreferences {
   attentionMode: AttentionMode
@@ -111,6 +128,7 @@ export interface AppPreferences {
   agentModel: AgentModel
   gridSize: GridSize
   tutorialCompleted?: boolean
+  keyboardShortcuts?: KeyboardShortcuts
 }
 
 // ============================================
