@@ -475,11 +475,15 @@ function App() {
       const autoExpandedAgentId = isExpandModeActive ? waitingQueue[0] : null
       const expandedAgentId = activeTabMaximizedAgentId || autoExpandedAgentId
       const isAutoExpanded = expandedAgentId === autoExpandedAgentId && !activeTabMaximizedAgentId
+      // Check if we're currently viewing a waiting agent on a different tab (auto-expanded to that tab)
+      const waitingAgentTab = autoExpandedAgentId ? tabs.find(t => t.workspaceIds.includes(autoExpandedAgentId)) : null
+      const isViewingAutoExpandedTab = waitingAgentTab && waitingAgentTab.id !== activeTabId
 
       // Dismiss agent shortcut
       // Works in both 'expand' and 'focus' attention modes
       if (matchesShortcut(e, shortcuts.dismissAgent)) {
-        const isExpandMode = preferences.attentionMode === 'expand' && expandedAgentId && isAutoExpanded
+        // In expand mode, allow dismiss if auto-expanded OR if viewing a waiting agent on a different tab
+        const isExpandMode = preferences.attentionMode === 'expand' && (isAutoExpanded || isViewingAutoExpandedTab)
         const isFocusMode = preferences.attentionMode === 'focus' && waitingQueue.length > 0
 
         if (isExpandMode || isFocusMode) {
@@ -2193,12 +2197,13 @@ function App() {
             const tabContainsAutoExpandedAgent = autoExpandedAgentId && tabWorkspaceIds.includes(autoExpandedAgentId)
             const shouldShowTab = tabContainsAutoExpandedAgent ? true : isActiveTab
             // When a waiting agent is on a different tab, render that tab on top
-            const shouldShowOnTop = tabContainsAutoExpandedAgent && !isActiveTab
+            // Active tab gets z-10, waiting agent tab gets z-20 to appear above
+            const zIndex = tabContainsAutoExpandedAgent && !isActiveTab ? 'z-20' : isActiveTab ? 'z-10' : ''
 
             return (
               <div
                 key={tab.id}
-                className={`absolute inset-2 ${shouldShowTab ? '' : 'invisible pointer-events-none'} ${shouldShowOnTop ? 'z-20' : ''}`}
+                className={`absolute inset-2 bg-background ${shouldShowTab ? '' : 'invisible pointer-events-none'} ${zIndex}`}
               >
                 {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
