@@ -27,7 +27,7 @@ import {
   getWorkspaces,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { createTab, addWorkspaceToTab, setActiveTab } from './state-manager'
+import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -673,8 +673,22 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
  */
 export function initRalphLoop(): void {
   const states = loadRalphLoopStates()
+  const currentState = getState()
+
   for (const state of states) {
     ralphLoops.set(state.id, state)
+
+    // Restore workspace-to-tab relationships for Ralph Loop iterations
+    // The tab should still exist from state.json, but workspaces may not be associated
+    const tabExists = currentState.tabs.some((t) => t.id === state.tabId)
+    if (tabExists) {
+      for (const iteration of state.iterations) {
+        if (iteration.workspaceId) {
+          // addWorkspaceToTab is idempotent - it checks if already present
+          addWorkspaceToTab(iteration.workspaceId, state.tabId)
+        }
+      }
+    }
     // Note: Running loops are not resumed on restart - they stay in their current state
     // User can manually resume paused loops or clean up completed/failed ones
   }
