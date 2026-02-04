@@ -437,6 +437,7 @@ export interface HeadlessAgentInfo {
   result?: HeadlessAgentResult
   worktreeInfo?: StandaloneWorktreeInfo  // For standalone headless agents
   originalPrompt?: string  // For restart capability (standalone agents)
+  model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
 }
 
 // Extended Agent type to support both execution modes

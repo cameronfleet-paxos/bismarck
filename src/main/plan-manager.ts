@@ -2000,6 +2000,9 @@ async function startHeadlessTaskAgent(
   const taskPrompt = buildTaskPromptForHeadless(planId, task, repository, worktree)
   logger.debug('agent', 'Built task prompt', logCtx, { promptLength: taskPrompt.length })
 
+  // Get model from preferences
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
   // Create headless agent info for tracking
   const agentInfo: HeadlessAgentInfo = {
     id: `headless-${task.id}`,
@@ -2009,6 +2012,7 @@ async function startHeadlessTaskAgent(
     worktreePath: worktree.path,
     events: [],
     startedAt: new Date().toISOString(),
+    model: agentModel, // Store model for UI display
   }
   headlessAgentInfo.set(task.id, agentInfo)
 
@@ -2089,7 +2093,6 @@ async function startHeadlessTaskAgent(
 
   // Start the agent
   try {
-    const agentModel = getPreferences().agentModel || 'sonnet'
     await agent.start({
       prompt: taskPrompt,
       worktreePath: worktree.path,
@@ -2868,6 +2871,9 @@ ${conflictError.message}
     'Resolving rebase conflicts'
   )
 
+  // Get model from preferences for display
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
   // Create headless agent info for tracking
   const agentInfo: HeadlessAgentInfo = {
     id: `headless-${mergeTaskId}`,
@@ -2877,6 +2883,7 @@ ${conflictError.message}
     worktreePath: worktree.path,
     events: [],
     startedAt: new Date().toISOString(),
+    model: agentModel, // Store model for UI display
   }
   headlessAgentInfo.set(mergeTaskId, agentInfo)
   emitHeadlessAgentUpdate(agentInfo)
@@ -2958,7 +2965,6 @@ ${conflictError.message}
 
   // Start the agent
   const planDir = getPlanDir(plan.id)
-  const agentModel = getPreferences().agentModel || 'sonnet'
   const selectedImage = await getSelectedDockerImage()
 
   await agent.start({

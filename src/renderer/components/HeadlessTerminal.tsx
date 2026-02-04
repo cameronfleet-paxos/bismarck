@@ -106,6 +106,7 @@ interface HeadlessTerminalProps {
   events: StreamEvent[]
   theme: ThemeName
   status: HeadlessAgentStatus
+  model?: 'opus' | 'sonnet' | 'haiku'  // Model name to display in header
   isVisible?: boolean
   isStandalone?: boolean           // True for standalone headless agents
   onConfirmDone?: () => void       // Called when user clicks "Confirm Done"
@@ -262,6 +263,7 @@ export function HeadlessTerminal({
   events,
   theme,
   status,
+  model,
   isVisible = true,
   isStandalone = false,
   onConfirmDone,
@@ -856,8 +858,19 @@ export function HeadlessTerminal({
       style={{ backgroundColor: themeColors.bg, color: themeColors.fg }}
     >
       {/* Status bar */}
-      <div className="flex-shrink-0 px-4 py-2 border-b border-white/10 text-sm">
-        {getStatusIndicator()}
+      <div className="flex-shrink-0 px-4 py-2 border-b border-white/10 text-sm flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {getStatusIndicator()}
+        </div>
+        {model && (
+          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+            model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+            model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+            'bg-blue-500/20 text-blue-400'
+          }`}>
+            {model === 'opus' ? 'Opus' : model === 'haiku' ? 'Haiku' : 'Sonnet'}
+          </span>
+        )}
       </div>
 
       {/* Event output */}

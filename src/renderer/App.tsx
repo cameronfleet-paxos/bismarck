@@ -2120,7 +2120,7 @@ function App() {
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
-                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} model={info.model} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
                           </div>
                         </div>
                       )
@@ -2175,6 +2175,7 @@ function App() {
                               events={info.events}
                               theme={agent.theme}
                               status={info.status}
+                              model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
@@ -2230,6 +2231,7 @@ function App() {
                               events={iteration.events}
                               theme={agent?.theme || 'purple'}
                               status={iteration.status === 'pending' ? 'starting' : iteration.status}
+                              model={loopState.config.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                             />
                           </div>
@@ -2464,6 +2466,7 @@ function App() {
                               events={info.events}
                               theme={agent.theme}
                               status={info.status}
+                              model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
