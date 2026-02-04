@@ -1638,8 +1638,12 @@ function App() {
                 }
               }
             }
+            // Reload preferences to get updated operatingMode from wizard
+            // This ensures the tutorial includes the correct steps based on plan mode selection
+            const freshPrefs = await window.electronAPI.getPreferences()
+            setPreferences(freshPrefs)
             // Trigger tutorial after setup wizard completes (if not already completed)
-            if (!preferences.tutorialCompleted) {
+            if (!freshPrefs.tutorialCompleted) {
               setShouldStartTutorial(true)
             }
           }}
