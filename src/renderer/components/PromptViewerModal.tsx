@@ -34,7 +34,7 @@ export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
 
   return (
     <Dialog open={!!info} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-5xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between pr-8">
             <span>Agent Prompt</span>
