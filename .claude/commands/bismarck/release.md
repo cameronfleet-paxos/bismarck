@@ -20,9 +20,6 @@ If no argument provided, defaults to `patch`.
 - Release notes come from the **annotated tag message**
 - The workflow adds install instructions and changelog link automatically
 
-## Instructions
-
-<instruction>
 When the user invokes `/bismarck:release`, follow these steps:
 
 ### 1. Check for clean working directory
@@ -99,4 +96,3 @@ Show:
 - The tag message first line should be the version (gets stripped by workflow)
 - GitHub Actions automatically builds DMG and creates release from tag annotation
 - No need to build locally - CI handles everything!
-</instruction>
