@@ -377,6 +377,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteRalphLoopPreset: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('delete-ralph-loop-preset', id),
 
+  // Debug settings
+  getDebugSettings: (): Promise<{ enabled: boolean; logPath: string }> =>
+    ipcRenderer.invoke('get-debug-settings'),
+  updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }): Promise<void> =>
+    ipcRenderer.invoke('update-debug-settings', settings),
+
   // Auto-update management
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),

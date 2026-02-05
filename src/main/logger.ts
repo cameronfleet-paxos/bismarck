@@ -2,11 +2,12 @@
  * Centralized Logger for Bismarck
  *
  * Provides structured logging with:
- * - Global debug log: /tmp/claude/bismarck-debug.log
+ * - Global debug log: ~/.bismarck/debug.log (configurable in settings)
  * - Plan-specific logs: ~/.bismarck/plans/{planId}/debug.log
  * - Categories for filtering (plan, task, worktree, agent, git, bd, docker, proxy)
  * - Timing utilities for performance tracking
  * - Context (planId, taskId, agentId) for correlation
+ * - Settings-based enable/disable control
  */
 
 import * as fs from 'fs'
@@ -38,8 +39,71 @@ export interface LogContext {
   repo?: string
 }
 
-// Global debug log path
-const GLOBAL_LOG_PATH = '/tmp/claude/bismarck-debug.log'
+// Debug settings cache
+interface DebugSettings {
+  enabled: boolean
+  logPath: string
+}
+
+let debugSettingsCache: DebugSettings | null = null
+let debugSettingsCacheTime = 0
+const CACHE_TTL_MS = 5000 // Refresh settings cache every 5 seconds
+
+// Get debug settings synchronously with caching
+function getDebugSettingsSync(): DebugSettings {
+  const now = Date.now()
+
+  // Return cached if still fresh
+  if (debugSettingsCache && (now - debugSettingsCacheTime) < CACHE_TTL_MS) {
+    return debugSettingsCache
+  }
+
+  // Default settings
+  const defaults: DebugSettings = {
+    enabled: true,
+    logPath: path.join(getConfigDir(), 'debug.log'),
+  }
+
+  try {
+    const settingsPath = path.join(getConfigDir(), 'settings.json')
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf-8')
+      const settings = JSON.parse(data)
+      if (settings.debug) {
+        debugSettingsCache = {
+          enabled: settings.debug.enabled ?? defaults.enabled,
+          logPath: settings.debug.logPath ?? defaults.logPath,
+        }
+        debugSettingsCacheTime = now
+        return debugSettingsCache
+      }
+    }
+  } catch {
+    // Ignore read/parse errors, use defaults
+  }
+
+  debugSettingsCache = defaults
+  debugSettingsCacheTime = now
+  return defaults
+}
+
+/**
+ * Clear the debug settings cache (call after settings change)
+ */
+export function clearDebugSettingsCache(): void {
+  debugSettingsCache = null
+  debugSettingsCacheTime = 0
+}
+
+// Get global debug log path from settings
+function getGlobalLogPath(): string {
+  return getDebugSettingsSync().logPath
+}
+
+// Check if debug logging is enabled
+function isDebugEnabled(): boolean {
+  return getDebugSettingsSync().enabled
+}
 
 // Ensure log directory exists
 function ensureLogDir(logPath: string): void {
@@ -94,21 +158,27 @@ function writeLog(
   context?: LogContext,
   data?: object
 ): void {
+  // Check if debug logging is enabled (errors are always logged to console)
+  const debugEnabled = isDebugEnabled()
+
   const timestamp = new Date().toISOString()
   const contextStr = formatContext(context)
   const dataStr = formatData(data)
   const line = `[${timestamp}] [${level}] [${category}] ${message}${contextStr}${dataStr}\n`
 
-  // Write to global log
-  try {
-    ensureLogDir(GLOBAL_LOG_PATH)
-    fs.appendFileSync(GLOBAL_LOG_PATH, line)
-  } catch {
-    // Ignore write errors to global log
+  // Write to global log (only if enabled)
+  if (debugEnabled) {
+    try {
+      const globalLogPath = getGlobalLogPath()
+      ensureLogDir(globalLogPath)
+      fs.appendFileSync(globalLogPath, line)
+    } catch {
+      // Ignore write errors to global log
+    }
   }
 
-  // Write to plan-specific log if planId is provided
-  if (context?.planId) {
+  // Write to plan-specific log if planId is provided (only if enabled)
+  if (debugEnabled && context?.planId) {
     try {
       const planLogPath = getPlanLogPath(context.planId)
       ensureLogDir(planLogPath)
@@ -118,12 +188,12 @@ function writeLog(
     }
   }
 
-  // Also log to console for development
+  // Also log to console for development (always log errors/warnings regardless of setting)
   if (level === 'ERROR') {
     console.error(`[${category}] ${message}${contextStr}`)
   } else if (level === 'WARN') {
     console.warn(`[${category}] ${message}${contextStr}`)
-  } else {
+  } else if (debugEnabled) {
     console.log(`[${category}] ${message}${contextStr}`)
   }
 }

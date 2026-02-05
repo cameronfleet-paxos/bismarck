@@ -69,6 +69,10 @@ export interface AppSettings {
   ralphLoopPresets: {
     custom: RalphLoopPresetData[]  // User-created presets
   }
+  debug: {
+    enabled: boolean              // Toggle logging on/off
+    logPath: string               // Log file path (default ~/.bismarck/debug.log)
+  }
 }
 
 /**
@@ -163,6 +167,10 @@ export function getDefaultSettings(): AppSettings {
     ralphLoopPresets: {
       custom: [],
     },
+    debug: {
+      enabled: true,  // Enabled by default for troubleshooting
+      logPath: path.join(getConfigDir(), 'debug.log'),
+    },
   }
 }
 
@@ -212,6 +220,7 @@ export async function loadSettings(): Promise<AppSettings> {
       playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
       updates: { ...defaults.updates, ...(loaded.updates || {}) },
       ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
+      debug: { ...defaults.debug, ...(loaded.debug || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -309,6 +318,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     ralphLoopPresets: {
       ...(currentSettings.ralphLoopPresets || defaults.ralphLoopPresets),
       ...(updates.ralphLoopPresets || {}),
+    },
+    debug: {
+      ...(currentSettings.debug || defaults.debug),
+      ...(updates.debug || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -688,4 +701,25 @@ export async function deleteRalphLoopPreset(id: string): Promise<boolean> {
 
   await saveSettings(settings)
   return true
+}
+
+/**
+ * Get debug settings
+ */
+export async function getDebugSettings(): Promise<AppSettings['debug']> {
+  const settings = await loadSettings()
+  return settings.debug
+}
+
+/**
+ * Update debug settings
+ */
+export async function updateDebugSettings(debugSettings: Partial<AppSettings['debug']>): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.debug = {
+    ...(settings.debug || defaults.debug),
+    ...debugSettings,
+  }
+  await saveSettings(settings)
 }

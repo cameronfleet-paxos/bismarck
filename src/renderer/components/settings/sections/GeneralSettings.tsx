@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Check, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Check, RotateCcw, AlertTriangle, FolderOpen } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
 import { Button } from '@/renderer/components/ui/button'
+import { Switch } from '@/renderer/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,10 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
   const [showSaved, setShowSaved] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
+  // Debug logging state
+  const [debugEnabled, setDebugEnabled] = useState(true)
+  const [debugLogPath, setDebugLogPath] = useState('')
+
   // Grid size reduction confirmation state
   const [gridSizeConfirm, setGridSizeConfirm] = useState<{
     pendingSize: GridSize
@@ -42,7 +47,7 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     affectedTabs: number
   } | null>(null)
 
-  // Load preferences on mount
+  // Load preferences and debug settings on mount
   useEffect(() => {
     const loadPreferences = async () => {
       try {
@@ -55,7 +60,18 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
       }
     }
 
+    const loadDebugSettings = async () => {
+      try {
+        const settings = await window.electronAPI.getDebugSettings()
+        setDebugEnabled(settings.enabled)
+        setDebugLogPath(settings.logPath)
+      } catch (error) {
+        console.error('Failed to load debug settings:', error)
+      }
+    }
+
     loadPreferences()
+    loadDebugSettings()
   }, [])
 
   const handleAttentionModeChange = (mode: AttentionMode) => {
@@ -143,6 +159,26 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     }
   }
 
+  const handleDebugEnabledChange = async (enabled: boolean) => {
+    setDebugEnabled(enabled)
+    try {
+      await window.electronAPI.updateDebugSettings({ enabled })
+      // Show saved indicator
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update debug settings:', error)
+      // Revert on error
+      setDebugEnabled(!enabled)
+    }
+  }
+
+  const handleOpenLogFolder = () => {
+    // Get the directory containing the log file
+    const logDir = debugLogPath.substring(0, debugLogPath.lastIndexOf('/'))
+    window.electronAPI.openExternal(`file://${logDir}`)
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -220,6 +256,40 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
             {restarting ? 'Restarting...' : 'Restart Tutorial'}
           </Button>
         </div>
+
+        {/* Debug Logging Toggle */}
+        <div className="flex items-center justify-between py-2 border-t pt-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Debug Logging</Label>
+            <p className="text-sm text-muted-foreground">
+              Write debug information to log files for troubleshooting
+            </p>
+          </div>
+          <Switch
+            checked={debugEnabled}
+            onCheckedChange={handleDebugEnabledChange}
+          />
+        </div>
+
+        {/* Log File Location */}
+        {debugEnabled && debugLogPath && (
+          <div className="flex items-center justify-between py-2 pl-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm text-muted-foreground">Log file location</Label>
+              <p className="text-xs font-mono text-muted-foreground/70 break-all">
+                {debugLogPath}
+              </p>
+            </div>
+            <Button
+              onClick={handleOpenLogFolder}
+              variant="ghost"
+              size="sm"
+              title="Open log folder"
+            >
+              <FolderOpen className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Grid Size Reduction Confirmation Dialog */}

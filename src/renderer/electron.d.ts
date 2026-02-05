@@ -165,6 +165,10 @@ export interface ElectronAPI {
   updatePlayboxSettings: (settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }) => Promise<void>
   getPlayboxSettings: () => Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }>
 
+  // Debug settings
+  getDebugSettings: () => Promise<{ enabled: boolean; logPath: string }>
+  updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }) => Promise<void>
+
   // Auto-update management
   checkForUpdates: () => Promise<UpdateStatus>
   getUpdateStatus: () => Promise<UpdateStatus>

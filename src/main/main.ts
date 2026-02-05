@@ -145,7 +145,10 @@ import {
   addRalphLoopPreset,
   updateRalphLoopPreset,
   deleteRalphLoopPreset,
+  getDebugSettings,
+  updateDebugSettings,
 } from './settings-manager'
+import { clearDebugSettingsCache } from './logger'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
 import {
@@ -902,6 +905,17 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-ralph-loop-preset', async (_event, id: string) => {
     return deleteRalphLoopPreset(id)
+  })
+
+  // Debug settings
+  ipcMain.handle('get-debug-settings', async () => {
+    return getDebugSettings()
+  })
+
+  ipcMain.handle('update-debug-settings', async (_event, settings: { enabled?: boolean; logPath?: string }) => {
+    await updateDebugSettings(settings)
+    // Clear the logger's cache so it picks up the new settings immediately
+    clearDebugSettingsCache()
   })
 
   // Dev test harness (development mode only)
