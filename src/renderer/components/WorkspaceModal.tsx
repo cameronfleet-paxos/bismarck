@@ -9,7 +9,6 @@ import {
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
-import { Textarea } from '@/renderer/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -41,7 +40,6 @@ export function AgentModal({
 }: AgentModalProps) {
   const [name, setName] = useState('')
   const [directory, setDirectory] = useState('')
-  const [purpose, setPurpose] = useState('')
   const [theme, setTheme] = useState<ThemeName>('gray')
   const [icon, setIcon] = useState<AgentIconName>('beethoven')
   const [error, setError] = useState<string | null>(null)
@@ -81,13 +79,11 @@ export function AgentModal({
     if (agent) {
       setName(agent.name)
       setDirectory(agent.directory)
-      setPurpose(agent.purpose || '')
       setTheme(agent.theme)
       setIcon(agent.icon || 'beethoven')
     } else {
       setName('')
       setDirectory('')
-      setPurpose('')
       setTheme('gray')
       // Random icon for new agents
       setIcon(agentIcons[Math.floor(Math.random() * agentIcons.length)])
@@ -110,7 +106,6 @@ export function AgentModal({
       id: agent?.id || crypto.randomUUID(),
       name: name.trim(),
       directory: directory.trim(),
-      purpose: purpose.trim(),
       theme,
       icon,
       repositoryId: detectedRepo?.id,
@@ -163,16 +158,6 @@ export function AgentModal({
                 )}
               </div>
             )}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="purpose">Purpose</Label>
-            <Textarea
-              id="purpose"
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              placeholder="Describe what this agent is for..."
-              rows={3}
-            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="theme">Theme</Label>
