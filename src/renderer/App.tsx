@@ -1360,6 +1360,10 @@ function App() {
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
     if (activeTabId && activeTabId !== tabId) {
+      // Clear focused agent when switching tabs
+      // This allows the attention system to re-evaluate waiting agents
+      setFocusedAgentId(null)
+
       // In expanded attention mode, clear maximized state when switching tabs
       if (preferences.attentionMode === 'expand') {
         setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
