@@ -134,7 +134,7 @@ function App() {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
-    gridSize: '2x2',
+    gridSize: '2x3',
   })
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
 

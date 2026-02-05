@@ -185,7 +185,7 @@ export function getDefaultPreferences(): AppPreferences {
     attentionMode: 'focus',
     operatingMode: 'solo',
     agentModel: 'sonnet',
-    gridSize: '2x2',
+    gridSize: '2x3',
     keyboardShortcuts: getDefaultKeyboardShortcuts(),
   }
 }
@@ -303,9 +303,9 @@ export function loadState(): AppState {
       state.preferences.agentModel = 'sonnet'
       needsSave = true
     }
-    // Migration: add gridSize if missing (default to '2x2')
+    // Migration: add gridSize if missing (default to '2x3')
     if (!state.preferences.gridSize) {
-      state.preferences.gridSize = '2x2'
+      state.preferences.gridSize = '2x3'
       needsSave = true
     }
     // Migration: add keyboardShortcuts if missing
