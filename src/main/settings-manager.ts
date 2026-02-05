@@ -66,6 +66,22 @@ export interface AppSettings {
   updates: {
     autoCheck: boolean          // Whether to automatically check for updates
   }
+  ralphLoopPresets: {
+    custom: RalphLoopPresetData[]  // User-created presets
+  }
+}
+
+/**
+ * Ralph Loop preset data stored in settings
+ */
+export interface RalphLoopPresetData {
+  id: string
+  label: string
+  description: string
+  prompt: string
+  completionPhrase: string
+  maxIterations: number
+  model: 'opus' | 'sonnet'
 }
 
 // In-memory cache of settings
@@ -144,6 +160,9 @@ export function getDefaultSettings(): AppSettings {
     updates: {
       autoCheck: true,
     },
+    ralphLoopPresets: {
+      custom: [],
+    },
   }
 }
 
@@ -192,6 +211,7 @@ export async function loadSettings(): Promise<AppSettings> {
       tools: { ...defaults.tools, ...(loaded.tools || {}) },
       playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
       updates: { ...defaults.updates, ...(loaded.updates || {}) },
+      ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -285,6 +305,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     updates: {
       ...(currentSettings.updates || defaults.updates),
       ...(updates.updates || {}),
+    },
+    ralphLoopPresets: {
+      ...(currentSettings.ralphLoopPresets || defaults.ralphLoopPresets),
+      ...(updates.ralphLoopPresets || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -585,4 +609,83 @@ export async function updatePlayboxSettings(playboxSettings: Partial<AppSettings
 export async function getPlayboxSettings(): Promise<AppSettings['playbox']> {
   const settings = await loadSettings()
   return settings.playbox
+}
+
+/**
+ * Get custom Ralph Loop presets
+ */
+export async function getRalphLoopPresets(): Promise<RalphLoopPresetData[]> {
+  const settings = await loadSettings()
+  return settings.ralphLoopPresets?.custom || []
+}
+
+/**
+ * Add a custom Ralph Loop preset
+ */
+export async function addRalphLoopPreset(preset: Omit<RalphLoopPresetData, 'id'>): Promise<RalphLoopPresetData> {
+  const settings = await loadSettings()
+  const newPreset: RalphLoopPresetData = {
+    id: `preset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    ...preset,
+  }
+  const defaults = getDefaultSettings()
+  settings.ralphLoopPresets = {
+    ...(settings.ralphLoopPresets || defaults.ralphLoopPresets),
+    custom: [...(settings.ralphLoopPresets?.custom || []), newPreset],
+  }
+  await saveSettings(settings)
+  return newPreset
+}
+
+/**
+ * Update a custom Ralph Loop preset
+ */
+export async function updateRalphLoopPreset(
+  id: string,
+  updates: Partial<Omit<RalphLoopPresetData, 'id'>>
+): Promise<RalphLoopPresetData | undefined> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.ralphLoopPresets?.custom || []
+  const index = presets.findIndex((p) => p.id === id)
+
+  if (index === -1) {
+    return undefined
+  }
+
+  presets[index] = {
+    ...presets[index],
+    ...updates,
+  }
+
+  settings.ralphLoopPresets = {
+    ...(settings.ralphLoopPresets || defaults.ralphLoopPresets),
+    custom: presets,
+  }
+
+  await saveSettings(settings)
+  return presets[index]
+}
+
+/**
+ * Delete a custom Ralph Loop preset
+ */
+export async function deleteRalphLoopPreset(id: string): Promise<boolean> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.ralphLoopPresets?.custom || []
+  const initialLength = presets.length
+  const filtered = presets.filter((p) => p.id !== id)
+
+  if (filtered.length === initialLength) {
+    return false // Preset not found
+  }
+
+  settings.ralphLoopPresets = {
+    ...(settings.ralphLoopPresets || defaults.ralphLoopPresets),
+    custom: filtered,
+  }
+
+  await saveSettings(settings)
+  return true
 }

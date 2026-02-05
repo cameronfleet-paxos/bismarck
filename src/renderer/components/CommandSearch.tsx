@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,7 @@ import {
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import { themes } from '@/shared/constants'
 import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
-import { RALPH_LOOP_PRESETS } from '@/shared/ralph-loop-presets'
+import { RALPH_LOOP_PRESETS, type RalphLoopPreset } from '@/shared/ralph-loop-presets'
 import { useTutorial } from '@/renderer/components/tutorial'
 
 interface ActiveTerminal {
@@ -71,6 +71,10 @@ export function CommandSearch({
   const [maxIterations, setMaxIterations] = useState(50)
   const [ralphModel, setRalphModel] = useState<'opus' | 'sonnet'>('sonnet')
   const [selectedPreset, setSelectedPreset] = useState<string>('custom')
+  const [customPresets, setCustomPresets] = useState<RalphLoopPreset[]>([])
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [savePresetLabel, setSavePresetLabel] = useState('')
+  const [savePresetDescription, setSavePresetDescription] = useState('')
 
   const inputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -131,6 +135,24 @@ export function CommandSearch({
     ? filteredCommands.length + filteredAgents.length
     : filteredAgents.length
 
+  // Load custom presets on mount
+  useEffect(() => {
+    const loadCustomPresets = async () => {
+      try {
+        const presets = await window.electronAPI.getRalphLoopPresets()
+        setCustomPresets(presets)
+      } catch (error) {
+        console.error('Failed to load custom presets:', error)
+      }
+    }
+    loadCustomPresets()
+  }, [])
+
+  // All available presets (built-in + custom)
+  const allPresets = useMemo(() => {
+    return [...RALPH_LOOP_PRESETS, ...customPresets]
+  }, [customPresets])
+
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (open) {
@@ -145,7 +167,12 @@ export function CommandSearch({
       setMaxIterations(50)
       setRalphModel('sonnet')
       setSelectedPreset('custom')
+      setShowSaveDialog(false)
+      setSavePresetLabel('')
+      setSavePresetDescription('')
       setTimeout(() => inputRef.current?.focus(), 0)
+      // Reload custom presets
+      window.electronAPI.getRalphLoopPresets().then(setCustomPresets).catch(console.error)
     }
   }, [open])
 
@@ -316,12 +343,35 @@ export function CommandSearch({
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId)
-    const preset = RALPH_LOOP_PRESETS.find(p => p.id === presetId)
+    const preset = allPresets.find(p => p.id === presetId)
     if (preset) {
       setPrompt(preset.prompt)
       setCompletionPhrase(preset.completionPhrase)
       setMaxIterations(preset.maxIterations)
       setRalphModel(preset.model)
+    }
+  }
+
+  const handleSavePreset = async () => {
+    if (!savePresetLabel.trim() || !prompt.trim()) return
+
+    try {
+      await window.electronAPI.addRalphLoopPreset({
+        label: savePresetLabel.trim(),
+        description: savePresetDescription.trim(),
+        prompt: prompt,
+        completionPhrase: completionPhrase,
+        maxIterations: maxIterations,
+        model: ralphModel,
+      })
+      // Reload presets
+      const presets = await window.electronAPI.getRalphLoopPresets()
+      setCustomPresets(presets)
+      setShowSaveDialog(false)
+      setSavePresetLabel('')
+      setSavePresetDescription('')
+    } catch (error) {
+      console.error('Failed to save preset:', error)
     }
   }
 
@@ -413,6 +463,7 @@ export function CommandSearch({
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Preset</label>
               <div className="flex flex-wrap gap-1.5">
+                {/* Built-in presets */}
                 {RALPH_LOOP_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -421,6 +472,21 @@ export function CommandSearch({
                       selectedPreset === preset.id
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                    title={preset.description}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                {/* Custom presets with different styling */}
+                {customPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handlePresetSelect(preset.id)}
+                    className={`px-2.5 py-1.5 text-xs font-medium rounded border ${
+                      selectedPreset === preset.id
+                        ? 'bg-purple-600 text-white border-purple-600'
+                        : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 hover:bg-purple-500/20'
                     }`}
                     title={preset.description}
                   >
@@ -502,18 +568,66 @@ export function CommandSearch({
               </div>
             </div>
 
+            {/* Save preset dialog */}
+            {showSaveDialog && (
+              <div className="p-3 border rounded-md bg-muted/30 space-y-3">
+                <div className="text-xs font-medium">Save as Preset</div>
+                <input
+                  type="text"
+                  value={savePresetLabel}
+                  onChange={(e) => setSavePresetLabel(e.target.value)}
+                  placeholder="Preset name"
+                  className="w-full p-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                />
+                <input
+                  type="text"
+                  value={savePresetDescription}
+                  onChange={(e) => setSavePresetDescription(e.target.value)}
+                  placeholder="Description (optional)"
+                  className="w-full p-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setShowSaveDialog(false)}
+                    className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSavePreset}
+                    disabled={!savePresetLabel.trim()}
+                    className="px-3 py-1.5 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Working directory and start button */}
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-muted-foreground">
                 Working directory: {selectedAgent?.directory}
               </span>
-              <button
-                onClick={handleStartRalphLoop}
-                disabled={!prompt.trim()}
-                className="px-4 py-1.5 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Start Loop
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  disabled={!prompt.trim() || showSaveDialog}
+                  className="px-3 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  title="Save as preset"
+                >
+                  <Save className="h-3 w-3" />
+                  Save Preset
+                </button>
+                <button
+                  onClick={handleStartRalphLoop}
+                  disabled={!prompt.trim()}
+                  className="px-4 py-1.5 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Start Loop
+                </button>
+              </div>
             </div>
           </div>
         ) : (

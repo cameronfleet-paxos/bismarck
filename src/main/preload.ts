@@ -367,6 +367,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlayboxSettings: (): Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }> =>
     ipcRenderer.invoke('get-playbox-settings'),
 
+  // Ralph Loop preset management
+  getRalphLoopPresets: (): Promise<Array<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>> =>
+    ipcRenderer.invoke('get-ralph-loop-presets'),
+  addRalphLoopPreset: (preset: { label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }): Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }> =>
+    ipcRenderer.invoke('add-ralph-loop-preset', preset),
+  updateRalphLoopPreset: (id: string, updates: { label?: string; description?: string; prompt?: string; completionPhrase?: string; maxIterations?: number; model?: 'opus' | 'sonnet' }): Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' } | undefined> =>
+    ipcRenderer.invoke('update-ralph-loop-preset', id, updates),
+  deleteRalphLoopPreset: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-ralph-loop-preset', id),
+
   // Auto-update management
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),

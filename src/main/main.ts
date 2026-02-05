@@ -141,6 +141,10 @@ import {
   setGitHubToken,
   updatePlayboxSettings,
   loadSettings,
+  getRalphLoopPresets,
+  addRalphLoopPreset,
+  updateRalphLoopPreset,
+  deleteRalphLoopPreset,
 } from './settings-manager'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
@@ -881,6 +885,23 @@ function registerIpcHandlers() {
   ipcMain.handle('get-playbox-settings', async () => {
     const appSettings = await loadSettings()
     return appSettings.playbox
+  })
+
+  // Ralph Loop preset management
+  ipcMain.handle('get-ralph-loop-presets', async () => {
+    return getRalphLoopPresets()
+  })
+
+  ipcMain.handle('add-ralph-loop-preset', async (_event, preset: { label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }) => {
+    return addRalphLoopPreset(preset)
+  })
+
+  ipcMain.handle('update-ralph-loop-preset', async (_event, id: string, updates: { label?: string; description?: string; prompt?: string; completionPhrase?: string; maxIterations?: number; model?: 'opus' | 'sonnet' }) => {
+    return updateRalphLoopPreset(id, updates)
+  })
+
+  ipcMain.handle('delete-ralph-loop-preset', async (_event, id: string) => {
+    return deleteRalphLoopPreset(id)
   })
 
   // Dev test harness (development mode only)

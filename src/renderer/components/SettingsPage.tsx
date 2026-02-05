@@ -13,6 +13,7 @@ import { AuthenticationSettings } from '@/renderer/components/settings/sections/
 import { PlayboxSettings } from '@/renderer/components/settings/sections/PlayboxSettings'
 import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sections/KeyboardShortcutsSettings'
 import { UpdatesSettings } from '@/renderer/components/settings/sections/UpdatesSettings'
+import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -28,7 +29,7 @@ function getGitHubUrlFromRemote(remoteUrl: string): string | null {
   return null
 }
 
-type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'repositories' | 'playbox' | 'advanced'
+type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'repositories' | 'playbox' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -71,6 +72,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'plans',
     label: 'Plans & Prompts',
     description: 'Agent model and custom prompts',
+  },
+  {
+    id: 'ralph-presets',
+    label: 'Ralph Loop Presets',
+    description: 'Custom automation presets',
   },
   {
     id: 'repositories',
@@ -836,6 +842,13 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
         return (
           <div className="bg-card border rounded-lg p-6">
             <PlansSettings onPreferencesChange={() => {}} />
+          </div>
+        )
+
+      case 'ralph-presets':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <RalphLoopPresetsSettings onSettingsChange={loadSettings} />
           </div>
         )
 
