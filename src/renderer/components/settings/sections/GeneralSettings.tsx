@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react'
-import { Check, RotateCcw } from 'lucide-react'
+import { Check, RotateCcw, AlertTriangle } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
 import { Button } from '@/renderer/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/renderer/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -9,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/renderer/components/ui/select'
-import type { AttentionMode, GridSize } from '@/shared/types'
+import { getGridConfig } from '@/shared/grid-utils'
+import type { AttentionMode, GridSize, AgentTab } from '@/shared/types'
 
 interface GeneralSettingsProps {
   onPreferencesChange: (preferences: {
@@ -25,6 +34,13 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
   const [tutorialCompleted, setTutorialCompleted] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [restarting, setRestarting] = useState(false)
+
+  // Grid size reduction confirmation state
+  const [gridSizeConfirm, setGridSizeConfirm] = useState<{
+    pendingSize: GridSize
+    affectedAgents: number
+    affectedTabs: number
+  } | null>(null)
 
   // Load preferences on mount
   useEffect(() => {
@@ -52,7 +68,46 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     setTimeout(() => setShowSaved(false), 2000)
   }
 
-  const handleGridSizeChange = (size: GridSize) => {
+  const handleGridSizeChange = async (size: GridSize) => {
+    const currentMax = getGridConfig(gridSize).maxAgents
+    const newMax = getGridConfig(size).maxAgents
+
+    // If reducing grid size, check for affected agents
+    if (newMax < currentMax) {
+      try {
+        const tabs = await window.electronAPI.getTabs()
+        // Only count non-plan tabs (plan tabs can have unlimited agents)
+        const nonPlanTabs = tabs.filter((tab: AgentTab) => !tab.isPlanTab)
+        let affectedAgents = 0
+        let affectedTabs = 0
+
+        for (const tab of nonPlanTabs) {
+          const excess = tab.workspaceIds.length - newMax
+          if (excess > 0) {
+            affectedAgents += excess
+            affectedTabs++
+          }
+        }
+
+        if (affectedAgents > 0) {
+          // Show confirmation dialog
+          setGridSizeConfirm({
+            pendingSize: size,
+            affectedAgents,
+            affectedTabs,
+          })
+          return
+        }
+      } catch (error) {
+        console.error('Failed to check affected agents:', error)
+      }
+    }
+
+    // No confirmation needed, apply directly
+    applyGridSize(size)
+  }
+
+  const applyGridSize = (size: GridSize) => {
     setGridSize(size)
     const update = { gridSize: size }
     window.electronAPI.setPreferences(update)
@@ -60,6 +115,13 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     // Show saved indicator
     setShowSaved(true)
     setTimeout(() => setShowSaved(false), 2000)
+  }
+
+  const confirmGridSizeChange = () => {
+    if (gridSizeConfirm) {
+      applyGridSize(gridSizeConfirm.pendingSize)
+      setGridSizeConfirm(null)
+    }
   }
 
   const handleRestartTutorial = async () => {
@@ -159,6 +221,42 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
           </Button>
         </div>
       </div>
+
+      {/* Grid Size Reduction Confirmation Dialog */}
+      <Dialog
+        open={gridSizeConfirm !== null}
+        onOpenChange={(open) => !open && setGridSizeConfirm(null)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Reduce Grid Size?
+            </DialogTitle>
+            <DialogDescription className="text-left">
+              {gridSizeConfirm && (
+                <>
+                  Changing from {gridSize} to {gridSizeConfirm.pendingSize} will affect{' '}
+                  <strong>{gridSizeConfirm.affectedAgents} agent{gridSizeConfirm.affectedAgents !== 1 ? 's' : ''}</strong>{' '}
+                  across{' '}
+                  <strong>{gridSizeConfirm.affectedTabs} tab{gridSizeConfirm.affectedTabs !== 1 ? 's' : ''}</strong>.
+                  <br /><br />
+                  Only the first {getGridConfig(gridSizeConfirm.pendingSize).maxAgents} agent{getGridConfig(gridSizeConfirm.pendingSize).maxAgents !== 1 ? 's' : ''} per tab will be kept visible.
+                  Excess agents will be stopped.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGridSizeConfirm(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmGridSizeChange}>
+              Confirm & Stop Agents
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
