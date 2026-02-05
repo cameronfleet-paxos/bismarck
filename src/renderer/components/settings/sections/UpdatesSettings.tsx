@@ -220,9 +220,16 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
             The version you're currently running
           </p>
         </div>
-        <span className="font-mono text-sm bg-muted px-3 py-1.5 rounded-md">
+        <button
+          onClick={() => window.electronAPI.openExternal(
+            `https://github.com/cameronfleet-paxos/bismarck/releases/tag/v${appVersion}`
+          )}
+          className="font-mono text-sm bg-muted px-3 py-1.5 rounded-md hover:bg-muted/80 transition-colors cursor-pointer flex items-center gap-1.5 text-blue-500 hover:text-blue-400"
+          title="View release notes on GitHub"
+        >
           v{appVersion}
-        </span>
+          <ExternalLink className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {/* Auto Check Toggle */}
