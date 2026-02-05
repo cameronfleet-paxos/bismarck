@@ -151,13 +151,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [newToolPath, setNewToolPath] = useState('')
   const [newToolDescription, setNewToolDescription] = useState('')
 
-  // GitHub token local state
-  const [hasToken, setHasToken] = useState(false)
-  const [newToken, setNewToken] = useState('')
-  const [savingToken, setSavingToken] = useState(false)
-  const [detectingToken, setDetectingToken] = useState(false)
-  const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
-
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [expandedRepoId, setExpandedRepoId] = useState<string | null>(null)
@@ -184,14 +177,12 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [loaded, detectedPaths, tokenConfigured] = await Promise.all([
+      const [loaded, detectedPaths] = await Promise.all([
         window.electronAPI.getSettings(),
         window.electronAPI.detectToolPaths(),
-        window.electronAPI.hasGitHubToken(),
       ])
       setSettings(loaded)
       setAutoDetectedPaths(detectedPaths)
-      setHasToken(tokenConfigured)
 
       // Initialize local state from loaded settings
       setCpuLimit(loaded.docker.resourceLimits.cpu)
@@ -325,54 +316,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       await loadSettings()
     } catch (error) {
       console.error('Failed to remove proxied tool:', error)
-    }
-  }
-
-  const handleSaveGitHubToken = async () => {
-    if (!newToken.trim()) return
-
-    setSavingToken(true)
-    try {
-      await window.electronAPI.setGitHubToken(newToken.trim())
-      setNewToken('')
-      setHasToken(true)
-      setTokenDetectResult(null)
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to save GitHub token:', error)
-    } finally {
-      setSavingToken(false)
-    }
-  }
-
-  const handleClearGitHubToken = async () => {
-    try {
-      await window.electronAPI.clearGitHubToken()
-      setHasToken(false)
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to clear GitHub token:', error)
-    }
-  }
-
-  const handleAutoDetectGitHubToken = async () => {
-    setDetectingToken(true)
-    setTokenDetectResult(null)
-    try {
-      const result = await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
-      setTokenDetectResult(result)
-      if (result.success) {
-        setHasToken(true)
-        setShowSaved(true)
-        setTimeout(() => setShowSaved(false), 2000)
-      }
-    } catch (error) {
-      console.error('Failed to detect GitHub token:', error)
-      setTokenDetectResult({ success: false, source: null })
-    } finally {
-      setDetectingToken(false)
     }
   }
 
@@ -784,148 +727,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                   <Save className="h-4 w-4 mr-2" />
                   {saving ? 'Saving...' : 'Save Tool Paths'}
                 </Button>
-              </div>
-            </div>
-
-            {/* GitHub Token Section */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">GitHub Token</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Configure a GitHub token for the <code className="bg-muted px-1 rounded">gh</code> CLI. This is needed when working with organizations that require SAML SSO authentication.
-              </p>
-
-              {/* Status indicator */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2">
-                  {hasToken ? (
-                    <>
-                      <Check className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-600 dark:text-green-400 font-medium">Token configured</span>
-                    </>
-                  ) : (
-                    <>
-                      <X className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Not configured</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Auto-detect button */}
-              <div className="space-y-4">
-                <div>
-                  <Button
-                    onClick={handleAutoDetectGitHubToken}
-                    variant="outline"
-                    disabled={detectingToken}
-                  >
-                    {detectingToken ? (
-                      <>
-                        <span className="animate-spin mr-2">...</span>
-                        Detecting...
-                      </>
-                    ) : (
-                      'Auto-detect from environment'
-                    )}
-                  </Button>
-                  {tokenDetectResult && (
-                    tokenDetectResult.success ? (
-                      <p className="text-sm mt-2 text-green-600 dark:text-green-400">
-                        Token detected from {tokenDetectResult.source} and saved
-                      </p>
-                    ) : (
-                      <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                        <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                          {tokenDetectResult.reason === 'command_substitution'
-                            ? 'Token set via command'
-                            : tokenDetectResult.reason === 'unresolved_ref'
-                            ? 'Token references unresolved variable'
-                            : 'No token found'}
-                        </p>
-                        {tokenDetectResult.reason === 'command_substitution' ? (
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Token appears to be set via a command (e.g., <code className="bg-muted px-1 rounded">$(op ...)</code>).
-                            For security, we can't execute shell commands. Paste your token below.
-                          </p>
-                        ) : tokenDetectResult.reason === 'unresolved_ref' ? (
-                          <>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Found <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> in your shell profile,
-                              but it references another variable that isn't exported.
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              If it's set by a secrets manager (1Password, Doppler, etc.),
-                              copy the token value and paste it below.
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              To enable auto-detection, add to your shell profile (<code className="bg-muted px-1 rounded">~/.zshrc</code> or <code className="bg-muted px-1 rounded">~/.bashrc</code>):
-                            </p>
-                            <pre className="bg-zinc-800 text-zinc-100 p-2 rounded mt-2 text-xs font-mono overflow-x-auto">
-                              export GITHUB_TOKEN="ghp_your_token_here"
-                            </pre>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Then click "Auto-detect" again, or paste your token below.
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    )
-                  )}
-                </div>
-
-                {/* Manual entry */}
-                <div className="space-y-2">
-                  <Label htmlFor="github-token">Manual Entry</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="github-token"
-                      type="password"
-                      placeholder={hasToken ? '••••••••' : 'ghp_xxxxxxxxxxxx'}
-                      value={newToken}
-                      onChange={(e) => setNewToken(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleSaveGitHubToken()
-                        }
-                      }}
-                    />
-                    <Button
-                      onClick={handleSaveGitHubToken}
-                      disabled={!newToken.trim() || savingToken}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      {savingToken ? 'Saving...' : 'Save'}
-                    </Button>
-                    {hasToken && (
-                      <Button
-                        onClick={handleClearGitHubToken}
-                        variant="outline"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Generate a token at{' '}
-                    <button
-                      onClick={() => window.electronAPI.openExternal('https://github.com/settings/tokens')}
-                      className="text-blue-500 hover:underline"
-                    >
-                      github.com/settings/tokens
-                    </button>
-                    {' '}with <code className="bg-muted px-1 rounded">repo</code> scope.
-                  </p>
-                </div>
-
-                {/* Info box */}
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                    <strong>When to use:</strong> If you're getting SAML SSO errors when creating PRs for organization repositories, you need to configure a token here. The token is passed to <code className="bg-muted px-1 rounded">gh</code> commands via the <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> environment variable.
-                  </p>
-                </div>
               </div>
             </div>
 
