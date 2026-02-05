@@ -92,6 +92,10 @@ export interface ElectronAPI {
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
 
+  // Headless discussion (Discuss: Headless Agent)
+  startHeadlessDiscussion: (agentId: string) => Promise<{ discussionId: string; workspaceId: string; tabId: string }>
+  cancelHeadlessDiscussion: (discussionId: string) => Promise<void>
+
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig) => Promise<RalphLoopState>
   cancelRalphLoop: (loopId: string) => Promise<void>

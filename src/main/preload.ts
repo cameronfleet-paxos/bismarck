@@ -132,6 +132,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
+  // Headless discussion (Discuss: Headless Agent)
+  startHeadlessDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId),
+  cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-headless-discussion', discussionId),
+
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
     ipcRenderer.invoke('start-ralph-loop', config),

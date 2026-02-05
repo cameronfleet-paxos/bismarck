@@ -1342,6 +1342,19 @@ function App() {
     }
   }
 
+  // Start headless discussion handler
+  const handleStartHeadlessDiscussion = async (agentId: string) => {
+    try {
+      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId)
+      if (result) {
+        // Reload agents to pick up the new discussion workspace
+        await loadAgents()
+      }
+    } catch (error) {
+      console.error('Failed to start headless discussion:', error)
+    }
+  }
+
   // Start Ralph Loop handler
   const handleStartRalphLoop = async (config: RalphLoopConfig) => {
     const result = await window.electronAPI?.startRalphLoop?.(config)
@@ -3181,6 +3194,7 @@ function App() {
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
+        onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
       />

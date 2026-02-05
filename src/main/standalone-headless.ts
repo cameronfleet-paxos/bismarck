@@ -21,7 +21,7 @@ import {
   getWorkspaces,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab } from './state-manager'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -37,6 +37,9 @@ import { startToolProxy, isProxyRunning } from './tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
 import { buildPrompt, type PromptVariables } from './prompt-templates'
+import { queueTerminalCreation } from './terminal-queue'
+import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
+import * as fsPromises from 'fs/promises'
 
 // Word lists for fun random names
 const ADJECTIVES = [
@@ -765,4 +768,243 @@ export async function startFollowUpAgent(
   }
 
   return { headlessId: newHeadlessId, workspaceId }
+}
+
+/**
+ * Track active headless discussions
+ */
+interface HeadlessDiscussionState {
+  discussionId: string
+  workspaceId: string
+  referenceAgentId: string
+  tabId: string
+  outputPath: string
+  terminalId?: string
+}
+
+const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map()
+
+/**
+ * Start a headless discussion session
+ *
+ * This creates an interactive Claude session to gather requirements from the user,
+ * then automatically starts a headless agent with the gathered context.
+ *
+ * @param referenceAgentId - The agent whose directory will be used as the working directory
+ * @param maxQuestions - Maximum number of questions to ask (default: 7)
+ * @returns Discussion session info
+ */
+export async function startHeadlessDiscussion(
+  referenceAgentId: string,
+  maxQuestions: number = 7
+): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
+  if (!mainWindow) {
+    throw new Error('Main window not available')
+  }
+
+  // Look up the reference agent to get its directory
+  const referenceAgent = getWorkspaceById(referenceAgentId)
+  if (!referenceAgent) {
+    throw new Error(`Reference agent not found: ${referenceAgentId}`)
+  }
+
+  // Get repository info from reference agent's directory
+  const repoPath = await getMainRepoRoot(referenceAgent.directory)
+  if (!repoPath) {
+    throw new Error(`Reference agent directory is not in a git repository: ${referenceAgent.directory}`)
+  }
+  const repoName = path.basename(repoPath)
+
+  // Generate unique IDs
+  const discussionId = `headless-discussion-${Date.now()}`
+  const workspaceId = randomUUID()
+
+  // Generate random phrase for this discussion
+  const randomPhrase = generateRandomPhrase()
+
+  // Ensure standalone headless directory exists
+  ensureStandaloneHeadlessDir()
+
+  // Create output path for discussion results
+  const discussionDir = path.join(getStandaloneHeadlessDir(), 'discussions', discussionId)
+  await fsPromises.mkdir(discussionDir, { recursive: true })
+  const discussionOutputPath = path.join(discussionDir, 'discussion-output.md')
+
+  // Build the discussion prompt
+  const discussionPrompt = await buildPrompt('headless_discussion', {
+    referenceRepoName: repoName,
+    codebasePath: referenceAgent.directory,
+    maxQuestions: maxQuestions,
+    discussionOutputPath: discussionOutputPath,
+  })
+
+  // Create discussion workspace
+  const existingWorkspaces = getWorkspaces()
+  const discussionWorkspace: Agent = {
+    id: workspaceId,
+    name: `💬 ${repoName}: ${randomPhrase}`,
+    directory: referenceAgent.directory,
+    purpose: 'Gathering requirements for headless agent',
+    theme: 'purple',
+    icon: getRandomUniqueIcon(existingWorkspaces),
+  }
+  saveWorkspace(discussionWorkspace)
+
+  // Create a dedicated tab for the discussion
+  const discussionTab = createTab(`💬 ${repoName.substring(0, 15)}`)
+
+  // Store discussion state
+  const discussionState: HeadlessDiscussionState = {
+    discussionId,
+    workspaceId,
+    referenceAgentId,
+    tabId: discussionTab.id,
+    outputPath: discussionOutputPath,
+  }
+  activeHeadlessDiscussions.set(discussionId, discussionState)
+
+  try {
+    // Create terminal for discussion
+    console.log(`[HeadlessDiscussion] Creating terminal for discussion ${discussionId}`)
+    const claudeFlags = `--add-dir "${referenceAgent.directory}"`
+    const terminalId = await queueTerminalCreation(workspaceId, mainWindow, {
+      initialPrompt: discussionPrompt,
+      claudeFlags,
+    })
+    discussionState.terminalId = terminalId
+    console.log(`[HeadlessDiscussion] Created discussion terminal: ${terminalId}`)
+
+    // Set up workspace in tab
+    addActiveWorkspace(workspaceId)
+    addWorkspaceToTab(workspaceId, discussionTab.id)
+    setActiveTab(discussionTab.id)
+
+    // Notify renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-created', {
+        terminalId,
+        workspaceId,
+      })
+      mainWindow.webContents.send('maximize-workspace', workspaceId)
+    }
+
+    // Set up listener for discussion completion
+    const discussionEmitter = getTerminalEmitter(terminalId)
+    if (discussionEmitter) {
+      let completionTriggered = false
+
+      const dataHandler = async (data: string) => {
+        if (completionTriggered) return
+
+        // Check if discussion output file was written
+        // Look for the Write tool output or file creation confirmation
+        if (data.includes('discussion-output.md') && (data.includes('Wrote') || data.includes('lines to'))) {
+          // Verify file exists before completing
+          try {
+            await fsPromises.access(discussionOutputPath)
+            completionTriggered = true
+            discussionEmitter.removeListener('data', dataHandler)
+            console.log(`[HeadlessDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
+            await completeHeadlessDiscussion(discussionId)
+          } catch {
+            // File not created yet, keep waiting
+          }
+        }
+      }
+      discussionEmitter.on('data', dataHandler)
+    }
+
+    emitStateUpdate()
+
+    return { discussionId, workspaceId, tabId: discussionTab.id }
+  } catch (error) {
+    // Clean up on error
+    activeHeadlessDiscussions.delete(discussionId)
+    deleteWorkspace(workspaceId)
+    throw error
+  }
+}
+
+/**
+ * Complete a headless discussion and start the headless agent
+ */
+async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeHeadlessDiscussions.get(discussionId)
+  if (!discussionState) {
+    console.error(`[HeadlessDiscussion] Discussion not found: ${discussionId}`)
+    return
+  }
+
+  try {
+    // Read the discussion output
+    const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
+    console.log(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+
+    // Close the discussion terminal
+    if (discussionState.terminalId) {
+      const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+      if (terminalId) {
+        closeTerminal(terminalId)
+      }
+    }
+
+    // Remove discussion workspace from tab and delete it
+    removeActiveWorkspace(discussionState.workspaceId)
+    removeWorkspaceFromTab(discussionState.workspaceId)
+    deleteWorkspace(discussionState.workspaceId)
+
+    // Build prompt from discussion output
+    const headlessPrompt = `Based on the following requirements discussion, implement the requested changes:
+
+${discussionOutput}
+
+Please implement the above requirements, following the approach and file modifications outlined.`
+
+    // Start the headless agent with the discussion context
+    console.log(`[HeadlessDiscussion] Starting headless agent with discussion context`)
+    const result = await startStandaloneHeadlessAgent(
+      discussionState.referenceAgentId,
+      headlessPrompt,
+      'sonnet', // Default to sonnet model
+      discussionState.tabId // Reuse the same tab
+    )
+
+    console.log(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
+
+    // Clean up discussion state
+    activeHeadlessDiscussions.delete(discussionId)
+
+  } catch (error) {
+    console.error(`[HeadlessDiscussion] Failed to complete discussion:`, error)
+    activeHeadlessDiscussions.delete(discussionId)
+    throw error
+  }
+}
+
+/**
+ * Cancel a headless discussion
+ */
+export async function cancelHeadlessDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeHeadlessDiscussions.get(discussionId)
+  if (!discussionState) {
+    return
+  }
+
+  // Close the terminal
+  if (discussionState.terminalId) {
+    const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+    if (terminalId) {
+      closeTerminal(terminalId)
+    }
+  }
+
+  // Clean up workspace
+  removeActiveWorkspace(discussionState.workspaceId)
+  removeWorkspaceFromTab(discussionState.workspaceId)
+  deleteWorkspace(discussionState.workspaceId)
+
+  // Clean up discussion state
+  activeHeadlessDiscussions.delete(discussionId)
+
+  emitStateUpdate()
 }

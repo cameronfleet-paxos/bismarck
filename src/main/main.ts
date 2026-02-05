@@ -163,6 +163,8 @@ import {
   startFollowUpAgent,
   cleanupStandaloneWorktree,
   restartStandaloneHeadlessAgent,
+  startHeadlessDiscussion,
+  cancelHeadlessDiscussion,
 } from './standalone-headless'
 import {
   startRalphLoop,
@@ -668,6 +670,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
     return restartStandaloneHeadlessAgent(headlessId, model)
+  })
+
+  // Headless discussion (Discuss: Headless Agent)
+  ipcMain.handle('start-headless-discussion', async (_event, agentId: string) => {
+    return startHeadlessDiscussion(agentId)
+  })
+
+  ipcMain.handle('cancel-headless-discussion', async (_event, discussionId: string) => {
+    return cancelHeadlessDiscussion(discussionId)
   })
 
   // Ralph Loop management

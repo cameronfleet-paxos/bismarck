@@ -52,6 +52,7 @@ export interface AppSettings {
     task: string | null  // Plan task agents (run in Docker containers)
     standalone_headless: string | null  // Standalone headless agents (CMD-K one-off tasks)
     standalone_followup: string | null  // Follow-up agents on existing worktrees
+    headless_discussion: string | null  // Headless discussion (Discuss: Headless Agent)
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -150,6 +151,7 @@ export function getDefaultSettings(): AppSettings {
       task: null,
       standalone_headless: null,
       standalone_followup: null,
+      headless_discussion: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -508,7 +510,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup'): Promise<string | null> {
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion'): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -518,7 +520,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion', template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {
