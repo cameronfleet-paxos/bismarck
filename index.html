@@ -227,7 +227,19 @@
         // Minimum display time tracking
         // Skip splash in dev mode (localhost) for faster iteration
         const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const MIN_DISPLAY_MS = isDev ? 0 : 3000;
+
+        // In dev mode, immediately hide splash without animation
+        if (isDev) {
+          const splash = document.getElementById('splash-screen');
+          if (splash) {
+            splash.style.display = 'none';
+            splash.remove();
+            cancelAnimationFrame(animationId);
+          }
+          return; // Exit splash logic entirely in dev mode
+        }
+
+        const MIN_DISPLAY_MS = 3000;
         const startTime = Date.now();
         let appReady = false;
         let dismissed = false;
