@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil, ExternalLink } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
+import { Textarea } from '@/renderer/components/ui/textarea'
 import { Label } from '@/renderer/components/ui/label'
 import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
@@ -68,8 +69,8 @@ const sidebarItems: SidebarItem[] = [
   },
   {
     id: 'plans',
-    label: 'Plans',
-    description: 'Agent model and operating mode',
+    label: 'Plans & Prompts',
+    description: 'Agent model and custom prompts',
   },
   {
     id: 'repositories',
@@ -1171,20 +1172,24 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                             <div className="space-y-4 pt-4 border-t">
                               <div className="space-y-2">
                                 <Label htmlFor={`purpose-${repo.id}`}>Purpose</Label>
-                                <Input
+                                <Textarea
                                   id={`purpose-${repo.id}`}
                                   placeholder="What is this repository for?"
                                   value={editPurpose}
                                   onChange={(e) => setEditPurpose(e.target.value)}
+                                  rows={3}
+                                  className="min-h-[80px]"
                                 />
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor={`completion-${repo.id}`}>Completion Criteria</Label>
-                                <Input
+                                <Textarea
                                   id={`completion-${repo.id}`}
                                   placeholder="What does 'done' look like?"
                                   value={editCompletionCriteria}
                                   onChange={(e) => setEditCompletionCriteria(e.target.value)}
+                                  rows={3}
+                                  className="min-h-[80px]"
                                 />
                               </div>
                               <div className="space-y-2">
@@ -1221,15 +1226,19 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                             <div className="space-y-3 pt-4 border-t">
                               <div>
                                 <Label className="text-xs text-muted-foreground">Purpose</Label>
-                                <div className="text-sm">
-                                  {repo.purpose || <span className="text-muted-foreground italic">Not set</span>}
-                                </div>
+                                {repo.purpose ? (
+                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.purpose}</pre>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground italic">Not set</div>
+                                )}
                               </div>
                               <div>
                                 <Label className="text-xs text-muted-foreground">Completion Criteria</Label>
-                                <div className="text-sm">
-                                  {repo.completionCriteria || <span className="text-muted-foreground italic">Not set</span>}
-                                </div>
+                                {repo.completionCriteria ? (
+                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.completionCriteria}</pre>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground italic">Not set</div>
+                                )}
                               </div>
                               <div>
                                 <Label className="text-xs text-muted-foreground">Protected Branches</Label>
