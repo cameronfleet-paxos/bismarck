@@ -26,8 +26,8 @@ let mainWindow: BrowserWindow | null = null
 let periodicCheckInterval: NodeJS.Timeout | null = null
 let currentStatus: UpdateStatus = { state: 'idle' }
 
-// Check interval: 4 hours
-const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+// Check interval: 10 minutes
+const CHECK_INTERVAL_MS = 10 * 60 * 1000
 
 // Delay before first check on launch: 5 seconds
 const LAUNCH_CHECK_DELAY_MS = 5000
