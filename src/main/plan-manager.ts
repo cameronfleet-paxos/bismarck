@@ -50,6 +50,7 @@ import {
 import { buildPrompt, type PromptVariables } from './prompt-templates'
 import {
   getRepositoryById,
+  getRepositoryByPath,
   getAllRepositories,
 } from './repository-manager'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
@@ -838,9 +839,10 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
       const planAgentClaudeFlags = `--add-dir "${planDir}" --add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
       // Look up repository for feature branch guidance
+      // Try repositoryId first, fallback to path-based lookup for legacy workspaces
       const repository = referenceWorkspace.repositoryId
         ? await getRepositoryById(referenceWorkspace.repositoryId)
-        : undefined
+        : await getRepositoryByPath(referenceWorkspace.directory)
       const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository)
       console.log(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
       const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {

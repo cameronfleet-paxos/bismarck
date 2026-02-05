@@ -364,9 +364,10 @@ export async function startStandaloneHeadlessAgent(
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
   // Look up repository for completion criteria
+  // Try repositoryId first, fallback to path-based lookup for legacy workspaces
   const repository = referenceAgent.repositoryId
     ? await getRepositoryById(referenceAgent.repositoryId)
-    : undefined
+    : await getRepositoryByPath(referenceAgent.directory)
   const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
 
   // Update stored prompt to the full resolved version (for Eye modal display)
