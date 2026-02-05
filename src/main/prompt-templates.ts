@@ -367,9 +367,7 @@ When you complete your work:
    - Use \\n for newlines if absolutely needed
    - If gh api hangs for >30s, cancel and retry with simpler body
 
-4. Report the PR URL in your final message
-
-Type /exit when finished.`,
+4. Report the PR URL in your final message`,
 
   standalone_followup: `[STANDALONE HEADLESS AGENT - FOLLOW-UP]
 
@@ -418,9 +416,7 @@ All these commands work normally (they are proxied to the host automatically):
 
    IMPORTANT: Keep body simple, single line, escape quotes with backslash
 
-5. Report the PR URL in your final message
-
-Type /exit when finished.`,
+5. Report the PR URL in your final message`,
 }
 
 /**
