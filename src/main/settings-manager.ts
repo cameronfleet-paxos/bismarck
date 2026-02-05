@@ -197,19 +197,30 @@ export async function loadSettings(): Promise<AppSettings> {
     // Migration: Convert old boolean flags to new personaMode enum
     // Check for old-style playbox settings with bismarckMode/ottoMode booleans
     const oldPlaybox = loaded.playbox as { bismarckMode?: boolean; ottoMode?: boolean } | undefined
+    let needsMigration = false
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'
       merged.playbox.customPersonaPrompt = null
+      needsMigration = true
     } else if (oldPlaybox?.ottoMode === true) {
       merged.playbox.personaMode = 'otto'
       merged.playbox.customPersonaPrompt = null
+      needsMigration = true
     } else if (!loaded.playbox?.personaMode) {
       // No old flags and no new personaMode - use default
       merged.playbox.personaMode = 'none'
       merged.playbox.customPersonaPrompt = null
+      needsMigration = true
     }
 
     settingsCache = merged
+
+    // Persist migrated settings to disk so old format is cleaned up
+    if (needsMigration) {
+      const settingsPath = getSettingsPath()
+      await writeConfigAtomic(settingsPath, JSON.stringify(merged, null, 2))
+    }
+
     return merged
   } catch (error) {
     // File doesn't exist or is invalid - return defaults
