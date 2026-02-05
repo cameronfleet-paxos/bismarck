@@ -94,8 +94,6 @@ import {
   stopTaskPolling,
   completePlan,
   cleanupPlanManager,
-  setHeadlessMode,
-  isHeadlessModeEnabled,
   checkHeadlessModeAvailable,
   getHeadlessAgentInfo,
   getHeadlessAgentInfoForPlan,
@@ -563,15 +561,6 @@ function registerIpcHandlers() {
   })
 
   // Headless mode management
-  ipcMain.handle('set-headless-mode', (_event, enabled: boolean) => {
-    setHeadlessMode(enabled)
-    return enabled
-  })
-
-  ipcMain.handle('get-headless-mode', () => {
-    return isHeadlessModeEnabled()
-  })
-
   ipcMain.handle('check-headless-mode-available', async () => {
     return checkHeadlessModeAvailable()
   })
@@ -885,7 +874,7 @@ function registerIpcHandlers() {
   })
 
   // Playbox settings
-  ipcMain.handle('update-playbox-settings', async (_event, settings: { bismarckMode?: boolean }) => {
+  ipcMain.handle('update-playbox-settings', async (_event, settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }) => {
     return updatePlayboxSettings(settings)
   })
 

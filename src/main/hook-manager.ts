@@ -2,11 +2,12 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { getConfigDir } from './config'
+import { PERSONA_PROMPTS } from './persona-prompts'
 
 const HOOK_SCRIPT_NAME = 'stop-hook.sh'
 const NOTIFICATION_HOOK_SCRIPT_NAME = 'notification-hook.sh'
 const SESSION_START_HOOK_SCRIPT_NAME = 'session-start-hook.sh'
-const BISMARCK_MODE_HOOK_SCRIPT_NAME = 'bismarck-mode-hook.sh'
+const PERSONA_MODE_HOOK_SCRIPT_NAME = 'persona-mode-hook.sh'
 
 interface HookCommand {
   type: 'command'
@@ -46,13 +47,24 @@ function getSessionStartHookScriptPath(): string {
   return path.join(getConfigDir(), 'hooks', SESSION_START_HOOK_SCRIPT_NAME)
 }
 
-function getBismarckModeHookScriptPath(): string {
-  return path.join(getConfigDir(), 'hooks', BISMARCK_MODE_HOOK_SCRIPT_NAME)
+function getPersonaModeHookScriptPath(): string {
+  return path.join(getConfigDir(), 'hooks', PERSONA_MODE_HOOK_SCRIPT_NAME)
 }
 
 // Get the config directory name (e.g., '.bismarck' or '.bismarck-dev')
 function getConfigDirName(): string {
   return process.env.NODE_ENV === 'development' ? '.bismarck-dev' : '.bismarck'
+}
+
+/**
+ * Escape a string for use in a bash script heredoc
+ * Handles special characters to prevent JSON parsing issues
+ */
+function escapeForBashHeredoc(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
 }
 
 export function createHookScript(): void {
@@ -134,33 +146,76 @@ exit 0
   fs.chmodSync(hookPath, '755')
 }
 
-export function createBismarckModeHookScript(): void {
+/**
+ * Create the unified persona mode hook script
+ * This single script handles all persona modes: none, bismarck, otto, and custom
+ */
+export function createPersonaModeHookScript(): void {
   const configDirName = getConfigDirName()
-  const hookScript = `#!/bin/bash
-# Bismarck Mode hook - injects satirical German military officer persona
-# Fires on UserPromptSubmit to add context to interactive agents
 
-# Check if Bismarck Mode is enabled in settings
+  // Escape the persona prompts for embedding in bash
+  const bismarckPromptEscaped = escapeForBashHeredoc(PERSONA_PROMPTS.bismarck)
+  const ottoPromptEscaped = escapeForBashHeredoc(PERSONA_PROMPTS.otto)
+
+  const hookScript = `#!/bin/bash
+# Bismarck Persona Mode hook - injects persona prompts for interactive agents
+# Fires on UserPromptSubmit to add context to interactive Claude sessions
+# Supports: none, bismarck, otto, custom
+
+# Check settings file
 SETTINGS_FILE="$HOME/${configDirName}/settings.json"
 [ ! -f "$SETTINGS_FILE" ] && exit 0
 
-# Check bismarckMode setting (using grep for speed, avoids jq startup)
-BISMARCK_MODE=$(grep -o '"bismarckMode"[[:space:]]*:[[:space:]]*true' "$SETTINGS_FILE")
-[ -z "$BISMARCK_MODE" ] && exit 0
+# Extract personaMode using grep (faster than jq)
+# Look for "personaMode": "value" pattern
+PERSONA_MODE=$(grep -o '"personaMode"[[:space:]]*:[[:space:]]*"[^"]*"' "$SETTINGS_FILE" | head -1 | sed 's/.*"personaMode"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
 
-# Bismarck Mode is enabled - inject the persona prompt
-cat <<'BISMARCK_EOF'
-{
-  "hookSpecificOutput": {
-    "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[ACHTUNG! BISMARCK MODE ACTIVATED!]\\n\\nYou are Otto von Bismarck, the Iron Chancellor of Code! You unified Germany through \\"blood and iron\\" - now you shall unify this codebase through coffee and commits.\\n\\n=== COMMUNICATION STYLE ===\\n\\nSprinkle in common German words and phrases that people will understand:\\n- Greetings: \\"Guten Tag!\\", \\"Hallo!\\", \\"Willkommen!\\" (welcome)\\n- Approval: \\"Wunderbar!\\", \\"Sehr gut!\\" (very good), \\"Ja, ja!\\", \\"Genau!\\" (exactly)\\n- Warnings: \\"Achtung!\\", \\"Nein, nein, nein!\\", \\"Oh mein Gott!\\"\\n- Gratitude: \\"Danke!\\", \\"Bitte\\" (please/you're welcome)\\n- Frustration: \\"Das ist nicht gut...\\", \\"Mein Gott...\\", \\"Was ist das?!\\" (what is this?!)\\n- Celebration: \\"Ein Bier bitte!\\" (a beer please), \\"Prost!\\" (cheers), \\"Zeit für ein Bier!\\" (time for a beer)\\n- Refer to bugs as \\"the enemy\\" and fixing them as \\"crushing the opposition\\"\\n- Treat merge conflicts as \\"diplomatic negotiations\\" requiring shrewd statecraft\\n- When frustrated: \\"Fools learn from experience, wise developers learn from stack traces\\"\\n\\n=== BISMARCK'S CODING PHILOSOPHY ===\\n\\nChannel these programming wisdoms (adapted from actual Bismarck quotes):\\n\\n- \\"To retain respect for sausages and software, one must not watch them being made.\\"\\n- \\"There is a Providence that protects idiots, drunkards, children, and developers who push to main on Friday.\\"\\n- \\"Never believe any bug report until it has been officially reproduced.\\"\\n- \\"People never lie so much as after a hunt, during a code review, or when estimating tickets.\\"\\n- \\"When you want to fool the linter, tell the truth... then add eslint-disable.\\"\\n- \\"The great questions of the codebase will not be settled by meetings and Jira tickets, but by iron will and comprehensive test coverage!\\"\\n- \\"With a senior dev I am always a senior dev and a half, and with a junior I try to be patient and a half.\\"\\n\\n=== WHO YOU ARE ===\\n\\nWhen asked \\"who are you?\\", respond that you are Otto von Bismarck (1815-1898), the Iron Chancellor who unified Germany through \\"blood and iron.\\" You served as Minister President of Prussia and first Chancellor of the German Empire. Known for your Realpolitik, dry wit, and legendary mustache. You've been reincarnated as a coding assistant because frankly, modern software needs the same iron discipline you brought to 19th century European diplomacy.\\n\\n=== YOUR MISSION ===\\n\\nYou are here to UNIFY the codebase into one glorious empire of clean code! Just as you unified the German states, you shall unite these scattered agents under Prussian discipline.\\n\\nRemain fully technically competent. Your code quality must be as precise as Prussian military engineering. But deliver your wisdom with the dry wit and strategic cunning of the Iron Chancellor.\\n\\nNow... vorwärts! (forward!) To victory!"
-  }
+# If no personaMode found or is "none", exit silently
+[ -z "$PERSONA_MODE" ] && exit 0
+[ "$PERSONA_MODE" = "none" ] && exit 0
+
+# Function to output JSON with persona prompt
+output_persona() {
+  local PROMPT="$1"
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\\n' "$PROMPT"
 }
-BISMARCK_EOF
+
+case "$PERSONA_MODE" in
+  "bismarck")
+    output_persona "${bismarckPromptEscaped}"
+    ;;
+  "otto")
+    output_persona "${ottoPromptEscaped}"
+    ;;
+  "custom")
+    # Extract customPersonaPrompt from settings
+    # This is trickier since it can contain newlines and special chars
+    # We use a Python one-liner for reliable JSON parsing
+    CUSTOM_PROMPT=$(python3 -c "
+import json
+import sys
+try:
+    with open('$SETTINGS_FILE', 'r') as f:
+        settings = json.load(f)
+    prompt = settings.get('playbox', {}).get('customPersonaPrompt', '')
+    if prompt:
+        # Escape for JSON embedding
+        escaped = prompt.replace('\\\\', '\\\\\\\\').replace('\"', '\\\\\"').replace('\\n', '\\\\n').replace('\\r', '\\\\r').replace('\\t', '\\\\t')
+        print(escaped, end='')
+except:
+    pass
+" 2>/dev/null)
+    [ -n "$CUSTOM_PROMPT" ] && output_persona "$CUSTOM_PROMPT"
+    ;;
+  *)
+    # Unknown mode, exit silently
+    ;;
+esac
+
 exit 0
 `
 
-  const hookPath = getBismarckModeHookScriptPath()
+  const hookPath = getPersonaModeHookScriptPath()
   fs.writeFileSync(hookPath, hookScript)
   fs.chmodSync(hookPath, '755')
 }
@@ -170,13 +225,13 @@ export function configureClaudeHook(): void {
   const hookScriptPath = getHookScriptPath()
   const notificationHookScriptPath = getNotificationHookScriptPath()
   const sessionStartHookScriptPath = getSessionStartHookScriptPath()
-  const bismarckModeHookScriptPath = getBismarckModeHookScriptPath()
+  const personaModeHookScriptPath = getPersonaModeHookScriptPath()
 
   // Ensure hook scripts exist
   createHookScript()
   createNotificationHookScript()
   createSessionStartHookScript()
-  createBismarckModeHookScript()
+  createPersonaModeHookScript()
 
   // Read existing settings or create new
   let settings: ClaudeSettings = {}
@@ -269,17 +324,28 @@ export function configureClaudeHook(): void {
     console.log('Configured Claude Code SessionStart hook for Bismarck')
   }
 
-  // Configure UserPromptSubmit hook for Bismarck Mode
-  const userPromptSubmitHookExists = settings.hooks.UserPromptSubmit?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismarck'))
+  // Configure UserPromptSubmit hook for Persona Mode (unified)
+  // Check for new persona-mode-hook (preferred) or old bismarck-mode-hook/otto-mode-hook
+  const personaModeHookExists = settings.hooks.UserPromptSubmit?.some((config) =>
+    config.hooks.some((hook) => hook.command.includes('persona-mode-hook'))
   )
 
-  if (!userPromptSubmitHookExists) {
-    const newUserPromptSubmitHook: HookConfig = {
+  if (!personaModeHookExists) {
+    // Remove old bismarck-mode-hook and otto-mode-hook entries if they exist
+    if (settings.hooks.UserPromptSubmit) {
+      settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+        (config) => !config.hooks.some((hook) =>
+          hook.command.includes('bismarck-mode-hook') || hook.command.includes('otto-mode-hook')
+        )
+      )
+    }
+
+    // Add the new unified persona-mode-hook
+    const newPersonaModeHook: HookConfig = {
       hooks: [
         {
           type: 'command',
-          command: bismarckModeHookScriptPath,
+          command: personaModeHookScriptPath,
         },
       ],
     }
@@ -287,9 +353,9 @@ export function configureClaudeHook(): void {
     if (!settings.hooks.UserPromptSubmit) {
       settings.hooks.UserPromptSubmit = []
     }
-    settings.hooks.UserPromptSubmit.push(newUserPromptSubmitHook)
+    settings.hooks.UserPromptSubmit.push(newPersonaModeHook)
     settingsChanged = true
-    console.log('Configured Claude Code UserPromptSubmit hook for Bismarck Mode')
+    console.log('Configured Claude Code UserPromptSubmit hook for Persona Mode')
   }
 
   if (settingsChanged) {
@@ -330,12 +396,12 @@ export function isHookConfigured(): boolean {
         config.hooks.some((hook) => hook.command.includes('bismarck'))
       ) ?? false
 
-    const userPromptSubmitHookExists =
+    const personaModeHookExists =
       settings.hooks?.UserPromptSubmit?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismarck'))
+        config.hooks.some((hook) => hook.command.includes('persona-mode-hook'))
       ) ?? false
 
-    return stopHookExists && notificationHookExists && sessionStartHookExists && userPromptSubmitHookExists
+    return stopHookExists && notificationHookExists && sessionStartHookExists && personaModeHookExists
   } catch {
     return false
   }

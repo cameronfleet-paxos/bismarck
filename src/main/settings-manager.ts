@@ -49,7 +49,9 @@ export interface AppSettings {
     orchestrator: string | null  // null = use default
     planner: string | null
     discussion: string | null
-    task: string | null
+    task: string | null  // Plan task agents (run in Docker containers)
+    standalone_headless: string | null  // Standalone headless agents (CMD-K one-off tasks)
+    standalone_followup: string | null  // Follow-up agents on existing worktrees
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -58,7 +60,8 @@ export interface AppSettings {
     githubToken: string | null  // GitHub token for gh CLI (needed for SAML SSO orgs)
   }
   playbox: {
-    bismarckMode: boolean       // Makes headless agents speak like a satirical German military officer
+    personaMode: 'none' | 'bismarck' | 'otto' | 'custom'  // Persona mode for interactive Claude sessions
+    customPersonaPrompt: string | null  // User-defined prompt when personaMode === 'custom'
   }
   updates: {
     autoCheck: boolean          // Whether to automatically check for updates
@@ -125,6 +128,8 @@ export function getDefaultSettings(): AppSettings {
       planner: null,
       discussion: null,
       task: null,
+      standalone_headless: null,
+      standalone_followup: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -133,7 +138,8 @@ export function getDefaultSettings(): AppSettings {
       githubToken: null,
     },
     playbox: {
-      bismarckMode: false,
+      personaMode: 'none',
+      customPersonaPrompt: null,
     },
     updates: {
       autoCheck: true,
@@ -187,6 +193,22 @@ export async function loadSettings(): Promise<AppSettings> {
       playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
       updates: { ...defaults.updates, ...(loaded.updates || {}) },
     }
+
+    // Migration: Convert old boolean flags to new personaMode enum
+    // Check for old-style playbox settings with bismarckMode/ottoMode booleans
+    const oldPlaybox = loaded.playbox as { bismarckMode?: boolean; ottoMode?: boolean } | undefined
+    if (oldPlaybox?.bismarckMode === true) {
+      merged.playbox.personaMode = 'bismarck'
+      merged.playbox.customPersonaPrompt = null
+    } else if (oldPlaybox?.ottoMode === true) {
+      merged.playbox.personaMode = 'otto'
+      merged.playbox.customPersonaPrompt = null
+    } else if (!loaded.playbox?.personaMode) {
+      // No old flags and no new personaMode - use default
+      merged.playbox.personaMode = 'none'
+      merged.playbox.customPersonaPrompt = null
+    }
+
     settingsCache = merged
     return merged
   } catch (error) {
@@ -438,7 +460,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task'): Promise<string | null> {
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup'): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -448,7 +470,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup', template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {
@@ -547,9 +569,9 @@ export async function updatePlayboxSettings(playboxSettings: Partial<AppSettings
 }
 
 /**
- * Check if Bismarck Mode is enabled
+ * Get playbox settings
  */
-export async function isBismarckModeEnabled(): Promise<boolean> {
+export async function getPlayboxSettings(): Promise<AppSettings['playbox']> {
   const settings = await loadSettings()
-  return settings.playbox?.bismarckMode ?? false
+  return settings.playbox
 }

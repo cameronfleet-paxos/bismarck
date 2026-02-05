@@ -157,13 +157,13 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 
   // Playbox settings
-  updatePlayboxSettings: (settings: { bismarckMode?: boolean }) => Promise<void>
-  getPlayboxSettings: () => Promise<{ bismarckMode: boolean }>
+  updatePlayboxSettings: (settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }) => Promise<void>
+  getPlayboxSettings: () => Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }>
 
   // Auto-update management
   checkForUpdates: () => Promise<UpdateStatus>

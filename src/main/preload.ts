@@ -354,7 +354,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
-  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null }> =>
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null }> =>
     ipcRenderer.invoke('get-custom-prompts'),
   setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
     ipcRenderer.invoke('set-custom-prompt', type, template),
@@ -362,9 +362,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-default-prompt', type),
 
   // Playbox settings
-  updatePlayboxSettings: (settings: { bismarckMode?: boolean }): Promise<void> =>
+  updatePlayboxSettings: (settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }): Promise<void> =>
     ipcRenderer.invoke('update-playbox-settings', settings),
-  getPlayboxSettings: (): Promise<{ bismarckMode: boolean }> =>
+  getPlayboxSettings: (): Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }> =>
     ipcRenderer.invoke('get-playbox-settings'),
 
   // Auto-update management
