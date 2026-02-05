@@ -28,6 +28,7 @@ import {
   extractTextContent,
 } from './stream-parser'
 import { isProxyRunning, getProxyConfig } from './tool-proxy'
+import { writeCrashLog } from './crash-logger'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 
 // Track first headless agent ready for benchmark milestone
@@ -201,6 +202,19 @@ export class HeadlessAgent extends EventEmitter {
       endTimer(`agent:first-event:${taskLabelForError}`)
       endTimer(`agent:headless-start:${taskLabelForError}`)
       this.setStatus('failed')
+
+      // Write crash log for headless agent errors
+      writeCrashLog(error, 'headless-agent', {
+        component: 'headless-agent',
+        operation: 'spawnContainerAgent',
+        planId: options.planId,
+        taskId: options.taskId,
+        additionalInfo: {
+          worktreePath: options.worktreePath,
+          prompt: options.prompt?.substring(0, 500),
+        },
+      })
+
       this.emit('error', error)
       throw error
     }

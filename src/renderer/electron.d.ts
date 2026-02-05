@@ -169,6 +169,9 @@ export interface ElectronAPI {
   getDebugSettings: () => Promise<{ enabled: boolean; logPath: string }>
   updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }) => Promise<void>
 
+  // Crash logging (for renderer process errors)
+  reportRendererCrash: (error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }) => Promise<void>
+
   // Auto-update management
   checkForUpdates: () => Promise<UpdateStatus>
   getUpdateStatus: () => Promise<UpdateStatus>

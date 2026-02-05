@@ -149,6 +149,7 @@ import {
   updateDebugSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache } from './logger'
+import { writeCrashLog } from './crash-logger'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
 import {
@@ -203,6 +204,13 @@ const instanceId = randomUUID()
 // Signal handlers for graceful shutdown on crash
 process.on('uncaughtException', async (error) => {
   console.error('[Main] Uncaught exception:', error)
+
+  // Write crash log to persistent storage
+  writeCrashLog(error, 'uncaughtException', {
+    component: 'main',
+    operation: 'uncaughtException',
+  })
+
   try {
     clearQueue()
     closeAllTerminals()
@@ -217,6 +225,15 @@ process.on('uncaughtException', async (error) => {
 
 process.on('unhandledRejection', async (reason, promise) => {
   console.error('[Main] Unhandled rejection at:', promise, 'reason:', reason)
+
+  // Write crash log for unhandled rejections
+  writeCrashLog(reason, 'unhandledRejection', {
+    component: 'main',
+    operation: 'unhandledRejection',
+    additionalInfo: {
+      promiseDetails: String(promise),
+    },
+  })
   // Don't exit for unhandled rejections, just log them
 })
 
@@ -916,6 +933,17 @@ function registerIpcHandlers() {
     await updateDebugSettings(settings)
     // Clear the logger's cache so it picks up the new settings immediately
     clearDebugSettingsCache()
+  })
+
+  // Crash logging (for renderer process errors)
+  ipcMain.handle('report-renderer-crash', async (_event, error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }) => {
+    const errorObj = new Error(error.message)
+    errorObj.name = error.name || 'RendererError'
+    errorObj.stack = error.stack
+    writeCrashLog(errorObj, 'renderer', {
+      component: context?.component || 'renderer',
+      operation: context?.operation,
+    })
   })
 
   // Dev test harness (development mode only)

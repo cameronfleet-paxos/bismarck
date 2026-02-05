@@ -383,6 +383,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }): Promise<void> =>
     ipcRenderer.invoke('update-debug-settings', settings),
 
+  // Crash logging (for renderer process errors)
+  reportRendererCrash: (error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }): Promise<void> =>
+    ipcRenderer.invoke('report-renderer-crash', error, context),
+
   // Auto-update management
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
