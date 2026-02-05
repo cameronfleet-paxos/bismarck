@@ -12,14 +12,40 @@ To build and install the app to `~/Applications`:
 
 ## Releasing New Versions
 
-Just bump version, tag, and push - GitHub Actions handles the rest:
+Release notes are pulled from **annotated tag messages**. The workflow:
+
+1. **Update version** in package.json (manually or via `npm version --no-git-tag-version`)
+2. **Commit** the version bump
+3. **Create annotated tag** with release notes in the message
+4. **Push** commit and tag - GitHub Actions builds DMG and creates release
 
 ```bash
-npm version patch    # or minor/major
-git push origin main --tags
+# Example: minor release (0.3.x -> 0.4.0)
+npm version minor --no-git-tag-version
+git add package.json package-lock.json
+git commit --no-gpg-sign -m "v0.4.0"
+
+# Create annotated tag with release notes (these become the GitHub release body)
+git tag -a v0.4.0 -m "$(cat <<'EOF'
+v0.4.0
+
+## What's New
+
+- Feature 1 description
+- Feature 2 description
+- Bug fix description
+EOF
+)"
+
+git push origin main
+git push origin v0.4.0
 ```
 
-GitHub Actions will automatically build the DMG and create the release.
+**Important**: The tag message format matters:
+- First line: version (e.g., `v0.4.0`) - this gets stripped
+- Rest: release notes in markdown - this becomes the release body
+
+GitHub Actions will automatically add install instructions and changelog link.
 
 ## Development
 
