@@ -22,7 +22,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history so we can read tag annotations
+          fetch-depth: 0
+          fetch-tags: true  # Ensure annotated tags are fetched properly
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -54,6 +55,12 @@ jobs:
           VERSION_NUMBER="${{ steps.version.outputs.version }}"
           VERSION_NUMBER="${VERSION_NUMBER#v}"
           echo "filename=Bismarck-${VERSION_NUMBER}-arm64.dmg" >> $GITHUB_OUTPUT
+
+      - name: Refetch tags with annotations
+        run: |
+          # Checkout action doesn't preserve annotated tag objects properly
+          # Re-fetch to get the full tag objects
+          git fetch --tags --force
 
       - name: Get previous tag
         id: prev_tag
