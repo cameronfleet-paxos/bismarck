@@ -15,6 +15,7 @@
  *   POST /click                       - Click element (body = {selector} or {text})
  *   POST /type                        - Type into element (body = {selector, text})
  *   POST /key                         - Press key (body = {key, meta, shift, ctrl, alt})
+ *   POST /setup-test-env              - Bypass onboarding by creating test agents
  *   GET  /health                      - Check server and CDP connection status
  */
 
@@ -435,6 +436,43 @@ async function handleRequest(req, res) {
         break;
       }
 
+      case '/setup-test-env': {
+        // Bypass onboarding by creating test agents
+        // POST body can optionally specify:
+        // { agents: [{ path: "/path/to/repo", name: "repo-name" }] }
+        const body = await parseBody(req);
+
+        // Default: create one test agent pointing to current working directory
+        const agents = body.agents || [{
+          path: process.cwd(),
+          name: require('path').basename(process.cwd())
+        }];
+
+        // Convert to DiscoveredRepo format expected by the IPC handler
+        const repos = agents.map(a => ({
+          path: a.path,
+          name: a.name || require('path').basename(a.path)
+        }));
+
+        const result = await cdp.evaluate(`
+          (async function() {
+            try {
+              const created = await window.electronAPI.setupWizardBulkCreateAgents(${JSON.stringify(repos)});
+              return { success: true, agents: created.map(a => ({ id: a.id, name: a.name, path: a.path })) };
+            } catch (error) {
+              return { success: false, error: error.message };
+            }
+          })()
+        `);
+
+        if (result.success) {
+          sendJson(res, result);
+        } else {
+          sendError(res, result.error || 'Failed to create test agents', 500);
+        }
+        break;
+      }
+
       default:
         sendError(res, `Unknown endpoint: ${path}`, 404);
     }
@@ -466,6 +504,7 @@ server.listen(PORT, () => {
   console.log('  GET  /toggle-dev-console          - Toggle dev console');
   console.log('  POST /mock-agent                  - Start mock agent');
   console.log('  POST /wait                        - Wait for selector/condition');
+  console.log('  POST /setup-test-env              - Bypass onboarding (create test agents)');
   console.log('');
   console.log('Press Ctrl+C to stop');
 

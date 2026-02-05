@@ -76,16 +76,99 @@ This compiles both the main process TypeScript and the Vite renderer.
 
 ### Self-Testing Workflow
 
-**When making UI changes, always self-test before asking the user for feedback.** Use the testing skills to verify your changes work correctly:
+**When making UI changes, always self-test before asking the user for feedback.**
 
-1. **Start the test environment**: `/bismarck:start-test` (runs `npm run dev:cdp:wait`)
-2. **Take screenshots to verify UI state**: `/bismarck:screenshot`
-3. **Run interactive tests**: `/bismarck:test <scenario>`
+**On macOS (with display):**
+```bash
+npm run dev:cdp:wait   # Start all services and wait until ready
+```
+
+**In Docker (headless):** See [Headless Agent Testing](#headless-agent-testing-docker) below.
+
+Once CDP is running, use curl to interact:
+```bash
+curl -s localhost:9333/health              # Check connection
+curl -s "localhost:9333/screenshot?path=/tmp/claude/test.png"  # Screenshot
+curl -s localhost:9333/state               # Get app state
+```
 
 Only ask the user/operator for input if:
 - You encounter an issue you cannot diagnose from screenshots/state
 - The change requires subjective feedback (design decisions, UX preferences)
 - Tests pass but you need confirmation on edge cases
+
+### Headless Agent Testing (Docker)
+
+**If you're a headless agent running in Docker without a display**, you cannot use `npm run dev:cdp:wait` directly because Electron requires a display server. Use xvfb (X Virtual Framebuffer) instead:
+
+#### Step 1: Build the app
+```bash
+npm run build
+```
+
+#### Step 2: Start Electron with xvfb
+```bash
+# xvfb-run creates a virtual display for Electron
+xvfb-run -a ./node_modules/.bin/electron --remote-debugging-port=9222 . > /tmp/electron.log 2>&1 &
+
+# Wait for Electron to start
+sleep 5
+```
+
+#### Step 3: Start the CDP server
+```bash
+node scripts/test/cdp-server.js > /tmp/cdp-server.log 2>&1 &
+sleep 2
+```
+
+#### Step 4: Verify connection
+```bash
+curl -s localhost:9333/health
+# Expected: {"server":"running","cdp":"connected","port":9333}
+```
+
+#### Step 4.5: Bypass Onboarding (Recommended)
+
+Before taking screenshots or interacting with the UI, bypass the setup wizard by creating a test agent:
+
+```bash
+# Create a test agent pointing to current working directory
+curl -s -X POST localhost:9333/setup-test-env
+
+# Or with a custom agent configuration
+curl -s -X POST localhost:9333/setup-test-env -H "Content-Type: application/json" \
+  -d '{"agents":[{"path":"/workspace","name":"my-agent"}]}'
+```
+
+This creates a minimal agent configuration so the app opens directly to the workspace view instead of showing the onboarding wizard. The `/state` endpoint should then return `"view":"workspace"`.
+
+#### Step 5: Test your changes
+```bash
+# Take screenshot (save to /tmp/claude/ which is writable)
+curl -s "localhost:9333/screenshot?path=/tmp/claude/bismarck.png"
+
+# Read the screenshot to see the UI
+# Use the Read tool on /tmp/claude/bismarck.png
+
+# Get app state programmatically
+curl -s localhost:9333/state
+
+# Click buttons
+curl -s -X POST localhost:9333/click -d '{"text":"Skip Setup"}'
+
+# Evaluate JS to verify your changes
+curl -s -X POST localhost:9333/eval -d 'document.querySelector("[data-state]")?.dataset.state'
+```
+
+#### Step 6: Clean up when done
+```bash
+pkill -f "electron\|cdp-server" 2>/dev/null
+```
+
+**Common issues:**
+- `electron: not found` → Use `./node_modules/.bin/electron` not just `electron`
+- Screenshots blank → Wait longer after starting Electron (increase sleep)
+- CDP disconnected → Check `/tmp/electron.log` for errors
 
 ### Running with CDP (Chrome DevTools Protocol)
 
@@ -112,24 +195,6 @@ CDP enables:
 1. Get WebSocket URL: `curl http://localhost:9222/json`
 2. Find the "Bismarck" page target
 3. Connect to `webSocketDebuggerUrl`
-
-### Testing Skills (Use These!)
-
-These skills are the primary way to test changes:
-
-| Skill | Purpose |
-|-------|---------|
-| `/bismarck:start-test` | Start app with CDP enabled for testing |
-| `/bismarck:screenshot` | Capture current UI state as PNG |
-| `/bismarck:test <scenario>` | Run automated interaction test |
-
-**Recommended workflow after making changes:**
-```
-1. /bismarck:start-test     # Start fresh test instance
-2. /bismarck:screenshot     # Verify initial state
-3. <interact via CDP>      # Test your changes
-4. /bismarck:screenshot     # Verify final state
-```
 
 ### Test Scripts
 
