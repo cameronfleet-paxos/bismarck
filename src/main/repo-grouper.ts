@@ -222,18 +222,21 @@ export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
     const tab = stateManager.createTab(tabName)
     createdTabs.push(tab)
 
-    // Add agents to the tab (up to 4 per regular tab)
-    for (const agentId of group.agentIds.slice(0, 4)) {
+    // Get max agents per tab based on grid size
+    const maxAgents = stateManager.getMaxAgentsPerTab()
+
+    // Add agents to the tab (up to maxAgents per regular tab)
+    for (const agentId of group.agentIds.slice(0, maxAgents)) {
       stateManager.addActiveWorkspace(agentId)
       stateManager.addWorkspaceToTab(agentId, tab.id)
     }
 
-    // If more than 4 agents in group, create overflow tabs
-    if (group.agentIds.length > 4) {
-      const remaining = group.agentIds.slice(4)
-      for (let i = 0; i < remaining.length; i += 4) {
-        const batch = remaining.slice(i, i + 4)
-        const overflowNum = Math.floor(i / 4) + 2
+    // If more than maxAgents in group, create overflow tabs
+    if (group.agentIds.length > maxAgents) {
+      const remaining = group.agentIds.slice(maxAgents)
+      for (let i = 0; i < remaining.length; i += maxAgents) {
+        const batch = remaining.slice(i, i + maxAgents)
+        const overflowNum = Math.floor(i / maxAgents) + 2
         const overflowTab = stateManager.createTab(`${tabName} ${overflowNum}`)
         createdTabs.push(overflowTab)
         for (const agentId of batch) {

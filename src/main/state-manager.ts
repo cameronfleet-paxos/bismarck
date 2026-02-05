@@ -2,7 +2,7 @@ import { loadState, saveState, getDefaultPreferences } from './config'
 import type { AppState, AgentTab, AppPreferences } from '../shared/types'
 import { getGridConfig } from '../shared/grid-utils'
 
-function getMaxAgentsPerTab(): number {
+export function getMaxAgentsPerTab(): number {
   return getGridConfig(currentState.preferences.gridSize).maxAgents
 }
 

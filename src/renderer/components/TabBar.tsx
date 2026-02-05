@@ -6,6 +6,7 @@ import type { AgentTab } from '@/shared/types'
 interface TabBarProps {
   tabs: AgentTab[]
   activeTabId: string | null
+  maxAgents: number  // Maximum agents per tab (from gridSize)
   onTabSelect: (tabId: string) => void
   onTabRename: (tabId: string, name: string) => void
   onTabDelete: (tabId: string) => void
@@ -23,6 +24,7 @@ interface TabBarProps {
 export function TabBar({
   tabs,
   activeTabId,
+  maxAgents,
   onTabSelect,
   onTabRename,
   onTabDelete,
@@ -78,7 +80,7 @@ export function TabBar({
         // Check if this tab can accept a dropped agent
         const canAcceptDrop = draggedWorkspaceId &&
           !tab.workspaceIds.includes(draggedWorkspaceId) &&
-          (tab.isPlanTab || agentCount < 4)
+          (tab.isPlanTab || agentCount < maxAgents)
         const isDropTarget = dropTargetTabId === tab.id && canAcceptDrop
         // Tab reordering state
         const isDraggingThisTab = draggedTabId === tab.id
@@ -163,7 +165,7 @@ export function TabBar({
                   {tab.name}
                 </span>
                 <span className="text-muted-foreground text-xs">
-                  {tab.isPlanTab ? `(${agentCount})` : `(${agentCount}/4)`}
+                  {tab.isPlanTab ? `(${agentCount})` : `(${agentCount}/${maxAgents})`}
                 </span>
               </>
             )}

@@ -1967,6 +1967,7 @@ function App() {
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
+        maxAgents={gridConfig.maxAgents}
         onTabSelect={handleTabSelect}
         onTabRename={handleTabRename}
         onTabDelete={handleTabDeleteRequest}
