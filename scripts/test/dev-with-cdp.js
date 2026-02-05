@@ -148,13 +148,18 @@ async function cleanup() {
   killProcessOnPort(PORTS.CDP);
   killProcessOnPort(PORTS.VITE);
 
-  // Also kill by process name pattern
+  // Kill ONLY dev Electron processes (not the installed Bismarck.app)
+  // The dev version runs from node_modules/electron, installed runs from /Applications or ~/Applications
   try {
-    execSync('pkill -f "electron.*bismarck" 2>/dev/null || true', { encoding: 'utf-8' });
+    // Kill dev Electron processes by matching the dev path
+    execSync('pkill -9 -f "node_modules/electron.*Electron" 2>/dev/null || true', { encoding: 'utf-8' });
+    execSync('pkill -9 -f "node_modules/.bin/electron" 2>/dev/null || true', { encoding: 'utf-8' });
+    // Kill npm/node processes that launched electron in dev
+    execSync('pkill -9 -f "npm exec electron" 2>/dev/null || true', { encoding: 'utf-8' });
   } catch {}
 
   // Wait for ports to be free
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise(r => setTimeout(r, 1500));
   console.log('');
 }
 
