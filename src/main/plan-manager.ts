@@ -1929,6 +1929,7 @@ async function startHeadlessTaskAgent(
     events: [],
     startedAt: new Date().toISOString(),
     model: agentModel, // Store model for UI display
+    originalPrompt: taskPrompt,
   }
   headlessAgentInfo.set(task.id, agentInfo)
 

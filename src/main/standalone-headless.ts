@@ -310,7 +310,7 @@ export async function startStandaloneHeadlessAgent(
     events: [],
     startedAt: new Date().toISOString(),
     worktreeInfo: worktreeInfo,
-    originalPrompt: prompt, // Store original prompt for restart capability
+    userPrompt: prompt, // Store raw user prompt for Eye modal default view
     model: model, // Store model for UI display
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
@@ -368,6 +368,10 @@ export async function startStandaloneHeadlessAgent(
     ? await getRepositoryById(referenceAgent.repositoryId)
     : undefined
   const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
+
+  // Update stored prompt to the full resolved version (for Eye modal display)
+  agentInfo.originalPrompt = enhancedPrompt
+
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
     worktreePath: worktreePath,
@@ -667,6 +671,7 @@ export async function startFollowUpAgent(
     events: [],
     startedAt: new Date().toISOString(),
     worktreeInfo: worktreeInfo,
+    userPrompt: prompt, // Store raw user prompt for Eye modal default view
   }
   standaloneHeadlessAgentInfo.set(newHeadlessId, agentInfo)
 
@@ -732,6 +737,10 @@ export async function startFollowUpAgent(
   // Look up repository for completion criteria
   const repository = await getRepositoryByPath(repoPath)
   const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria)
+
+  // Store the full resolved prompt (for Eye modal display)
+  agentInfo.originalPrompt = enhancedPrompt
+
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
     worktreePath: worktreePath,

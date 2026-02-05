@@ -457,7 +457,8 @@ export interface HeadlessAgentInfo {
   completedAt?: string
   result?: HeadlessAgentResult
   worktreeInfo?: StandaloneWorktreeInfo  // For standalone headless agents
-  originalPrompt?: string  // For restart capability (standalone agents)
+  originalPrompt?: string  // Full resolved prompt (for Eye modal display)
+  userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
 }
 

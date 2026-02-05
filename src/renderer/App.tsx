@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -29,6 +29,7 @@ import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
+import { PromptViewerModal } from '@/renderer/components/PromptViewerModal'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
@@ -189,6 +190,9 @@ function App() {
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
   const [isDestroying, setIsDestroying] = useState(false)
+
+  // Prompt viewer modal state
+  const [promptViewerInfo, setPromptViewerInfo] = useState<HeadlessAgentInfo | null>(null)
 
   // Loading state for standalone headless agent actions
   const [confirmingDoneIds, setConfirmingDoneIds] = useState<Set<string>>(new Set())
@@ -2495,6 +2499,11 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {info.originalPrompt && (
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
@@ -2555,6 +2564,11 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {info.originalPrompt && (
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : info.id }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
@@ -2640,6 +2654,11 @@ function App() {
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{iteration.status}</span>
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
+                              {loopState.config.prompt && (
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt })} className="h-6 w-6 p-0" title="View prompt">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button size="sm" variant="ghost" onClick={() => setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: isExpanded ? null : uniqueId }))} className="h-6 w-6 p-0">
                                 {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
                               </Button>
@@ -2870,6 +2889,11 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {info.originalPrompt && (
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -3118,6 +3142,9 @@ function App() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Prompt Viewer Modal */}
+      <PromptViewerModal info={promptViewerInfo} onClose={() => setPromptViewerInfo(null)} />
 
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator
