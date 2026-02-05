@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history so we can read tag annotations
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,12 +55,24 @@ jobs:
           VERSION_NUMBER="${VERSION_NUMBER#v}"
           echo "filename=Bismarck-${VERSION_NUMBER}-arm64.dmg" >> $GITHUB_OUTPUT
 
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          CURRENT="${{ steps.version.outputs.version }}"
+          # Get all tags sorted by version, find the one before current
+          PREV=$(git tag --sort=-v:refname | grep -A1 "^${CURRENT}$" | tail -1)
+          if [ "$PREV" = "$CURRENT" ] || [ -z "$PREV" ]; then
+            # Fallback: just get the second most recent tag
+            PREV=$(git tag --sort=-v:refname | head -2 | tail -1)
+          fi
+          echo "tag=$PREV" >> $GITHUB_OUTPUT
+
       - name: Get tag annotation (release notes)
         id: tag_notes
         run: |
           TAG="${{ steps.version.outputs.version }}"
-          # Get the tag annotation message (excludes the tag name header)
-          NOTES=$(git tag -l --format='%(contents:body)' "$TAG" | sed '/^$/d')
+          # Get full tag annotation and skip the first line (version header)
+          NOTES=$(git tag -l --format='%(contents)' "$TAG" | tail -n +2 | sed '/^$/d')
           if [ -z "$NOTES" ]; then
             NOTES="No release notes provided."
           fi
@@ -78,6 +92,8 @@ jobs:
             ---
 
             **Install:** `curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash`
+
+            **Full Changelog:** https://github.com/${{ github.repository }}/compare/${{ steps.prev_tag.outputs.tag }}...${{ steps.version.outputs.version }}
           files: dist/${{ steps.dmg.outputs.filename }}
           draft: false
           prerelease: false
