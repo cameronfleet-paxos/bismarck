@@ -108,6 +108,7 @@ import {
   getAllRepositories,
   updateRepository,
   removeRepository,
+  getRepositoryById,
 } from './repository-manager'
 import {
   showFolderPicker,
@@ -306,8 +307,47 @@ function registerIpcHandlers() {
     return getWorkspaces()
   })
 
-  ipcMain.handle('save-workspace', (_event, workspace: Workspace) => {
-    return saveWorkspace(workspace)
+  ipcMain.handle('save-workspace', async (_event, workspace: Workspace) => {
+    // Check if this is a new agent (not an existing one)
+    const existingWorkspaces = getWorkspaces()
+    const isNewAgent = !existingWorkspaces.find((w) => w.id === workspace.id)
+
+    // Save the workspace first
+    const savedWorkspace = saveWorkspace(workspace)
+
+    // If this is a new agent with a repositoryId, check if we need to auto-generate
+    // purpose and completion criteria
+    if (isNewAgent && workspace.repositoryId) {
+      const repo = await getRepositoryById(workspace.repositoryId)
+      // Only generate if the repository exists but lacks purpose/completionCriteria
+      if (repo && !repo.purpose && !repo.completionCriteria) {
+        console.log('[Main] Auto-generating description for new agent:', workspace.name)
+        // Run generation in background (don't await)
+        generateDescriptions([
+          {
+            path: repo.rootPath,
+            name: repo.name,
+            remoteUrl: repo.remoteUrl,
+          },
+        ])
+          .then((results) => {
+            if (results.length > 0 && results[0].purpose) {
+              // Update the repository with the generated description
+              updateRepository(repo.id, {
+                purpose: results[0].purpose,
+                completionCriteria: results[0].completionCriteria,
+                protectedBranches: results[0].protectedBranches,
+              })
+              console.log('[Main] Auto-generated description for:', repo.name)
+            }
+          })
+          .catch((err) => {
+            console.error('[Main] Failed to auto-generate description:', err)
+          })
+      }
+    }
+
+    return savedWorkspace
   })
 
   ipcMain.handle('delete-workspace', async (_event, id: string) => {
