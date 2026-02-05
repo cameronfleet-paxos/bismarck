@@ -760,7 +760,7 @@ export function HeadlessTerminal({
               {prUrl && (
                 <button
                   onClick={handleOpenPR}
-                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors"
+                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
                 >
                   View PR
                 </button>
@@ -769,7 +769,7 @@ export function HeadlessTerminal({
                 <button
                   onClick={onStartFollowUp}
                   disabled={isStartingFollowUp || isConfirmingDone}
-                  className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isStartingFollowUp ? (
                     <span className="flex items-center gap-1">
@@ -784,7 +784,7 @@ export function HeadlessTerminal({
                 <button
                   onClick={onConfirmDone}
                   disabled={isConfirmingDone || isStartingFollowUp}
-                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isConfirmingDone ? (
                     <span className="flex items-center gap-1">
@@ -810,7 +810,7 @@ export function HeadlessTerminal({
                   <button
                     onClick={onStartFollowUp}
                     disabled={isStartingFollowUp || isConfirmingDone}
-                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isStartingFollowUp ? (
                       <span className="flex items-center gap-1">
@@ -824,7 +824,7 @@ export function HeadlessTerminal({
                 <button
                   onClick={onConfirmDone}
                   disabled={isConfirmingDone || isStartingFollowUp}
-                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isConfirmingDone ? (
                     <span className="flex items-center gap-1">
@@ -849,7 +849,7 @@ export function HeadlessTerminal({
                 <button
                   onClick={onRestart}
                   disabled={isRestarting || isConfirmingDone}
-                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isRestarting ? (
                     <span className="flex items-center gap-1">
@@ -862,7 +862,7 @@ export function HeadlessTerminal({
                 <button
                   onClick={onConfirmDone}
                   disabled={isConfirmingDone || isRestarting}
-                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isConfirmingDone ? (
                     <span className="flex items-center gap-1">
