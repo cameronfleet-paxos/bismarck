@@ -20,8 +20,8 @@ const VERTICAL_GAP = 24
 const PADDING = 40
 
 // Edge port distribution constants
-const PORT_SPACING = 8          // Pixels between ports
-const MAX_PORT_RANGE = 0.6      // Use 60% of node height for ports
+const PORT_SPACING = 12         // Pixels between ports
+const MAX_PORT_RANGE = 0.7      // Use 70% of node height for ports
 
 // Status icons and colors - using actual color values for SVG compatibility
 const statusConfig: Record<string, {
@@ -95,39 +95,213 @@ interface NodePosition {
 }
 
 /**
- * Calculate node positions for the graph layout
- * Nodes are positioned by depth (left to right), with vertical spacing within each depth
+ * Count total edge crossings for the entire graph given current orderings.
+ * Also penalizes visual complexity from edges fanning out widely from a single node.
+ */
+function countTotalCrossings(
+  nodeOrder: Map<number, string[]>,
+  edges: Array<{ from: string; to: string }>,
+  nodeDepths: Map<string, number>
+): number {
+  let crossings = 0
+
+  // For each pair of edges, check if they cross
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const e1 = edges[i]
+      const e2 = edges[j]
+
+      const e1FromDepth = nodeDepths.get(e1.from)
+      const e1ToDepth = nodeDepths.get(e1.to)
+      const e2FromDepth = nodeDepths.get(e2.from)
+      const e2ToDepth = nodeDepths.get(e2.to)
+
+      if (
+        e1FromDepth === undefined ||
+        e1ToDepth === undefined ||
+        e2FromDepth === undefined ||
+        e2ToDepth === undefined
+      ) {
+        continue
+      }
+
+      // Edges can only cross if they span overlapping depth ranges
+      const e1MinDepth = Math.min(e1FromDepth, e1ToDepth)
+      const e1MaxDepth = Math.max(e1FromDepth, e1ToDepth)
+      const e2MinDepth = Math.min(e2FromDepth, e2ToDepth)
+      const e2MaxDepth = Math.max(e2FromDepth, e2ToDepth)
+
+      // Check if depth ranges overlap
+      if (e1MaxDepth < e2MinDepth || e2MaxDepth < e1MinDepth) {
+        continue
+      }
+
+      // For adjacent layer edges (most common case), use standard crossing detection
+      if (e1FromDepth === e2FromDepth && e1ToDepth === e2ToDepth) {
+        const leftOrder = nodeOrder.get(e1FromDepth) || []
+        const rightOrder = nodeOrder.get(e1ToDepth) || []
+
+        const e1FromIdx = leftOrder.indexOf(e1.from)
+        const e1ToIdx = rightOrder.indexOf(e1.to)
+        const e2FromIdx = leftOrder.indexOf(e2.from)
+        const e2ToIdx = rightOrder.indexOf(e2.to)
+
+        // Edges cross if their relative orders are inverted
+        if (
+          (e1FromIdx < e2FromIdx && e1ToIdx > e2ToIdx) ||
+          (e1FromIdx > e2FromIdx && e1ToIdx < e2ToIdx)
+        ) {
+          crossings++
+        }
+
+        // Penalize edges from the same source going to widely separated targets
+        // This creates visual clutter even if not a true crossing
+        if (e1.from === e2.from) {
+          const targetSeparation = Math.abs(e1ToIdx - e2ToIdx)
+          if (targetSeparation > 1) {
+            crossings += 0.5 * (targetSeparation - 1)
+          }
+        }
+
+        // Penalize edges to the same target coming from widely separated sources
+        if (e1.to === e2.to) {
+          const sourceSeparation = Math.abs(e1FromIdx - e2FromIdx)
+          if (sourceSeparation > 1) {
+            crossings += 0.5 * (sourceSeparation - 1)
+          }
+        }
+      }
+    }
+  }
+
+  return crossings
+}
+
+/**
+ * Calculate node positions for the graph layout using crossing minimization.
+ *
+ * Uses exhaustive search for small graphs (which most task graphs are)
+ * to find the ordering that minimizes edge crossings globally.
  */
 function calculateLayout(graph: DependencyGraph): Map<string, NodePosition> {
   const positions = new Map<string, NodePosition>()
 
   // Group nodes by depth
   const depthGroups = new Map<number, TaskNode[]>()
+  const nodeDepths = new Map<string, number>()
   for (const node of graph.nodes.values()) {
     const group = depthGroups.get(node.depth) || []
     group.push(node)
     depthGroups.set(node.depth, group)
+    nodeDepths.set(node.id, node.depth)
   }
 
-  // Position nodes
-  for (let depth = 0; depth <= graph.maxDepth; depth++) {
-    const nodesAtDepth = depthGroups.get(depth) || []
-    const x = PADDING + depth * (NODE_WIDTH + HORIZONTAL_GAP)
+  // Build edges list for crossing calculation
+  const edges: Array<{ from: string; to: string }> = []
+  for (const node of graph.nodes.values()) {
+    for (const blockerId of node.blockedBy) {
+      edges.push({ from: blockerId, to: node.id })
+    }
+  }
 
-    // Sort nodes at this depth by their blockers to minimize edge crossings
-    nodesAtDepth.sort((a, b) => {
-      const aBlocker = a.blockedBy[0] || ''
-      const bBlocker = b.blockedBy[0] || ''
-      return aBlocker.localeCompare(bBlocker)
+  // Track node order at each depth
+  const nodeOrder = new Map<number, string[]>()
+
+  // Initial ordering using barycenter heuristic
+  // Start with roots sorted by downstream task count
+  const roots = depthGroups.get(0) || []
+  roots.sort((a, b) => b.blocks.length - a.blocks.length)
+  nodeOrder.set(0, roots.map((n) => n.id))
+
+  // Helper to get index position based on current order
+  const getIndexFromOrder = (nodeId: string, depth: number): number => {
+    const order = nodeOrder.get(depth) || []
+    return order.indexOf(nodeId)
+  }
+
+  // Initialize subsequent depths using barycenter of blockers
+  for (let depth = 1; depth <= graph.maxDepth; depth++) {
+    const nodesAtDepth = depthGroups.get(depth) || []
+
+    const barycenters = nodesAtDepth.map((node) => {
+      const blockerIndices = node.blockedBy
+        .map((id) => {
+          const blockerNode = graph.nodes.get(id)
+          if (!blockerNode) return undefined
+          return getIndexFromOrder(id, blockerNode.depth)
+        })
+        .filter((idx): idx is number => idx !== undefined)
+
+      const barycenter =
+        blockerIndices.length > 0
+          ? blockerIndices.reduce((sum, idx) => sum + idx, 0) / blockerIndices.length
+          : 0
+
+      return { node, barycenter }
     })
 
-    nodesAtDepth.forEach((node, index) => {
-      const y = PADDING + index * (NODE_HEIGHT + VERTICAL_GAP)
-      positions.set(node.id, { x, y })
+    barycenters.sort((a, b) => a.barycenter - b.barycenter)
+    nodeOrder.set(depth, barycenters.map(({ node }) => node.id))
+  }
+
+  // For small graphs, try optimizing each layer with permutations
+  // to minimize global crossings. Run multiple passes since changing
+  // one layer affects optimal ordering of adjacent layers.
+  const MAX_PERMUTATION_SIZE = 5
+  const NUM_OPTIMIZATION_PASSES = 3
+
+  for (let pass = 0; pass < NUM_OPTIMIZATION_PASSES; pass++) {
+    for (let depth = 0; depth <= graph.maxDepth; depth++) {
+      const order = nodeOrder.get(depth) || []
+
+      if (order.length > 1 && order.length <= MAX_PERMUTATION_SIZE) {
+        const perms = permutations(order)
+        let bestPerm = order
+        let bestCrossings = countTotalCrossings(nodeOrder, edges, nodeDepths)
+
+        for (const perm of perms) {
+          nodeOrder.set(depth, perm)
+          const crossings = countTotalCrossings(nodeOrder, edges, nodeDepths)
+          if (crossings < bestCrossings) {
+            bestCrossings = crossings
+            bestPerm = perm
+          }
+        }
+
+        nodeOrder.set(depth, bestPerm)
+      }
+    }
+  }
+
+  // Convert final order to positions
+  for (let depth = 0; depth <= graph.maxDepth; depth++) {
+    const order = nodeOrder.get(depth) || []
+    const x = PADDING + depth * (NODE_WIDTH + HORIZONTAL_GAP)
+
+    order.forEach((nodeId, index) => {
+      positions.set(nodeId, {
+        x,
+        y: PADDING + index * (NODE_HEIGHT + VERTICAL_GAP),
+      })
     })
   }
 
   return positions
+}
+
+/**
+ * Generate all permutations of an array
+ */
+function permutations<T>(arr: T[]): T[][] {
+  if (arr.length <= 1) return [arr]
+  const result: T[][] = []
+  for (let i = 0; i < arr.length; i++) {
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)]
+    for (const perm of permutations(rest)) {
+      result.push([arr[i], ...perm])
+    }
+  }
+  return result
 }
 
 /**
@@ -404,9 +578,22 @@ export function DependencyGraphModal({
                 const endY = toPos.y + NODE_HEIGHT / 2 + ports.targetPort
                 const controlOffset = (endX - startX) / 2
 
-                // Add slight curve variation based on port offset to avoid overlapping curves
-                const curveVariation = (ports.sourcePort + ports.targetPort) * 0.3
-                const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startY + curveVariation}, ${endX - controlOffset} ${endY - curveVariation}, ${endX} ${endY}`
+                // Calculate vertical delta to determine curve direction
+                const deltaY = endY - startY
+
+                // For edges going diagonally, use stronger curve variation to avoid
+                // overlapping with edges going straight from the same source
+                const isDiagonal = Math.abs(deltaY) > NODE_HEIGHT / 2
+                const diagonalBoost = isDiagonal ? deltaY * 0.3 : 0
+
+                // Add curve variation to separate edges visually
+                const curveVariation = (ports.sourcePort + ports.targetPort) * 0.5 + diagonalBoost
+
+                // Use asymmetric control points for diagonal edges to create clearer separation
+                const startControlY = startY + curveVariation * 0.8
+                const endControlY = endY - curveVariation * 0.2
+
+                const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startControlY}, ${endX - controlOffset} ${endControlY}, ${endX} ${endY}`
 
                 const markerId = edge.isOnCriticalPath ? 'arrowhead-critical' : 'arrowhead'
 
