@@ -142,6 +142,7 @@ export interface AppPreferences {
 export type TutorialStep =
   | 'welcome'           // Introduction to Bismarck
   | 'workspace'         // Creating first agent/workspace
+  | 'agent-lifecycle'   // Starting and stopping agents
   | 'terminal'          // Understanding terminal interaction
   | 'tabs'              // Working with tabs and grid layout
   | 'attention'         // Attention modes and workflow

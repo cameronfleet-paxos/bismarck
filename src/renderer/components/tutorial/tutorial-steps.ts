@@ -33,6 +33,13 @@ export const tutorialSteps: TutorialStepDefinition[] = [
     placement: 'top',
   },
   {
+    id: 'agent-lifecycle',
+    title: 'Starting & Stopping Agents',
+    description: 'To **start** an agent, click the "+" button or use Cmd+K to search and start any agent.\n\nTo **stop** an agent, close its tab or right-click for options. You can also use **Cmd+W** to close the focused agent.\n\nAgents run independently and persist their conversation history.',
+    target: 'agents',
+    placement: 'top',
+  },
+  {
     id: 'tabs',
     title: 'Tabs & Grid Layout',
     description: 'Organize your agents into tabs with customizable grid layouts. Switch between different workspace configurations easily.',
