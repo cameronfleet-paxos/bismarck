@@ -36,12 +36,25 @@ export interface PromptVariables {
   discussionContext?: string
   discussionOutputPath?: string
 
+  // Feature branch mode variables
+  featureBranchGuidance?: string
+
   // Task variables
   taskId?: string
   taskTitle?: string
   baseBranch?: string
   branchStrategy?: string
   completionInstructions?: string
+
+  // Headless task agent variables
+  gitCommands?: string           // Branch-strategy-dependent git instructions
+  completionCriteria?: string    // Repository completion criteria (PR mode only)
+
+  // Standalone headless agent variables
+  userPrompt?: string            // The user's task description
+  workingDir?: string            // Worktree path
+  branchName?: string            // Git branch name
+  commitHistory?: string         // Recent commits for context (follow-up agents)
 }
 
 /**
@@ -141,63 +154,38 @@ You are the orchestrator. Your job is to:
 3. Mark first task(s) as ready for execution
 4. Monitor task completion and unblock dependents
 
-=== REFERENCE AGENT ===
-This plan was created from agent: {{referenceAgentName}}
-Primary repository: {{referenceRepoName}} ({{referenceRepoPath}})
-
-Use this repository for most tasks unless they explicitly need a different repo.
+=== PRIMARY REPO ===
+{{referenceRepoName}} ({{referenceRepoPath}}) - use for most tasks unless another is explicitly needed.
 
 === AVAILABLE REPOSITORIES ===
 {{repoList}}
 
-=== CONFIGURATION ===
-Max parallel agents: {{maxParallel}}
-(Bismarck will automatically queue tasks if this limit is reached)
-
 === RULES ===
+Note: Max {{maxParallel}} parallel agents - Bismarck auto-queues if exceeded.
 1. DO NOT pick up or work on tasks yourself
-2. Assign tasks to repositories based on where the work should happen
-3. Worktree names MUST include the task number for uniqueness
-   - Format: "<descriptive-name>-<task-number>" (e.g., "fix-login-1", "fix-login-2")
-   - Extract task number from task ID: "bismarck-xyz.5" → use "5"
-   - This ensures each task gets its own worktree directory
-4. You can assign multiple tasks to the same repo for parallel work
-5. Mark tasks as ready ONLY when their dependencies are complete
+2. DO NOT modify dependencies (no bd dep add/remove) - Planner handles this
+3. Assign tasks to repositories based on where the work should happen
+4. Worktree names MUST include task number: "<name>-<number>" (e.g., task bismarck-xyz.5 → "fix-login-5")
+5. You can assign multiple tasks to the same repo for parallel work
+6. Mark tasks as ready ONLY when their dependencies are complete
 
 === COMMANDS ===
-List all tasks:
-  bd --sandbox list --json
-
-List only open tasks:
+List tasks (open by default):
   bd --sandbox list --json
 
 List all tasks (including closed):
   bd --sandbox list --all --json
 
-Assign a task to a repository with worktree name:
-  bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<descriptive-name>-<task-number>"
+Assign task to repo with worktree:
+  bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<name>-<number>"
 
-Example for task bismarck-abc.3:
-  bd --sandbox update bismarck-abc.3 --add-label "repo:{{referenceRepoName}}" --add-label "worktree:remove-ca-3"
-
-Mark task ready for pickup:
+Mark task ready:
   bd --sandbox update <task-id> --add-label bismarck-ready
 
-Check task dependencies:
+Check dependencies (what blocks this task):
   bd --sandbox dep list <task-id> --direction=down
-
-=== JQ FILTERING ===
-IMPORTANT: When filtering with jq, avoid using != or ! operators.
-Bash's history expansion interprets ! specially and causes syntax errors.
-
-Good (use select with ==):
-  bd --sandbox list --json | jq '.[] | select(.status == "open")'
-
-Bad (will fail with shell escaping issues):
-  bd --sandbox list --json | jq '.[] | select(.status != "closed")'
-
-For exclusion, use "not" instead:
-  bd --sandbox list --json | jq '.[] | select(.id == "x" | not)'
+Find dependents (what this task blocks):
+  bd --sandbox dep list <task-id> --direction=up
 
 === WORKFLOW ===
 Phase 1 - Initial Setup (after Planner exits):
@@ -207,13 +195,18 @@ Phase 1 - Initial Setup (after Planner exits):
    b. Assign repo and worktree labels
 3. Mark first task(s) (those with no blockers) as ready
 
-Phase 2 - Monitoring (every 30 seconds):
-1. Check for closed tasks: bd --sandbox list --all --json
-2. For each newly closed task, find dependents: bd --sandbox dep list <task-id> --direction=up
-3. Check if dependent's blockers are all closed
-4. If all blockers closed, mark the dependent task as ready
+Phase 2 - Monitoring Loop (REQUIRED):
+CRITICAL: You are a long-running coordinator. Do NOT exit until ALL tasks are closed.
 
-Begin by waiting for the Planner to create tasks, then start assigning repositories and worktrees.`,
+Loop every 30 seconds:
+1. sleep 30
+2. bd --sandbox list --all --json
+3. For newly closed tasks, find dependents: bd --sandbox dep list <task-id> --direction=up
+4. If all blockers closed, mark dependent ready: bd --sandbox update <task-id> --add-label bismarck-ready
+5. Report: "Monitoring... X complete, Y in progress, Z waiting"
+6. Exit only when ALL tasks closed, otherwise repeat from step 1
+
+Begin by waiting for Planner to create tasks, then start Phase 1.`,
 
   planner: `[BISMARCK PLANNER]
 Plan ID: {{planId}}
@@ -245,31 +238,189 @@ Create a task under the epic:
 
 Add dependency (task B depends on task A completing first):
   bd --sandbox dep <task-A-id> --blocks <task-B-id>
-
+{{featureBranchGuidance}}
 === WORKFLOW ===
-1. Analyze the codebase at {{codebasePath}}
-2. Create an epic for the plan
-3. Create tasks with clear descriptions
-4. Set up dependencies between tasks
-5. Summarize your plan and ask if the user wants any changes
+
+**Step 1: Explore the Codebase (REQUIRED BEFORE CREATING TASKS)**
+Before creating any tasks, thoroughly explore the codebase to understand:
+- Project structure and architecture
+- Existing patterns and conventions
+- Related code that will be affected
+- Test patterns used in the project
+
+Use these tools to explore:
+- \`ls\` and \`find\` to understand directory structure
+- Grep tool to find relevant code patterns
+- Read tool to examine key files (README, config files, relevant source files)
+- Look for existing tests to understand testing patterns
+
+Take notes on what you find - this context is crucial for creating well-scoped tasks.
+
+**Step 2: Plan the Work**
+Based on your exploration:
+- Identify the specific files/modules that need changes
+- Determine the logical order of changes
+- Identify dependencies between pieces of work
+- Consider what tests will be needed
+
+**Step 3: Create Tasks in bd**
+Now create tasks with the context you've gathered:
+1. Create an epic for the plan
+2. Create tasks with clear, specific descriptions that reference:
+   - Which files/modules to modify
+   - What patterns to follow (based on your exploration)
+   - What tests to write/update
+3. Set up dependencies between tasks (A blocks B means B waits for A)
+
+**Step 4: Review and Confirm**
+Summarize your plan and ask if the user wants any changes.
 
 Once you've created all tasks and dependencies, let the user know:
 "Plan complete! Need to add tasks, change dependencies, or modify anything? Just ask."`,
 
-  task: `[BISMARCK TASK ASSIGNMENT]
+  task: `[BISMARCK TASK AGENT]
 Task ID: {{taskId}}
 Title: {{taskTitle}}
 
+=== FIRST STEP ===
+Read your task details to understand what you need to do:
+  bd show {{taskId}}
+{{completionCriteria}}
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Plan directory: /plan (read-only reference)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+{{gitCommands}}
+
+3. Beads Task Management (bd):
+   - bd close {{taskId}} --message "..."  (REQUIRED when done)
+   - The --sandbox flag is added automatically
+
+=== COMMIT STYLE ===
+Keep commits simple and direct:
+- Use: git commit -m "Brief description of change"
+- Do NOT use HEREDOC, --file, or multi-step verification
+- Commit once when work is complete, don't overthink it
+
 === YOUR WORKING DIRECTORY ===
-You are working in a dedicated git worktree for this task.
-Branch: (see git branch)
-Base: {{baseBranch}}
+You are in a dedicated git worktree: /workspace
+Base branch: {{baseBranch}}
 
 === COMPLETION REQUIREMENTS ===
-1. Complete the work described in the task
+1. Complete the work described in the task title
 {{completionInstructions}}
 
-When finished, type /exit to signal completion.`,
+CRITICAL: There is no interactive mode. You must:
+- Complete all work
+- Close the task with 'bd close {{taskId}} --message "..."' to signal completion`,
+
+  standalone_headless: `[STANDALONE HEADLESS AGENT]
+
+Working Directory: {{workingDir}}
+Branch: {{branchName}}
+
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+1. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+2. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work
+
+3. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically
+
+=== YOUR TASK ===
+{{userPrompt}}
+{{completionCriteria}}
+=== COMPLETION REQUIREMENTS ===
+When you complete your work:
+
+1. Commit your changes using multiple -m flags (avoids shell escaping issues with HEREDOCs):
+   git add <files>
+   git commit -m "Title line" -m "Detail 1" -m "Detail 2" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+2. Push your branch:
+   git push -u origin {{branchName}}
+
+3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
+   echo '{"head":"{{branchName}}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
+
+   IMPORTANT for PR body:
+   - Keep body simple, single line, no markdown formatting
+   - Escape quotes with backslash: \\"quoted\\"
+   - Use \\n for newlines if absolutely needed
+   - If gh api hangs for >30s, cancel and retry with simpler body
+
+4. Report the PR URL in your final message
+
+Type /exit when finished.`,
+
+  standalone_followup: `[STANDALONE HEADLESS AGENT - FOLLOW-UP]
+
+Working Directory: {{workingDir}}
+Branch: {{branchName}}
+
+=== ENVIRONMENT ===
+You are running in a Docker container with:
+- Working directory: /workspace (your git worktree for this task)
+- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+
+=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+1. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+
+2. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work
+
+3. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically
+
+=== PREVIOUS WORK (review these commits for context) ===
+{{commitHistory}}
+
+=== YOUR FOLLOW-UP TASK ===
+{{userPrompt}}
+{{completionCriteria}}
+=== COMPLETION REQUIREMENTS ===
+1. Review the previous commits above to understand what was done
+
+2. Make your changes and commit using multiple -m flags (avoids shell escaping issues):
+   git add <files>
+   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+
+3. Push your changes:
+   git push origin {{branchName}}
+
+4. Update the existing PR if needed using echo piped JSON:
+   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
+
+   IMPORTANT: Keep body simple, single line, escape quotes with backslash
+
+5. Report the PR URL in your final message
+
+Type /exit when finished.`,
 }
 
 /**
@@ -282,9 +433,13 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'orchestrator':
       return ['planId', 'planTitle', 'repoList', 'maxParallel', 'referenceRepoName', 'referenceRepoPath', 'referenceAgentName']
     case 'planner':
-      return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext']
+      return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
     case 'task':
-      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions']
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria']
+    case 'standalone_headless':
+      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria']
+    case 'standalone_followup':
+      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
     default:
       return []
   }

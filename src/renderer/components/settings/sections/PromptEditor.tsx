@@ -37,6 +37,7 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{planDir}}', description: 'Directory where plan files are stored' },
     { name: '{{codebasePath}}', description: 'Path to the codebase being analyzed' },
     { name: '{{discussionContext}}', description: 'Context from discussion phase (if completed)' },
+    { name: '{{featureBranchGuidance}}', description: 'Feature branch mode guidance (when using feature_branch strategy)' },
   ],
   task: [
     { name: '{{taskId}}', description: 'Unique identifier for the task' },
@@ -44,6 +45,25 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{baseBranch}}', description: 'Base branch for the worktree' },
     { name: '{{planDir}}', description: 'Directory where plan files are stored' },
     { name: '{{completionInstructions}}', description: 'Instructions for task completion' },
+    { name: '{{gitCommands}}', description: 'Git commands section (branch-strategy dependent)' },
+    { name: '{{completionCriteria}}', description: 'Repository completion criteria (PR mode only)' },
+  ],
+  standalone_headless: [
+    { name: '{{userPrompt}}', description: 'The user\'s task description' },
+    { name: '{{workingDir}}', description: 'Worktree path' },
+    { name: '{{branchName}}', description: 'Git branch name' },
+    { name: '{{completionCriteria}}', description: 'Repository completion criteria (optional)' },
+    { name: '{{bismarckPrefix}}', description: 'Optional Bismarck Mode satirical prefix' },
+    { name: '{{ottoPrefix}}', description: 'Optional Otto Mode prefix' },
+  ],
+  standalone_followup: [
+    { name: '{{userPrompt}}', description: 'The follow-up task description' },
+    { name: '{{workingDir}}', description: 'Worktree path' },
+    { name: '{{branchName}}', description: 'Git branch name' },
+    { name: '{{commitHistory}}', description: 'Recent commits for context' },
+    { name: '{{completionCriteria}}', description: 'Repository completion criteria (optional)' },
+    { name: '{{bismarckPrefix}}', description: 'Optional Bismarck Mode satirical prefix' },
+    { name: '{{ottoPrefix}}', description: 'Optional Otto Mode prefix' },
   ],
 }
 
@@ -52,6 +72,8 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   orchestrator: 'Orchestrator Agent',
   planner: 'Planner',
   task: 'Task Agent',
+  standalone_headless: 'Standalone Headless Agent',
+  standalone_followup: 'Standalone Follow-up Agent',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {

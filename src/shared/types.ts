@@ -1,7 +1,10 @@
 import type { AgentIconName } from './constants'
 
 // Prompt type for custom prompt configuration
-export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task'
+export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup'
+
+// Persona mode for interactive Claude sessions (injected via hooks)
+export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
 
 // Custom prompt configuration
 export interface CustomPrompt {

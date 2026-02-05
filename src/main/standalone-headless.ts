@@ -34,7 +34,9 @@ import {
   getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
+import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
+import { buildPrompt, type PromptVariables } from './prompt-templates'
 
 // Word lists for fun random names
 const ADJECTIVES = [
@@ -141,124 +143,70 @@ function emitStateUpdate(): void {
 
 /**
  * Build enhanced prompt for standalone headless agents with PR instructions
+ *
+ * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
+ * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string): string {
-  return `[STANDALONE HEADLESS AGENT]
+function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
+  // Format completion criteria section if provided
+  const completionCriteriaSection = completionCriteria
+    ? `
+=== COMPLETION CRITERIA ===
+Before marking your work complete, ensure these pass:
+${completionCriteria}
 
-Working Directory: ${workingDir}
-Branch: ${branchName}
+Keep iterating until all criteria are satisfied.
+`
+    : ''
 
-=== ENVIRONMENT ===
-You are running in a Docker container with:
-- Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+  const variables: PromptVariables = {
+    userPrompt,
+    workingDir,
+    branchName,
+    completionCriteria: completionCriteriaSection,
+  }
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
-
-=== YOUR TASK ===
-${userPrompt}
-
-=== COMPLETION REQUIREMENTS ===
-When you complete your work:
-
-1. Commit your changes using multiple -m flags (avoids shell escaping issues with HEREDOCs):
-   git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Detail 2" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-
-2. Push your branch:
-   git push -u origin ${branchName}
-
-3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
-   echo '{"head":"${branchName}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
-
-   IMPORTANT for PR body:
-   - Keep body simple, single line, no markdown formatting
-   - Escape quotes with backslash: \\"quoted\\"
-   - Use \\n for newlines if absolutely needed
-   - If gh api hangs for >30s, cancel and retry with simpler body
-
-4. Report the PR URL in your final message
-
-Type /exit when finished.`
+  return buildPrompt('standalone_headless', variables)
 }
 
 /**
  * Build enhanced prompt for follow-up agents with commit history context
+ *
+ * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
+ * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
 function buildFollowUpPrompt(
   userPrompt: string,
   workingDir: string,
   branchName: string,
-  recentCommits: Array<{ shortSha: string; message: string }>
-): string {
-  const commitHistory = recentCommits
-    .map(c => `  - ${c.shortSha}: ${c.message}`)
-    .join('\n')
+  recentCommits: Array<{ shortSha: string; message: string }>,
+  completionCriteria?: string
+): Promise<string> {
+  // Format commit history
+  const commitHistory = recentCommits.length > 0
+    ? recentCommits.map(c => `  - ${c.shortSha}: ${c.message}`).join('\n')
+    : '(No prior commits on this branch)'
 
-  return `[STANDALONE HEADLESS AGENT - FOLLOW-UP]
+  // Format completion criteria section if provided
+  const completionCriteriaSection = completionCriteria
+    ? `
+=== COMPLETION CRITERIA ===
+Before marking your work complete, ensure these pass:
+${completionCriteria}
 
-Working Directory: ${workingDir}
-Branch: ${branchName}
+Keep iterating until all criteria are satisfied.
+`
+    : ''
 
-=== ENVIRONMENT ===
-You are running in a Docker container with:
-- Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+  const variables: PromptVariables = {
+    userPrompt,
+    workingDir,
+    branchName,
+    commitHistory,
+    completionCriteria: completionCriteriaSection,
+  }
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
-
-=== PREVIOUS WORK (review these commits for context) ===
-${commitHistory || '(No prior commits on this branch)'}
-
-=== YOUR FOLLOW-UP TASK ===
-${userPrompt}
-
-=== COMPLETION REQUIREMENTS ===
-1. Review the previous commits above to understand what was done
-
-2. Make your changes and commit using multiple -m flags (avoids shell escaping issues):
-   git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-
-3. Push your changes:
-   git push origin ${branchName}
-
-4. Update the existing PR if needed using echo piped JSON:
-   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
-
-   IMPORTANT: Keep body simple, single line, escape quotes with backslash
-
-5. Report the PR URL in your final message
-
-Type /exit when finished.`
+  return buildPrompt('standalone_followup', variables)
 }
 
 /**
@@ -415,7 +363,11 @@ export async function startStandaloneHeadlessAgent(
 
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
-  const enhancedPrompt = buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName)
+  // Look up repository for completion criteria
+  const repository = referenceAgent.repositoryId
+    ? await getRepositoryById(referenceAgent.repositoryId)
+    : undefined
+  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
     worktreePath: worktreePath,
@@ -777,7 +729,9 @@ export async function startFollowUpAgent(
   const recentCommits = allCommits.slice(-5)
   console.log(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
 
-  const enhancedPrompt = buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits)
+  // Look up repository for completion criteria
+  const repository = await getRepositoryByPath(repoPath)
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria)
   const options: HeadlessAgentOptions = {
     prompt: enhancedPrompt,
     worktreePath: worktreePath,

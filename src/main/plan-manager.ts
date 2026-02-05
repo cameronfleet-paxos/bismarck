@@ -57,8 +57,7 @@ import { runSetupToken } from './oauth-setup'
 import { startToolProxy, stopToolProxy, isProxyRunning, proxyEvents } from './tool-proxy'
 import { checkDockerAvailable, checkImageExists, stopAllContainers } from './docker-sandbox'
 import { execWithPath } from './exec-utils'
-import { getSelectedDockerImage, isBismarckModeEnabled } from './settings-manager'
-import { BISMARCK_MODE_PROMPT } from './bismarck-prompt'
+import { getSelectedDockerImage } from './settings-manager'
 
 let mainWindow: BrowserWindow | null = null
 let pollInterval: NodeJS.Timeout | null = null
@@ -102,24 +101,6 @@ export function emitHeadlessAgentUpdatePublic(info: HeadlessAgentInfo): void {
  */
 export function emitHeadlessAgentEventPublic(planId: string, taskId: string, event: StreamEvent): void {
   emitHeadlessAgentEvent(planId, taskId, event)
-}
-
-// Feature flag for headless mode (can be made configurable later)
-// Default to true to test Docker sandboxing
-let useHeadlessMode = true
-
-/**
- * Enable or disable headless Docker mode
- */
-export function setHeadlessMode(enabled: boolean): void {
-  useHeadlessMode = enabled
-}
-
-/**
- * Check if headless mode is enabled
- */
-export function isHeadlessModeEnabled(): boolean {
-  return useHeadlessMode
 }
 
 /**
@@ -587,7 +568,8 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
   if (mainWindow) {
     try {
       const discussionPrompt = await buildDiscussionAgentPrompt(plan, referenceWorkspace.directory)
-      const claudeFlags = `--add-dir "${referenceWorkspace.directory}"`
+      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+      const claudeFlags = `--add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
 
       console.log(`[PlanManager] Creating terminal for discussion agent ${discussionWorkspace.id}`)
       const terminalId = await queueTerminalCreation(discussionWorkspace.id, mainWindow, {
@@ -815,7 +797,8 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Build the orchestrator prompt and pass it to queueTerminalCreation
       // Claude will automatically process it when it's ready
       // Pass --add-dir flag so orchestrator has permission to access plan directory without prompts
-      const claudeFlags = `--add-dir "${planDir}"`
+      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+      const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
       const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents)
       console.log(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
       const orchestratorTerminalId = await queueTerminalCreation(orchestratorWorkspace.id, mainWindow, {
@@ -852,8 +835,13 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
 
       // Create terminal with plan agent prompt
       // Pass --add-dir flags so plan agent can access both plan directory and codebase
-      const planAgentClaudeFlags = `--add-dir "${planDir}" --add-dir "${referenceWorkspace.directory}"`
-      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory)
+      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+      const planAgentClaudeFlags = `--add-dir "${planDir}" --add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
+      // Look up repository for feature branch guidance
+      const repository = referenceWorkspace.repositoryId
+        ? await getRepositoryById(referenceWorkspace.repositoryId)
+        : undefined
+      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository)
       console.log(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
       const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {
         initialPrompt: planAgentPrompt,
@@ -1526,11 +1514,9 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
   })
   assignment.agentId = agent.id
 
-  // Branch based on execution mode
-  if (useHeadlessMode) {
-    logger.info('task', 'Starting headless agent', logCtx)
-    // Headless mode: start agent in Docker container
-    try {
+  // Start agent in Docker container
+  logger.info('task', 'Starting headless agent', logCtx)
+  try {
       // Check for OAuth token before starting headless agent
       let token = getClaudeOAuthToken()
       if (!token) {
@@ -1602,97 +1588,6 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
         error instanceof Error ? error.message : 'Unknown error'
       )
     }
-  } else {
-    // Interactive mode: create terminal (existing behavior)
-    if (mainWindow && plan.orchestratorTabId) {
-      try {
-        const taskPrompt = await buildTaskPrompt(planId, task, repository)
-        const planDir = getPlanDir(planId)
-        const claudeFlags = `--add-dir "${worktree.path}" --add-dir "${planDir}"`
-
-        const terminalId = await queueTerminalCreation(agent.id, mainWindow, {
-          initialPrompt: taskPrompt,
-          claudeFlags,
-          autoAcceptMode: true,
-        })
-        addActiveWorkspace(agent.id)
-        addWorkspaceToTab(agent.id, plan.orchestratorTabId)
-
-        // Notify renderer about the new terminal
-        mainWindow.webContents.send('terminal-created', {
-          terminalId,
-          workspaceId: agent.id,
-        })
-
-        // Set up listener for task completion
-        const terminalEmitter = getTerminalEmitter(terminalId)
-        if (terminalEmitter) {
-          const exitHandler = async (data: string) => {
-            if (data.includes('Goodbye') || data.includes('Session ended')) {
-              terminalEmitter.removeListener('data', exitHandler)
-              await markWorktreeReadyForReview(planId, task.id)
-            }
-          }
-          terminalEmitter.on('data', exitHandler)
-        }
-
-        // Set to in_progress immediately - agent is starting, not just queued
-        assignment.status = 'in_progress'
-        saveTaskAssignment(planId, assignment)
-        emitTaskAssignmentUpdate(assignment)
-
-        // Update bd labels
-        await bdUpdate(planId, task.id, {
-          removeLabels: ['bismarck-ready'],
-          addLabels: ['bismarck-sent'],
-        })
-
-        addPlanActivity(planId, 'success', `Task ${task.id} started`, `Agent created in worktree: ${worktreeName}`)
-        emitStateUpdate()
-      } catch (error) {
-        addPlanActivity(
-          planId,
-          'error',
-          `Failed to start task agent for ${task.id}`,
-          error instanceof Error ? error.message : 'Unknown error'
-        )
-      }
-    }
-  }
-}
-
-/**
- * Build the prompt to inject into a worker agent's terminal for a task
- * Returns only instructions with trailing newline (no /clear - handled separately)
- */
-async function buildTaskPrompt(planId: string, task: BeadTask, repository?: Repository): Promise<string> {
-  const plan = getPlanById(planId)
-  const planDir = getPlanDir(planId)
-  // Prefer repository's detected defaultBranch over plan's potentially incorrect default
-  const baseBranch = repository?.defaultBranch || 'main'
-
-  // Build completion instructions based on branch strategy
-  let completionInstructions: string
-  if (plan?.branchStrategy === 'raise_prs') {
-    completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR using gh api (gh pr create has issues in worktrees):
-   gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
-4. Close task with PR URL: cd ${planDir} && bd --sandbox close ${task.id} --message "PR: <url>"`
-  } else {
-    // feature_branch strategy - just commit, pushing happens on completion
-    completionInstructions = `2. Commit your changes with a clear message
-3. Close task: cd ${planDir} && bd --sandbox close ${task.id} --message "Completed"`
-  }
-
-  const variables: PromptVariables = {
-    taskId: task.id,
-    taskTitle: task.title,
-    baseBranch,
-    planDir,
-    completionInstructions,
-  }
-
-  return buildPrompt('task', variables)
 }
 
 /**
@@ -1755,7 +1650,7 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
  * - Assigning tasks to agents
  * - Marking tasks as ready
  */
-async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string): Promise<string> {
+async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string, repository?: Repository): Promise<string> {
   const planDir = getPlanDir(plan.id)
 
   // Include discussion context if a discussion was completed
@@ -1777,6 +1672,32 @@ IMPORTANT: Create tasks that match the structure in this file.
 `
     : ''
 
+  // Feature branch mode guidance - tell planner to create a final task for PR/verification
+  let featureBranchGuidance = ''
+  if (plan.branchStrategy === 'feature_branch') {
+    const criteriaSection = repository?.completionCriteria
+      ? `\n   - Verify repository completion criteria: ${repository.completionCriteria}`
+      : ''
+    featureBranchGuidance = `
+=== FEATURE BRANCH MODE ===
+This plan uses feature branch mode - all task commits go to a shared feature branch.
+
+IMPORTANT: You MUST create a final task called "Raise PR and verify completion criteria" that:
+- Depends on ALL other tasks (it should run last)
+- Pushes the feature branch and creates a draft PR
+- Runs any required checks or tests${criteriaSection}
+- Marks the PR as ready for review when checks pass
+
+Example dependency setup:
+  # Create all implementation tasks first, then create the final task
+  bd --sandbox create --parent <epic-id> "Raise PR and verify completion criteria"
+  # Make it depend on all other tasks
+  bd --sandbox dep <task-1-id> --blocks <final-task-id>
+  bd --sandbox dep <task-2-id> --blocks <final-task-id>
+  # etc.
+`
+  }
+
   const variables: PromptVariables = {
     planId: plan.id,
     planTitle: plan.title,
@@ -1784,6 +1705,7 @@ IMPORTANT: Create tasks that match the structure in this file.
     planDir,
     codebasePath,
     discussionContext,
+    featureBranchGuidance,
   }
 
   return buildPrompt('planner', variables)
@@ -1938,7 +1860,7 @@ async function createTaskAgentWithWorktree(
     worktreePath: worktreePath,
     taskId: task.id,
     repositoryId: repository.id,
-    isHeadless: useHeadlessMode,
+    isHeadless: true,
   }
   saveWorkspace(taskAgent)
 
@@ -2306,9 +2228,10 @@ async function buildTaskPromptForHeadless(planId: string, task: BeadTask, reposi
   const plan = getPlanById(planId)
   // Use worktree's baseBranch if available (handles PR stacking), fall back to repository default
   const baseBranch = worktree?.baseBranch || repository?.defaultBranch || 'main'
+  const planDir = getPlanDir(planId)
 
-  // Check if Bismarck Mode is enabled
-  const bismarckPrefix = (await isBismarckModeEnabled()) ? BISMARCK_MODE_PROMPT : ''
+  // Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
+  // Persona prompts are only injected via hooks for interactive Claude Code sessions.
 
   // Build completion instructions based on branch strategy
   let completionInstructions: string
@@ -2325,20 +2248,19 @@ async function buildTaskPromptForHeadless(planId: string, task: BeadTask, reposi
    bd close ${task.id} --message "Completed: <brief summary>"`
   }
 
-  return `${bismarckPrefix}[BISMARCK TASK - HEADLESS MODE]
-Task ID: ${task.id}
-Title: ${task.title}
+  // Build completion criteria section - only include in PR mode where each task raises its own PR
+  // In feature branch mode, completion criteria should be handled by a final "raise PR" task
+  const completionCriteria = (plan?.branchStrategy === 'raise_prs' && repository?.completionCriteria)
+    ? `
+=== REPOSITORY COMPLETION CRITERIA ===
+Your PR must meet these requirements before it can be merged:
+${repository.completionCriteria}
+`
+    : ''
 
-=== ENVIRONMENT ===
-You are running in a Docker container with:
-- Working directory: /workspace (your git worktree for this task)
-- Plan directory: /plan (read-only reference)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
-
-=== COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-${plan?.branchStrategy === 'raise_prs' ? `1. Git:
+  // Build git commands section based on branch strategy
+  const gitCommands = plan?.branchStrategy === 'raise_prs'
+    ? `1. Git:
    - git status
    - git add .
    - git commit -m "Your commit message"
@@ -2351,7 +2273,8 @@ ${plan?.branchStrategy === 'raise_prs' ? `1. Git:
    - Use gh api for PR creation (gh pr create has issues in worktrees):
      gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
    - gh pr view
-   - All standard gh commands work` : `1. Git:
+   - All standard gh commands work`
+    : `1. Git:
    - git status
    - git add .
    - git commit -m "Your commit message"
@@ -2365,29 +2288,21 @@ ${plan?.branchStrategy === 'raise_prs' ? `1. Git:
 2. GitHub CLI (gh):
    - gh pr view (view existing PRs)
 
-   NOTE: In feature branch mode, Bismarck handles PR creation.`}
+   NOTE: In feature branch mode, Bismarck handles PR creation.`
 
-3. Beads Task Management (bd):
-   - bd close ${task.id} --message "..."  (REQUIRED when done)
-   - The --sandbox flag is added automatically
+  const variables: PromptVariables = {
+    taskId: task.id,
+    taskTitle: task.title,
+    baseBranch,
+    planDir,
+    completionInstructions,
+    gitCommands,
+    completionCriteria,
+    // Note: bismarckPrefix/ottoPrefix are NOT included for plan task agents
+    // Persona prompts are only injected via hooks for interactive Claude Code sessions
+  }
 
-=== COMMIT STYLE ===
-Keep commits simple and direct:
-- Use: git commit -m "Brief description of change"
-- Do NOT use HEREDOC, --file, or multi-step verification
-- Commit once when work is complete, don't overthink it
-
-=== YOUR WORKING DIRECTORY ===
-You are in a dedicated git worktree: /workspace
-Base branch: ${baseBranch}
-
-=== COMPLETION REQUIREMENTS ===
-1. Complete the work described in the task title
-${completionInstructions}
-
-CRITICAL: There is no interactive mode. You must:
-- Complete all work
-- Close the task with 'bd close ${task.id} --message "..."' to signal completion`
+  return buildPrompt('task', variables)
 }
 
 /**
@@ -3132,9 +3047,11 @@ async function recordPullRequest(plan: Plan, worktree: PlanWorktree, repository:
 
   try {
     // Try to get PR info using gh CLI (use execWithPath for extended PATH)
+    // Use repository.rootPath as cwd instead of worktree.path to avoid TLS issues
+    // that can occur when running gh from a git worktree directory
     const { stdout } = await execWithPath(
       `gh pr list --head "${worktree.branch}" --json number,title,url,baseRefName,headRefName,state --limit 1`,
-      { cwd: worktree.path }
+      { cwd: repository.rootPath }
     )
 
     const prs = JSON.parse(stdout)
@@ -3178,6 +3095,8 @@ async function recordPullRequest(plan: Plan, worktree: PlanWorktree, repository:
     }
   } catch (error) {
     // PR info not available - that's OK, agent might not have created one yet
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    logger.warn('git', `Failed to detect PR for task ${worktree.taskId}: ${errorMsg}`, { planId: plan.id })
     addPlanActivity(
       plan.id,
       'info',
@@ -3512,7 +3431,8 @@ export async function requestFollowUps(planId: string): Promise<Plan | null> {
   if (mainWindow) {
     try {
       const followUpPrompt = await buildFollowUpAgentPrompt(plan, completedTasks)
-      const claudeFlags = `--add-dir "${planDir}"`
+      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+      const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
 
       logger.info('plan', 'Creating terminal for follow-up agent', logCtx, { workspaceId: followUpWorkspace.id })
       const terminalId = await queueTerminalCreation(followUpWorkspace.id, mainWindow, {

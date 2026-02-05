@@ -25,6 +25,8 @@ interface PromptStatus {
   planner: boolean
   discussion: boolean
   task: boolean
+  standalone_headless: boolean
+  standalone_followup: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -32,13 +34,17 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   planner: 'Planner',
   discussion: 'Discussion',
   task: 'Task Agent',
+  standalone_headless: 'Standalone Headless',
+  standalone_followup: 'Standalone Follow-up',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   orchestrator: 'Coordinates task assignment and monitors progress',
   planner: 'Creates tasks and sets up dependencies',
   discussion: 'Facilitates design discussions before implementation',
-  task: 'Executes individual tasks in worktrees',
+  task: 'Executes plan tasks in Docker containers',
+  standalone_headless: 'One-off headless agents started via CMD-K',
+  standalone_followup: 'Follow-up agents on existing worktrees',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -51,6 +57,8 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     planner: false,
     discussion: false,
     task: false,
+    standalone_headless: false,
+    standalone_followup: false,
   })
   const [editingPrompt, setEditingPrompt] = useState<PromptType | null>(null)
 
@@ -69,6 +77,8 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           planner: !!customPrompts.planner,
           discussion: !!customPrompts.discussion,
           task: !!customPrompts.task,
+          standalone_headless: !!customPrompts.standalone_headless,
+          standalone_followup: !!customPrompts.standalone_followup,
         })
       } catch (error) {
         console.error('Failed to load preferences:', error)
@@ -197,7 +207,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
 
         {promptsExpanded && (
           <div className="mt-4 space-y-3 pl-6">
-            {(['orchestrator', 'planner', 'discussion', 'task'] as PromptType[]).map((type) => (
+            {(['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup'] as PromptType[]).map((type) => (
               <div
                 key={type}
                 className="flex items-center justify-between py-2 px-3 rounded-lg border bg-muted/20"
