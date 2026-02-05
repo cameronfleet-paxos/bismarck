@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/renderer/components/ui/select'
+import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, ThemeName, Repository } from '@/shared/types'
 import type { AgentIconName } from '@/shared/constants'
@@ -209,19 +210,23 @@ export function AgentModal({
             <Label>Icon</Label>
             <div className="grid grid-cols-10 gap-1 max-h-32 overflow-y-auto p-1 border rounded-md">
               {agentIcons.map((iconName) => (
-                <button
+                <Tooltip
                   key={iconName}
-                  type="button"
-                  onClick={() => setIcon(iconName)}
-                  className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
-                    icon === iconName
-                      ? 'bg-primary ring-2 ring-primary'
-                      : 'bg-muted hover:bg-muted/80'
-                  }`}
-                  title={iconName.charAt(0).toUpperCase() + iconName.slice(1)}
+                  content={iconName.charAt(0).toUpperCase() + iconName.slice(1)}
+                  delayMs={100}
                 >
-                  <AgentIcon icon={iconName} className="w-5 h-5" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setIcon(iconName)}
+                    className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                      icon === iconName
+                        ? 'bg-primary ring-2 ring-primary'
+                        : 'bg-muted hover:bg-muted/80'
+                    }`}
+                  >
+                    <AgentIcon icon={iconName} className="w-5 h-5" />
+                  </button>
+                </Tooltip>
               ))}
             </div>
           </div>
