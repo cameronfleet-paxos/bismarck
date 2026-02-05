@@ -17,6 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/renderer/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/renderer/components/ui/tooltip'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, ThemeName, Repository } from '@/shared/types'
 import type { AgentIconName } from '@/shared/constants'
@@ -207,23 +213,30 @@ export function AgentModal({
           </div>
           <div className="grid gap-2">
             <Label>Icon</Label>
-            <div className="grid grid-cols-10 gap-1 max-h-32 overflow-y-auto p-1 border rounded-md">
-              {agentIcons.map((iconName) => (
-                <button
-                  key={iconName}
-                  type="button"
-                  onClick={() => setIcon(iconName)}
-                  className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
-                    icon === iconName
-                      ? 'bg-primary ring-2 ring-primary'
-                      : 'bg-muted hover:bg-muted/80'
-                  }`}
-                  title={iconName.charAt(0).toUpperCase() + iconName.slice(1)}
-                >
-                  <AgentIcon icon={iconName} className="w-5 h-5" />
-                </button>
-              ))}
-            </div>
+            <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+              <div className="grid grid-cols-10 gap-1 max-h-32 overflow-y-auto p-1 border rounded-md">
+                {agentIcons.map((iconName) => (
+                  <Tooltip key={iconName}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setIcon(iconName)}
+                        className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                          icon === iconName
+                            ? 'bg-primary ring-2 ring-primary'
+                            : 'bg-muted hover:bg-muted/80'
+                        }`}
+                      >
+                        <AgentIcon icon={iconName} className="w-5 h-5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{iconName.charAt(0).toUpperCase() + iconName.slice(1)}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            </TooltipProvider>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
