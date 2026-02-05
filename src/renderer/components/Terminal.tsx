@@ -6,6 +6,11 @@ import '@xterm/xterm/css/xterm.css'
 import type { ThemeName } from '@/shared/types'
 import { themes } from '@/shared/constants'
 
+// Regex that matches both URLs and file paths
+// URLs: http:// and https:// patterns
+// File paths: /absolute/path or ~/home/path, optionally with :line or :line:col
+const URL_AND_FILE_PATH_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+|(?:\/[\w.-]+)+(?::(\d+)(?::(\d+))?)?|~\/[\w./-]+(?::(\d+)(?::(\d+))?)?/g
+
 interface TerminalProps {
   terminalId: string
   theme: ThemeName
@@ -53,9 +58,25 @@ export function Terminal({
     const fitAddon = new FitAddon()
     xterm.loadAddon(fitAddon)
 
-    const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      window.electronAPI.openExternal(uri)
-    })
+    const webLinksAddon = new WebLinksAddon(
+      (_event, uri) => {
+        // Handle file paths - convert to file:// URL
+        if (uri.startsWith('/') || uri.startsWith('~')) {
+          // Extract path without line numbers
+          const pathOnly = uri.replace(/:\d+(?::\d+)?$/, '')
+          const expandedPath = pathOnly.startsWith('~')
+            ? pathOnly.replace('~', process.env.HOME || '')
+            : pathOnly
+          window.electronAPI.openExternal(`file://${expandedPath}`)
+        } else {
+          // Regular URL
+          window.electronAPI.openExternal(uri)
+        }
+      },
+      {
+        urlRegex: URL_AND_FILE_PATH_REGEX,
+      }
+    )
     xterm.loadAddon(webLinksAddon)
 
     xterm.open(terminalRef.current)
