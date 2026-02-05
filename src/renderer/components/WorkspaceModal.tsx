@@ -49,6 +49,9 @@ export function AgentModal({
   const [detectedRepo, setDetectedRepo] = useState<Repository | null>(null)
   const [isDetecting, setIsDetecting] = useState(false)
 
+  // Tooltip state
+  const [hoveredIcon, setHoveredIcon] = useState<AgentIconName | null>(null)
+
   // Detect git repository when directory changes
   const detectRepository = useCallback(async (dir: string) => {
     if (!dir.trim()) {
@@ -207,22 +210,28 @@ export function AgentModal({
           </div>
           <div className="grid gap-2">
             <Label>Icon</Label>
-            <div className="grid grid-cols-10 gap-1 max-h-32 overflow-y-auto p-1 border rounded-md">
+            <div className="grid grid-cols-10 gap-1 max-h-32 overflow-y-auto p-1 border rounded-md relative">
               {agentIcons.map((iconName) => (
                 <button
                   key={iconName}
                   type="button"
                   onClick={() => setIcon(iconName)}
+                  onMouseEnter={() => setHoveredIcon(iconName)}
+                  onMouseLeave={() => setHoveredIcon(null)}
                   className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                     icon === iconName
                       ? 'bg-primary ring-2 ring-primary'
                       : 'bg-muted hover:bg-muted/80'
                   }`}
-                  title={iconName.charAt(0).toUpperCase() + iconName.slice(1)}
                 >
                   <AgentIcon icon={iconName} className="w-5 h-5" />
                 </button>
               ))}
+              {hoveredIcon && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded-md border shadow-md whitespace-nowrap pointer-events-none z-10">
+                  {hoveredIcon.charAt(0).toUpperCase() + hoveredIcon.slice(1)}
+                </div>
+              )}
             </div>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
