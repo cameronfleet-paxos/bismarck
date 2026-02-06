@@ -242,7 +242,10 @@ function App() {
   const [terminalQueueStatus, setTerminalQueueStatus] = useState<{ queued: number; active: number }>({ queued: 0, active: 0 })
 
   // Update available state for header notification
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string } | null>(null)
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean } | null>(null)
+  // Popup for significantly outdated versions (only shows once per session)
+  const [showUpdatePopup, setShowUpdatePopup] = useState(false)
+  const updatePopupShownRef = useRef(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
 
   // Central registry of terminal writers - Map of terminalId -> write function
@@ -370,8 +373,13 @@ function App() {
         console.log('[App] Polled update status:', status?.state)
 
         if (status?.state === 'available') {
-          console.log('[App] Update available:', status.version)
-          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+          console.log('[App] Update available:', status.version, status.significantlyOutdated ? '(significantly outdated)' : '')
+          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+          // Show popup for significantly outdated versions (once per session)
+          if (status.significantlyOutdated && !updatePopupShownRef.current) {
+            updatePopupShownRef.current = true
+            setShowUpdatePopup(true)
+          }
           // Stop polling once we have a result
           if (pollInterval) {
             clearInterval(pollInterval)
@@ -408,7 +416,12 @@ function App() {
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
       console.log('[App] Received update status push:', status.state)
       if (status.state === 'available') {
-        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+        // Show popup for significantly outdated versions (once per session)
+        if (status.significantlyOutdated && !updatePopupShownRef.current) {
+          updatePopupShownRef.current = true
+          setShowUpdatePopup(true)
+        }
       } else {
         setUpdateAvailable(null)
       }
@@ -1918,15 +1931,14 @@ function App() {
                 }}
                 title="Click to view update details"
               >
-                Update available
-              </span>
-              <span className="text-muted-foreground/50">·</span>
-              <span
-                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors underline"
-                onClick={() => window.electronAPI.openExternal(updateAvailable.releaseUrl)}
-                title="View release notes on GitHub"
-              >
-                v{updateAvailable.version}
+                Update: v{updateAvailable.currentVersion} → <span
+                  className="underline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.electronAPI.openExternal(updateAvailable.releaseUrl)
+                  }}
+                  title="View release notes on GitHub"
+                >v{updateAvailable.version}</span>
               </span>
             </div>
           )}
@@ -3198,6 +3210,36 @@ function App() {
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
       />
+
+      {/* Update Available Popup (for significantly outdated versions) */}
+      <Dialog open={showUpdatePopup} onOpenChange={setShowUpdatePopup}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Update Recommended</DialogTitle>
+            <DialogDescription>
+              You're running v{updateAvailable?.currentVersion}, but v{updateAvailable?.version} is available.
+              We recommend updating to get the latest features and bug fixes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdatePopup(false)}
+            >
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUpdatePopup(false)
+                setSettingsInitialSection('updates')
+                setCurrentView('settings')
+              }}
+            >
+              View Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
     </TutorialProvider>

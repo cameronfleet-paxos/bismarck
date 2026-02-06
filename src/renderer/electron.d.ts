@@ -5,7 +5,7 @@ import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
