@@ -3,6 +3,7 @@ import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquar
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/renderer/components/ui/dialog'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import { themes } from '@/shared/constants'
@@ -426,6 +427,10 @@ export function CommandSearch({
         preventCloseOnOutsideInteraction={tutorialActive}
         showCloseButton={false}
       >
+        {/* Visually hidden title for accessibility */}
+        <DialogTitle className="sr-only">
+          {getTitle() || 'Command Search'}
+        </DialogTitle>
         {/* Title bar for non-command modes */}
         {mode !== 'commands' && (
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
