@@ -2,8 +2,8 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
-import {
 import { devLog } from './dev-log'
+import {
   initBenchmark,
   startTimer,
   endTimer,

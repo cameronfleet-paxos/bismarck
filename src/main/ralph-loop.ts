@@ -16,8 +16,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import {
 import { devLog } from './dev-log'
+import {
   getStandaloneHeadlessDir,
   getStandaloneWorktreePath,
   getWorkspaceById,

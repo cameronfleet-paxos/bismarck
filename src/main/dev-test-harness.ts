@@ -26,8 +26,8 @@ import { execWithPath } from './exec-utils'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import type {
 import { devLog } from './dev-log'
+import type {
   StreamEvent,
   StreamInitEvent,
   StreamMessageEvent,

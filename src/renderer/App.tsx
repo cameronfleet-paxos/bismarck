@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } 
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
-import {
 import { devLog } from './utils/dev-log'
+import {
   Dialog,
   DialogContent,
   DialogDescription,

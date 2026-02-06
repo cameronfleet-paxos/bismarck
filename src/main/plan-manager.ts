@@ -2,8 +2,8 @@ import { BrowserWindow } from 'electron'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { logger, createScopedLogger, LogContext } from './logger'
-import {
 import { devLog } from './dev-log'
+import {
   loadPlans,
   savePlan,
   getPlanById,
