@@ -1,6 +1,6 @@
 {
   "name": "bismarck",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -95,6 +95,8 @@
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/merge": "^6.11.2",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-label": "^2.1.8",
