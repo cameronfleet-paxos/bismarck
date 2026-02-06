@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -36,6 +36,7 @@ import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
+import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -186,6 +187,9 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+
+  // Diff overlay state (tracks which workspace has diff open)
+  const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
@@ -2783,6 +2787,21 @@ function App() {
                                   Waiting
                                 </span>
                               )}
+                              {/* Diff toggle button (only for non-headless agents) */}
+                              {!agent.isHeadless && !agent.isStandaloneHeadless && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setDiffOpenForWorkspace(diffOpenForWorkspace === workspaceId ? null : workspaceId)
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {/* Maximize/Minimize button */}
                               <Button
                                 size="sm"
@@ -2844,7 +2863,7 @@ function App() {
                               )}
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <Terminal
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
@@ -2854,6 +2873,13 @@ function App() {
                               unregisterWriter={unregisterWriter}
                               getBufferedContent={getBufferedContent}
                             />
+                            {/* Diff overlay (absolute position over terminal) */}
+                            {diffOpenForWorkspace === workspaceId && (
+                              <DiffOverlay
+                                directory={agent.directory}
+                                onClose={() => setDiffOpenForWorkspace(null)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
