@@ -18,7 +18,7 @@ interface ActiveTerminal {
 type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config'
 
 // Track which command triggered agent selection
-type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | null
+type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | null
 
 interface Command {
   id: string
@@ -30,6 +30,7 @@ const commands: Command[] = [
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
+  { id: 'start-ralph-loop-discussion', label: 'Discuss: Ralph Loop', icon: MessageSquare },
   { id: 'start-plan', label: 'Start: Plan', icon: FileText },
 ]
 
@@ -44,8 +45,16 @@ interface CommandSearchProps {
   onSelectAgent: (agentId: string) => void
   onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
   onStartHeadlessDiscussion?: (agentId: string) => void
+  onStartRalphLoopDiscussion?: (agentId: string) => void
   onStartPlan?: () => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
+  prefillRalphLoopConfig?: {
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  } | null
 }
 
 export function CommandSearch({
@@ -58,8 +67,10 @@ export function CommandSearch({
   onSelectAgent,
   onStartHeadless,
   onStartHeadlessDiscussion,
+  onStartRalphLoopDiscussion,
   onStartPlan,
   onStartRalphLoop,
+  prefillRalphLoopConfig,
 }: CommandSearchProps) {
   const { isActive: tutorialActive } = useTutorial()
   const [query, setQuery] = useState('')
@@ -160,24 +171,54 @@ export function CommandSearch({
   useEffect(() => {
     if (open) {
       setQuery('')
-      setMode('commands')
-      setSelectedAgent(null)
-      setPrompt('')
       setSelectedIndex(0)
-      setPendingCommand(null)
-      // Reset Ralph Loop config to defaults
-      setCompletionPhrase('<promise>COMPLETE</promise>')
-      setMaxIterations(50)
-      setRalphModel('sonnet')
-      setSelectedPreset('custom')
       setShowSaveDialog(false)
       setSavePresetLabel('')
       setSavePresetDescription('')
-      setTimeout(() => inputRef.current?.focus(), 0)
+
+      // Check if we have prefill config from Ralph Loop discussion
+      if (prefillRalphLoopConfig) {
+        // Find the reference agent and jump directly to ralph-loop-config mode
+        const agent = agents.find(a => a.id === prefillRalphLoopConfig.referenceAgentId)
+        if (agent) {
+          setSelectedAgent(agent)
+          setMode('ralph-loop-config')
+          setPendingCommand('ralph-loop')
+          setPrompt(prefillRalphLoopConfig.prompt)
+          setCompletionPhrase(prefillRalphLoopConfig.completionPhrase)
+          setMaxIterations(prefillRalphLoopConfig.maxIterations)
+          setRalphModel(prefillRalphLoopConfig.model)
+          setSelectedPreset('custom')
+          setTimeout(() => textareaRef.current?.focus(), 0)
+        } else {
+          // Agent not found, reset to default state
+          setMode('commands')
+          setSelectedAgent(null)
+          setPrompt('')
+          setPendingCommand(null)
+          setCompletionPhrase('<promise>COMPLETE</promise>')
+          setMaxIterations(50)
+          setRalphModel('sonnet')
+          setSelectedPreset('custom')
+          setTimeout(() => inputRef.current?.focus(), 0)
+        }
+      } else {
+        // Normal open - reset to defaults
+        setMode('commands')
+        setSelectedAgent(null)
+        setPrompt('')
+        setPendingCommand(null)
+        setCompletionPhrase('<promise>COMPLETE</promise>')
+        setMaxIterations(50)
+        setRalphModel('sonnet')
+        setSelectedPreset('custom')
+        setTimeout(() => inputRef.current?.focus(), 0)
+      }
+
       // Reload custom presets
       window.electronAPI.getRalphLoopPresets().then(setCustomPresets).catch(console.error)
     }
-  }, [open])
+  }, [open, prefillRalphLoopConfig, agents])
 
   // Reset selection when query changes
   useEffect(() => {
@@ -302,6 +343,11 @@ export function CommandSearch({
           setMode('agent-select')
           setQuery('')
           setSelectedIndex(0)
+        } else if (command.id === 'start-ralph-loop-discussion') {
+          setPendingCommand('ralph-loop-discussion')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
         } else if (command.id === 'start-plan') {
           onStartPlan?.()
           onOpenChange(false)
@@ -324,6 +370,10 @@ export function CommandSearch({
         } else if (pendingCommand === 'headless-discussion') {
           // Headless discussion starts immediately after agent selection
           onStartHeadlessDiscussion?.(agent.id)
+          onOpenChange(false)
+        } else if (pendingCommand === 'ralph-loop-discussion') {
+          // Ralph Loop discussion starts immediately after agent selection
+          onStartRalphLoopDiscussion?.(agent.id)
           onOpenChange(false)
         } else {
           setMode('prompt-input')
@@ -407,6 +457,7 @@ export function CommandSearch({
     switch (mode) {
       case 'agent-select':
         if (pendingCommand === 'ralph-loop') return 'Start: Ralph Loop'
+        if (pendingCommand === 'ralph-loop-discussion') return 'Discuss: Ralph Loop'
         if (pendingCommand === 'headless-discussion') return 'Discuss: Headless Agent'
         return 'Start: Headless Agent'
       case 'prompt-input':

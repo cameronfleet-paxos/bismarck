@@ -168,6 +168,8 @@ import {
   restartStandaloneHeadlessAgent,
   startHeadlessDiscussion,
   cancelHeadlessDiscussion,
+  startRalphLoopDiscussion,
+  cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
 } from './standalone-headless'
 import {
@@ -204,7 +206,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -692,6 +694,15 @@ function registerIpcHandlers() {
     return cancelHeadlessDiscussion(discussionId)
   })
 
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  ipcMain.handle('start-ralph-loop-discussion', async (_event, agentId: string) => {
+    return startRalphLoopDiscussion(agentId)
+  })
+
+  ipcMain.handle('cancel-ralph-loop-discussion', async (_event, discussionId: string) => {
+    return cancelRalphLoopDiscussion(discussionId)
+  })
+
   // Ralph Loop management
   ipcMain.handle('start-ralph-loop', async (_event, config: RalphLoopConfig) => {
     return startRalphLoop(config)
@@ -951,11 +962,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: PromptType, template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: CustomizablePromptType, template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: PromptType) => {
+  ipcMain.handle('get-default-prompt', (_event, type: CustomizablePromptType) => {
     return getDefaultPrompt(type)
   })
 

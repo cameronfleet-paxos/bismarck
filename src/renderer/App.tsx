@@ -205,6 +205,13 @@ function App() {
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+  const [prefillRalphLoopConfig, setPrefillRalphLoopConfig] = useState<{
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  } | null>(null)
 
   // Discussion execute state - maps planId to selected agent id
   const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
@@ -909,6 +916,18 @@ function App() {
       })
     })
 
+    // Ralph Loop discussion complete - open CMD-K with pre-populated values
+    window.electronAPI?.onRalphLoopDiscussionComplete?.((data) => {
+      setPrefillRalphLoopConfig({
+        referenceAgentId: data.referenceAgentId,
+        prompt: data.prompt,
+        completionPhrase: data.completionPhrase,
+        maxIterations: data.maxIterations,
+        model: data.model,
+      })
+      setCommandSearchOpen(true)
+    })
+
     // Terminal queue status for boot progress indicator
     window.electronAPI?.onTerminalQueueStatus?.((status) => {
       setTerminalQueueStatus({ queued: status.queued, active: status.active })
@@ -1352,6 +1371,19 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to start headless discussion:', error)
+    }
+  }
+
+  // Start Ralph Loop discussion handler
+  const handleStartRalphLoopDiscussion = async (agentId: string) => {
+    try {
+      const result = await window.electronAPI?.startRalphLoopDiscussion?.(agentId)
+      if (result) {
+        // Reload agents to pick up the new discussion workspace
+        await loadAgents()
+      }
+    } catch (error) {
+      console.error('Failed to start Ralph Loop discussion:', error)
     }
   }
 
@@ -3188,7 +3220,13 @@ function App() {
       {/* Command Search (CMD-K) */}
       <CommandSearch
         open={commandSearchOpen}
-        onOpenChange={setCommandSearchOpen}
+        onOpenChange={(open) => {
+          setCommandSearchOpen(open)
+          if (!open) {
+            // Clear prefill when closing
+            setPrefillRalphLoopConfig(null)
+          }
+        }}
         agents={agents}
         activeTerminals={activeTerminals}
         waitingQueue={waitingQueue}
@@ -3197,8 +3235,10 @@ function App() {
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
+        onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
+        prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 
     </div>

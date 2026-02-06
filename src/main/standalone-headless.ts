@@ -21,7 +21,7 @@ import {
   getWorkspaces,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab } from './state-manager'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab } from './state-manager'
 import { getSelectedDockerImage } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -1012,6 +1012,309 @@ export async function cancelHeadlessDiscussion(discussionId: string): Promise<vo
 
   // Clean up discussion state
   activeHeadlessDiscussions.delete(discussionId)
+
+  emitStateUpdate()
+}
+
+/**
+ * Track active Ralph Loop discussions
+ */
+interface RalphLoopDiscussionState {
+  discussionId: string
+  workspaceId: string
+  referenceAgentId: string
+  tabId: string
+  outputPath: string
+  terminalId?: string
+}
+
+const activeRalphLoopDiscussions: Map<string, RalphLoopDiscussionState> = new Map()
+
+/**
+ * Start a Ralph Loop discussion session
+ *
+ * This creates an interactive Claude session to help the user craft a robust
+ * Ralph Loop prompt that prevents premature exits and ensures task completion.
+ *
+ * @param referenceAgentId - The agent whose directory will be used as the working directory
+ * @param maxQuestions - Maximum number of questions to ask (default: 5)
+ * @returns Discussion session info
+ */
+export async function startRalphLoopDiscussion(
+  referenceAgentId: string,
+  maxQuestions: number = 5
+): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
+  if (!mainWindow) {
+    throw new Error('Main window not available')
+  }
+
+  // Look up the reference agent to get its directory
+  const referenceAgent = getWorkspaceById(referenceAgentId)
+  if (!referenceAgent) {
+    throw new Error(`Reference agent not found: ${referenceAgentId}`)
+  }
+
+  // Get repository info from reference agent's directory
+  const repoPath = await getMainRepoRoot(referenceAgent.directory)
+  if (!repoPath) {
+    throw new Error(`Reference agent directory is not in a git repository: ${referenceAgent.directory}`)
+  }
+  const repoName = path.basename(repoPath)
+
+  // Generate unique IDs
+  const discussionId = `ralph-loop-discussion-${Date.now()}`
+  const workspaceId = randomUUID()
+
+  // Generate random phrase for this discussion
+  const randomPhrase = generateRandomPhrase()
+
+  // Ensure standalone headless directory exists
+  ensureStandaloneHeadlessDir()
+
+  // Create output path for discussion results
+  const discussionDir = path.join(getStandaloneHeadlessDir(), 'discussions', discussionId)
+  await fsPromises.mkdir(discussionDir, { recursive: true })
+  const discussionOutputPath = path.join(discussionDir, 'discussion-output.md')
+
+  // Build the discussion prompt
+  const discussionPrompt = await buildPrompt('ralph_loop_discussion', {
+    referenceRepoName: repoName,
+    codebasePath: referenceAgent.directory,
+    maxQuestions: maxQuestions,
+    discussionOutputPath: discussionOutputPath,
+  })
+
+  // Create discussion workspace
+  const existingWorkspaces = getWorkspaces()
+  const discussionWorkspace: Agent = {
+    id: workspaceId,
+    name: `🔄 ${repoName}: ${randomPhrase}`,
+    directory: referenceAgent.directory,
+    purpose: 'Crafting Ralph Loop prompt',
+    theme: 'orange',
+    icon: getRandomUniqueIcon(existingWorkspaces),
+  }
+  saveWorkspace(discussionWorkspace)
+
+  // Create a dedicated tab for the discussion
+  const discussionTab = createTab(`🔄 ${repoName.substring(0, 15)}`)
+
+  // Store discussion state
+  const discussionState: RalphLoopDiscussionState = {
+    discussionId,
+    workspaceId,
+    referenceAgentId,
+    tabId: discussionTab.id,
+    outputPath: discussionOutputPath,
+  }
+  activeRalphLoopDiscussions.set(discussionId, discussionState)
+
+  try {
+    // Create terminal for discussion
+    console.log(`[RalphLoopDiscussion] Creating terminal for discussion ${discussionId}`)
+    const claudeFlags = `--add-dir "${referenceAgent.directory}"`
+    const terminalId = await queueTerminalCreation(workspaceId, mainWindow, {
+      initialPrompt: discussionPrompt,
+      claudeFlags,
+    })
+    discussionState.terminalId = terminalId
+    console.log(`[RalphLoopDiscussion] Created discussion terminal: ${terminalId}`)
+
+    // Set up workspace in tab
+    addActiveWorkspace(workspaceId)
+    addWorkspaceToTab(workspaceId, discussionTab.id)
+    setActiveTab(discussionTab.id)
+
+    // Notify renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-created', {
+        terminalId,
+        workspaceId,
+      })
+      mainWindow.webContents.send('maximize-workspace', workspaceId)
+    }
+
+    // Set up listener for discussion completion
+    const discussionEmitter = getTerminalEmitter(terminalId)
+    if (discussionEmitter) {
+      let completionTriggered = false
+
+      const dataHandler = async (data: string) => {
+        if (completionTriggered) return
+
+        // Check if discussion output file was written
+        if (data.includes('discussion-output.md') && (data.includes('Wrote') || data.includes('lines to'))) {
+          // Verify file exists before completing
+          try {
+            await fsPromises.access(discussionOutputPath)
+            completionTriggered = true
+            discussionEmitter.removeListener('data', dataHandler)
+            console.log(`[RalphLoopDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
+            await completeRalphLoopDiscussion(discussionId)
+          } catch {
+            // File not created yet, keep waiting
+          }
+        }
+      }
+      discussionEmitter.on('data', dataHandler)
+    }
+
+    emitStateUpdate()
+
+    return { discussionId, workspaceId, tabId: discussionTab.id }
+  } catch (error) {
+    // Clean up on error
+    activeRalphLoopDiscussions.delete(discussionId)
+    deleteWorkspace(workspaceId)
+    throw error
+  }
+}
+
+/**
+ * Complete a Ralph Loop discussion and open the Ralph Loop config with pre-populated values
+ */
+async function completeRalphLoopDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeRalphLoopDiscussions.get(discussionId)
+  if (!discussionState) {
+    console.error(`[RalphLoopDiscussion] Discussion not found: ${discussionId}`)
+    return
+  }
+
+  try {
+    // Read the discussion output
+    const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
+    console.log(`[RalphLoopDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+
+    // Parse the discussion output to extract Ralph Loop config
+    const config = parseRalphLoopDiscussionOutput(discussionOutput)
+
+    // Close the discussion terminal
+    if (discussionState.terminalId) {
+      const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+      if (terminalId) {
+        closeTerminal(terminalId)
+      }
+    }
+
+    // Remove discussion workspace from tab and delete it
+    removeActiveWorkspace(discussionState.workspaceId)
+    removeWorkspaceFromTab(discussionState.workspaceId)
+    deleteWorkspace(discussionState.workspaceId)
+
+    // Notify renderer to open Ralph Loop config with pre-populated values
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ralph-loop-discussion-complete', {
+        referenceAgentId: discussionState.referenceAgentId,
+        prompt: config.prompt,
+        completionPhrase: config.completionPhrase,
+        maxIterations: config.maxIterations,
+        model: config.model,
+      })
+    }
+
+    // Clean up discussion state
+    activeRalphLoopDiscussions.delete(discussionId)
+    // Also delete the tab since we're opening CMD-K instead
+    deleteTab(discussionState.tabId)
+
+  } catch (error) {
+    console.error(`[RalphLoopDiscussion] Failed to complete discussion:`, error)
+    activeRalphLoopDiscussions.delete(discussionId)
+    throw error
+  }
+}
+
+/**
+ * Parse the Ralph Loop discussion output to extract config values
+ */
+function parseRalphLoopDiscussionOutput(output: string): {
+  prompt: string
+  completionPhrase: string
+  maxIterations: number
+  model: 'opus' | 'sonnet'
+} {
+  // Default values
+  let prompt = ''
+  let completionPhrase = '<promise>COMPLETE</promise>'
+  let maxIterations = 50
+  let model: 'opus' | 'sonnet' = 'sonnet'
+
+  // Extract prompt section (most important)
+  const promptMatch = output.match(/## Prompt\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (promptMatch) {
+    prompt = promptMatch[1].trim()
+  } else {
+    // Fallback: use the goal as prompt if no Prompt section found
+    const goalMatch = output.match(/## Goal\s*\n([\s\S]*?)(?=\n## |$)/)
+    if (goalMatch) {
+      prompt = goalMatch[1].trim()
+    }
+  }
+
+  // Extract completion phrase
+  const phraseMatch = output.match(/## Completion Phrase\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (phraseMatch) {
+    const phraseText = phraseMatch[1].trim()
+    // Try to find the exact phrase (often in backticks or quotes)
+    const exactMatch = phraseText.match(/[`"']([^`"']+)[`"']/) || phraseText.match(/<[^>]+>[^<]*<\/[^>]+>/)
+    if (exactMatch) {
+      completionPhrase = exactMatch[0].replace(/[`"']/g, '')
+    } else if (phraseText.length < 100) {
+      completionPhrase = phraseText.split('\n')[0].trim()
+    }
+  }
+
+  // Extract suggested iterations
+  const iterationsMatch = output.match(/## Suggested Iterations\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (iterationsMatch) {
+    const iterText = iterationsMatch[1].trim()
+    const numMatch = iterText.match(/(\d+)/)
+    if (numMatch) {
+      const parsed = parseInt(numMatch[1], 10)
+      if (parsed >= 1 && parsed <= 500) {
+        maxIterations = parsed
+      }
+    }
+  }
+
+  // Extract recommended model
+  const modelMatch = output.match(/## Recommended Model\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (modelMatch) {
+    const modelText = modelMatch[1].toLowerCase()
+    if (modelText.includes('opus')) {
+      model = 'opus'
+    } else if (modelText.includes('sonnet')) {
+      model = 'sonnet'
+    }
+  }
+
+  return { prompt, completionPhrase, maxIterations, model }
+}
+
+/**
+ * Cancel a Ralph Loop discussion
+ */
+export async function cancelRalphLoopDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeRalphLoopDiscussions.get(discussionId)
+  if (!discussionState) {
+    return
+  }
+
+  // Close the terminal
+  if (discussionState.terminalId) {
+    const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+    if (terminalId) {
+      closeTerminal(terminalId)
+    }
+  }
+
+  // Clean up workspace
+  removeActiveWorkspace(discussionState.workspaceId)
+  removeWorkspaceFromTab(discussionState.workspaceId)
+  deleteWorkspace(discussionState.workspaceId)
+
+  // Clean up discussion state
+  activeRalphLoopDiscussions.delete(discussionId)
 
   emitStateUpdate()
 }
