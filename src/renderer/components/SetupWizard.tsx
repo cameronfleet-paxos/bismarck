@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { devLog } from '@/renderer/lib/dev-logger'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -375,9 +376,9 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     try {
       // Save plan mode preference
-      console.log('[SetupWizard] Saving plan mode preference:', planModeEnabled)
+      devLog('[SetupWizard] Saving plan mode preference:', planModeEnabled)
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
-      console.log('[SetupWizard] Plan mode preference saved')
+      devLog('[SetupWizard] Plan mode preference saved')
 
       // Build repos with all details
       const reposToCreate = discoveredRepos
@@ -388,11 +389,11 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           completionCriteria: repoCompletionCriteria.get(r.path) || '',
           protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
-      console.log('[SetupWizard] Creating', reposToCreate.length, 'agents...')
+      devLog('[SetupWizard] Creating', reposToCreate.length, 'agents...')
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
-      console.log('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
+      devLog('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
       await onComplete(agents)
-      console.log('[SetupWizard] onComplete finished successfully')
+      devLog('[SetupWizard] onComplete finished successfully')
     } catch (err) {
       console.error('[SetupWizard] Failed to create agents:', err)
       const errorMessage = err instanceof Error ? err.message : String(err)
