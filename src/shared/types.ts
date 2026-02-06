@@ -654,3 +654,42 @@ export interface RalphLoopState {
   phrase: string              // Random phrase for naming (e.g., "plucky-otter")
   referenceAgentDirectory: string  // Reference agent's directory (for bd proxy planId)
 }
+
+// ============================================
+// Git Diff Types
+// ============================================
+
+// File status in a diff
+export type DiffFileStatus = 'modified' | 'added' | 'deleted' | 'renamed'
+
+// View mode for diff display
+export type DiffViewMode = 'unified' | 'split'
+
+// Individual file in a diff
+export interface DiffFile {
+  path: string
+  status: DiffFileStatus
+  additions: number
+  deletions: number
+  isBinary: boolean
+  oldPath?: string  // For renamed files
+}
+
+// Result of a diff operation
+export interface DiffResult {
+  files: DiffFile[]
+  summary: {
+    totalFiles: number
+    totalAdditions: number
+    totalDeletions: number
+  }
+}
+
+// Content for rendering a single file diff
+export interface FileDiffContent {
+  oldContent: string
+  newContent: string
+  language: string
+  error?: string
+  isTooLarge: boolean
+}
