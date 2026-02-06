@@ -16,6 +16,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneWorktreePath,
@@ -345,12 +346,12 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
 
   // Ensure tool proxy is running
   if (!isProxyRunning()) {
-    console.log('[RalphLoop] Starting tool proxy for container communication')
+    devLog('[RalphLoop] Starting tool proxy for container communication')
     await startToolProxy()
   }
 
   // Create the worktree (shared by ALL iterations)
-  console.log(`[RalphLoop] Creating worktree at ${worktreePath}`)
+  devLog(`[RalphLoop] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
 
   // Store worktree info
@@ -406,7 +407,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
   ) {
     // Run next iteration
     state.currentIteration++
-    console.log(`[RalphLoop] Starting iteration ${state.currentIteration}/${state.config.maxIterations}`)
+    devLog(`[RalphLoop] Starting iteration ${state.currentIteration}/${state.config.maxIterations}`)
 
     const iteration = await runIteration(state, state.currentIteration)
     // Note: iteration is already added to state.iterations inside runIteration
@@ -430,7 +431,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
 
     // Check if completion phrase was found
     if (iteration.completionPhraseFound) {
-      console.log(`[RalphLoop] Completion phrase found in iteration ${state.currentIteration}`)
+      devLog(`[RalphLoop] Completion phrase found in iteration ${state.currentIteration}`)
       state.status = 'completed'
       state.completedAt = new Date().toISOString()
       emitRalphLoopUpdate(state)
@@ -439,7 +440,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
 
     // Check if iteration failed
     if (iteration.status === 'failed') {
-      console.log(`[RalphLoop] Iteration ${state.currentIteration} failed`)
+      devLog(`[RalphLoop] Iteration ${state.currentIteration} failed`)
       state.status = 'failed'
       state.completedAt = new Date().toISOString()
       emitRalphLoopUpdate(state)
@@ -449,7 +450,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
 
   // Max iterations reached
   if (state.status === 'running') {
-    console.log(`[RalphLoop] Max iterations (${state.config.maxIterations}) reached`)
+    devLog(`[RalphLoop] Max iterations (${state.config.maxIterations}) reached`)
     state.status = 'max_iterations'
     state.completedAt = new Date().toISOString()
     emitRalphLoopUpdate(state)
@@ -543,7 +544,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       claudeFlags: ['--model', state.config.model],
     }
 
-    console.log(`[RalphLoop] Starting iteration ${iterationNumber} agent`)
+    devLog(`[RalphLoop] Starting iteration ${iterationNumber} agent`)
 
     // Wait for agent to complete
     await new Promise<void>((resolve, reject) => {
@@ -593,7 +594,7 @@ export async function cancelRalphLoop(loopId: string): Promise<void> {
     throw new Error(`Ralph Loop not found: ${loopId}`)
   }
 
-  console.log(`[RalphLoop] Cancelling loop ${loopId}`)
+  devLog(`[RalphLoop] Cancelling loop ${loopId}`)
 
   // Stop current agent if running
   const agent = ralphLoopAgents.get(loopId)
@@ -621,7 +622,7 @@ export function pauseRalphLoop(loopId: string): void {
     throw new Error(`Cannot pause loop in status: ${state.status}`)
   }
 
-  console.log(`[RalphLoop] Pausing loop ${loopId}`)
+  devLog(`[RalphLoop] Pausing loop ${loopId}`)
   state.status = 'paused'
   emitRalphLoopUpdate(state)
 }
@@ -639,7 +640,7 @@ export function resumeRalphLoop(loopId: string): void {
     throw new Error(`Cannot resume loop in status: ${state.status}`)
   }
 
-  console.log(`[RalphLoop] Resuming loop ${loopId}`)
+  devLog(`[RalphLoop] Resuming loop ${loopId}`)
   state.status = 'running'
   emitRalphLoopUpdate(state)
 
@@ -682,7 +683,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
     throw new Error(`Ralph Loop not found: ${loopId}`)
   }
 
-  console.log(`[RalphLoop] Cleaning up loop ${loopId}`)
+  devLog(`[RalphLoop] Cleaning up loop ${loopId}`)
 
   const { path: worktreePath, branch, repoPath } = state.worktreeInfo
 
@@ -703,7 +704,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
   // Remove the worktree
   try {
     await removeWorktree(repoPath, worktreePath, true)
-    console.log(`[RalphLoop] Removed worktree at ${worktreePath}`)
+    devLog(`[RalphLoop] Removed worktree at ${worktreePath}`)
   } catch (error) {
     console.error(`[RalphLoop] Failed to remove worktree:`, error)
   }
@@ -711,16 +712,16 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
   // Delete the local branch
   try {
     await deleteLocalBranch(repoPath, branch)
-    console.log(`[RalphLoop] Deleted local branch ${branch}`)
+    devLog(`[RalphLoop] Deleted local branch ${branch}`)
   } catch (error) {
-    console.log(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
+    devLog(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
   }
 
   // Delete the remote branch if it exists
   try {
     if (await remoteBranchExists(repoPath, branch)) {
       await deleteRemoteBranch(repoPath, branch)
-      console.log(`[RalphLoop] Deleted remote branch ${branch}`)
+      devLog(`[RalphLoop] Deleted remote branch ${branch}`)
     }
   } catch (error) {
     console.error(`[RalphLoop] Failed to delete remote branch:`, error)
@@ -757,5 +758,5 @@ export function initRalphLoop(): void {
     // Note: Running loops are not resumed on restart - they stay in their current state
     // User can manually resume paused loops or clean up completed/failed ones
   }
-  console.log(`[RalphLoop] Loaded ${states.length} Ralph Loop records`)
+  devLog(`[RalphLoop] Loaded ${states.length} Ralph Loop records`)
 }
