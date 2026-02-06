@@ -520,19 +520,7 @@ export async function initializeDockerEnvironment(): Promise<{
 
   logger.info('docker', 'Docker is available')
 
-  // Check if image exists locally
-  const imageExists = await checkImageExists(DEFAULT_IMAGE)
-  if (imageExists) {
-    logger.info('docker', 'Docker image already exists', undefined, { image: DEFAULT_IMAGE })
-    return {
-      success: true,
-      dockerAvailable: true,
-      imageBuilt: false,
-      message: 'Docker environment ready',
-    }
-  }
-
-  // Pull the image from Docker Hub
+  // Always try to pull the latest image (fast if already up-to-date, Docker checks digests)
   logger.info('docker', 'Pulling Docker image from registry', undefined, { image: DEFAULT_IMAGE })
   const pullResult = await pullImage(DEFAULT_IMAGE)
 
@@ -546,11 +534,25 @@ export async function initializeDockerEnvironment(): Promise<{
     }
   }
 
-  logger.warn('docker', 'Failed to pull Docker image, attempting local build fallback', undefined, {
+  // Pull failed - check if we have a cached local image to fall back to
+  logger.warn('docker', 'Failed to pull Docker image', undefined, {
     pullOutput: pullResult.output.substring(0, 200),
   })
 
-  // Fallback: build locally in dev mode only (production won't have the Dockerfile)
+  const imageExists = await checkImageExists(DEFAULT_IMAGE)
+  if (imageExists) {
+    logger.info('docker', 'Using cached local image', undefined, { image: DEFAULT_IMAGE })
+    return {
+      success: true,
+      dockerAvailable: true,
+      imageBuilt: false,
+      message: 'Using cached Docker image (pull failed, likely offline)',
+    }
+  }
+
+  // No local image either - fallback to local build in dev mode only
+  logger.warn('docker', 'No cached image available, attempting local build fallback')
+
   const isDev = process.env.NODE_ENV === 'development'
   if (!isDev) {
     logger.error('docker', 'Cannot build locally in production mode')
