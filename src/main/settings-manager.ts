@@ -53,6 +53,7 @@ export interface AppSettings {
     standalone_headless: string | null  // Standalone headless agents (CMD-K one-off tasks)
     standalone_followup: string | null  // Follow-up agents on existing worktrees
     headless_discussion: string | null  // Headless discussion (Discuss: Headless Agent)
+    critic: string | null              // Critic review agents
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -76,6 +77,10 @@ export interface AppSettings {
   }
   preventSleep: {
     enabled: boolean              // Prevent macOS sleep while agents are running
+  }
+  critic: {
+    enabled: boolean              // Enable critic review of completed tasks
+    maxIterations: number         // Maximum critic review cycles per task
   }
 }
 
@@ -155,6 +160,7 @@ export function getDefaultSettings(): AppSettings {
       standalone_headless: null,
       standalone_followup: null,
       headless_discussion: null,
+      critic: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -178,6 +184,10 @@ export function getDefaultSettings(): AppSettings {
     },
     preventSleep: {
       enabled: true,  // Prevent sleep by default while agents run
+    },
+    critic: {
+      enabled: true,
+      maxIterations: 2,
     },
   }
 }
@@ -230,6 +240,7 @@ export async function loadSettings(): Promise<AppSettings> {
       ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
+      critic: { ...defaults.critic, ...(loaded.critic || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -335,6 +346,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     preventSleep: {
       ...(currentSettings.preventSleep || defaults.preventSleep),
       ...(updates.preventSleep || {}),
+    },
+    critic: {
+      ...(currentSettings.critic || defaults.critic),
+      ...(updates.critic || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -521,7 +536,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion'): Promise<string | null> {
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -531,7 +546,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic', template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {

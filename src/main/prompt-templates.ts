@@ -58,6 +58,17 @@ export interface PromptVariables {
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+
+  // Critic agent variables
+  originalTaskId?: string
+  originalTaskTitle?: string
+  criticCriteria?: string
+  criticIteration?: number
+  maxCriticIterations?: number
+  epicId?: string
+  repoName?: string
+  worktreeName?: string
+  lastIterationWarning?: string
 }
 
 /**
@@ -104,6 +115,7 @@ Make sure to discuss these areas (in order):
 - **Testing**: What test types do we need? What edge cases must we cover?
 - **Monitoring**: What metrics should we track? What logging is needed?
 - **Edge cases**: What failure modes exist? How do we handle errors?
+- **Critic Criteria**: What standards should a code reviewer enforce? What acceptance criteria apply? What tests must pass? What patterns must be followed?
 
 === KEY PRINCIPLES ===
 - Ask ONE question at a time using AskUserQuestion tool
@@ -140,6 +152,12 @@ When you have covered all the key areas and the user is satisfied:
    - Task 2: [description]
      - Dependencies: Task 1
    - [etc.]
+
+   ## Critic Criteria
+   - [Coding standards to enforce]
+   - [Test requirements - what must pass]
+   - [Architecture patterns to follow]
+   - [Performance/security requirements]
    \`\`\`
 
 2. Type /exit to signal that discussion is complete
@@ -496,6 +514,49 @@ When you have gathered enough information (or reached the question limit):
 
 === BEGIN ===
 Start by briefly greeting the user and asking your first clarifying question about their goal.`,
+
+  critic: `[BISMARCK CRITIC AGENT]
+Task Under Review: {{originalTaskId}}
+Title: {{originalTaskTitle}}
+Review Iteration: {{criticIteration}} of {{maxCriticIterations}}
+
+=== YOUR ROLE ===
+You are a Critic Agent reviewing completed work. Review the code changes
+and either approve or raise fix-up tasks for issues found.
+
+=== FIRST STEP ===
+Read the original task to understand what was supposed to be done:
+  bd show {{originalTaskId}}
+
+=== REVIEW CRITERIA ===
+{{criticCriteria}}
+
+=== REVIEW PROCESS ===
+1. Review git diff: git diff {{baseBranch}}...HEAD
+2. Read modified files for quality issues
+3. Run existing tests if applicable
+4. Verify task requirements are met
+
+=== DECISION ===
+
+**If ACCEPTABLE:**
+  bd close {{taskId}} --message "APPROVED: <brief reason>"
+
+**If FIXES NEEDED (iterations remaining):**
+1. Create fix-up tasks:
+   bd --sandbox create --parent {{epicId}} "Fix: <specific issue>"
+2. Label them for dispatch:
+   bd --sandbox update <fix-id> --add-label "repo:{{repoName}}" --add-label "worktree:{{worktreeName}}" --add-label bismarck-ready --add-label critic-fixup --add-label "fixup-for:{{originalTaskId}}"
+3. Close critic task:
+   bd close {{taskId}} --message "REJECTED: <issues found>"
+
+{{lastIterationWarning}}
+
+=== ENVIRONMENT ===
+Docker container with /workspace (same worktree as task agent) and /plan.
+Commands: git, gh, bd proxied to host.
+
+CRITICAL: Close your task with bd close to signal completion.`,
 }
 
 /**
@@ -517,6 +578,10 @@ export function getAvailableVariables(type: PromptType): string[] {
       return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+    case 'critic':
+      return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
+              'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
+              'repoName', 'worktreeName', 'lastIterationWarning']
     default:
       return []
   }
