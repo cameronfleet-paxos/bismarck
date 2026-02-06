@@ -281,11 +281,12 @@ export function CommandSearch({
     }
   }
 
-  const handleSelect = () => {
+  const handleSelect = (overrideIndex?: number) => {
+    const idx = overrideIndex ?? selectedIndex
     if (mode === 'commands') {
       // Check if selecting a command or an agent
-      if (selectedIndex < filteredCommands.length) {
-        const command = filteredCommands[selectedIndex]
+      if (idx < filteredCommands.length) {
+        const command = filteredCommands[idx]
         if (command.id === 'start-headless') {
           setPendingCommand('headless')
           setMode('agent-select')
@@ -307,7 +308,7 @@ export function CommandSearch({
         }
       } else {
         // Selected an agent directly
-        const agentIndex = selectedIndex - filteredCommands.length
+        const agentIndex = idx - filteredCommands.length
         const agent = filteredAgents[agentIndex]
         if (agent) {
           onSelectAgent(agent.id)
@@ -315,7 +316,7 @@ export function CommandSearch({
         }
       }
     } else if (mode === 'agent-select') {
-      const agent = filteredAgents[selectedIndex]
+      const agent = filteredAgents[idx]
       if (agent) {
         setSelectedAgent(agent)
         if (pendingCommand === 'ralph-loop') {
@@ -680,7 +681,7 @@ export function CommandSearch({
                             data-index={index}
                             onClick={() => {
                               setSelectedIndex(index)
-                              handleSelect()
+                              handleSelect(index)
                             }}
                             onMouseEnter={() => setSelectedIndex(index)}
                             className={`flex items-center gap-3 px-4 py-2 cursor-pointer transition-colors ${
@@ -798,7 +799,7 @@ export function CommandSearch({
                           data-index={index}
                           onClick={() => {
                             setSelectedIndex(index)
-                            handleSelect()
+                            handleSelect(index)
                           }}
                           onMouseEnter={() => setSelectedIndex(index)}
                           className={`flex items-center gap-3 px-4 py-2 cursor-pointer transition-colors ${
