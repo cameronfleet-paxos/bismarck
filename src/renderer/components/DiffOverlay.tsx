@@ -104,7 +104,7 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
 
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [files, selectedFile, onClose])
+  }, [files, selectedFile, onClose, handleRefresh])
 
   async function loadFileList() {
     setIsLoading(true)
