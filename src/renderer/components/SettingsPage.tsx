@@ -1112,7 +1112,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             </div>
           )}
         </div>
-        <Button size="sm" variant="ghost" onClick={onBack}>
+        <Button size="sm" variant="ghost" onClick={onBack} data-testid="back-to-workspace-button">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Workspace
         </Button>
@@ -1126,6 +1126,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
+                data-testid={`settings-section-${item.id}`}
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                   activeSection === item.id

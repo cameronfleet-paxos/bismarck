@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Update status types
@@ -112,6 +112,12 @@ export interface ElectronAPI {
   getAllRalphLoops: () => Promise<RalphLoopState[]>
   cleanupRalphLoop: (loopId: string) => Promise<void>
 
+  // Ralph Loop presets
+  getRalphLoopPresets: () => Promise<Array<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>>
+  addRalphLoopPreset: (preset: { label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>
+  updateRalphLoopPreset: (id: string, updates: { label?: string; description?: string; prompt?: string; completionPhrase?: string; maxIterations?: number; model?: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' } | undefined>
+  deleteRalphLoopPreset: (id: string) => Promise<boolean>
+
   // OAuth token management
   getOAuthToken: () => Promise<string | null>
   setOAuthToken: (token: string) => Promise<boolean>
@@ -125,6 +131,14 @@ export interface ElectronAPI {
   updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
+
+  // Git diff operations
+  getChangedFiles: (directory: string) => Promise<DiffResult>
+  getFileDiff: (directory: string, filepath: string, force?: boolean) => Promise<FileDiffContent>
+  isGitRepo: (directory: string) => Promise<boolean>
+  revertFile: (directory: string, filepath: string) => Promise<void>
+  writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
+  revertAllFiles: (directory: string) => Promise<void>
 
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>
@@ -168,7 +182,7 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 

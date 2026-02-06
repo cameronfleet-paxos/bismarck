@@ -5,7 +5,7 @@ import { TaskCard } from '@/renderer/components/TaskCard'
 import { DependencyProgressBar } from '@/renderer/components/DependencyProgressBar'
 import { DependencyGraphModal } from '@/renderer/components/DependencyGraphModal'
 import { buildDependencyGraph, calculateGraphStats } from '@/renderer/utils/build-dependency-graph'
-import type { Plan, TaskAssignment, Agent, PlanActivity, DependencyGraph, GraphStats, BeadTask } from '@/shared/types'
+import type { Plan, TaskAssignment, Agent, PlanActivity, DependencyGraph, GraphStats, BeadTask, PlanWorktree } from '@/shared/types'
 
 interface PlanDetailViewProps {
   plan: Plan
@@ -144,6 +144,26 @@ function DiscussionOutputSection({ summary, outputPath }: { summary?: string; ou
   )
 }
 
+function CriticBadge({ worktree }: { worktree?: PlanWorktree }) {
+  if (!worktree?.criticStatus) return null
+
+  const badges: Record<string, { label: string; className: string }> = {
+    reviewing: { label: 'Reviewing...', className: 'bg-yellow-500/20 text-yellow-500' },
+    approved: { label: 'Approved', className: 'bg-green-500/20 text-green-500' },
+    rejected: { label: `Fix-ups (iter ${(worktree.criticIteration ?? 0) + 1})`, className: 'bg-orange-500/20 text-orange-500' },
+    pending: { label: 'Critic Pending', className: 'bg-muted text-muted-foreground' },
+  }
+
+  const badge = badges[worktree.criticStatus]
+  if (!badge) return null
+
+  return (
+    <span className={`text-[10px] px-1 py-0.5 rounded ${badge.className}`}>
+      {badge.label}
+    </span>
+  )
+}
+
 export function PlanDetailView({
   plan,
   activities,
@@ -255,6 +275,9 @@ export function PlanDetailView({
 
   const getAgentById = (id: string) => agents.find((a) => a.id === id)
   const referenceAgent = plan.referenceAgentId ? getAgentById(plan.referenceAgentId) : null
+  const getWorktreeForTask = (taskId: string) => {
+    return plan.worktrees?.find(w => w.taskId === taskId)
+  }
 
   // Reverse activities for newest-first display
   const reversedActivities = [...activities].reverse()
@@ -620,12 +643,16 @@ export function PlanDetailView({
                   </div>
                   <div className="space-y-1">
                     {inProgressNodes.map((node) => (
-                      <TaskCard
-                        key={node.id}
-                        node={node}
-                        assignment={node.assignment}
-                        agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                      />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard
+                            node={node}
+                            assignment={node.assignment}
+                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
+                          />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -645,12 +672,16 @@ export function PlanDetailView({
                   </div>
                   <div className="space-y-1">
                     {sentNodes.map((node) => (
-                      <TaskCard
-                        key={node.id}
-                        node={node}
-                        assignment={node.assignment}
-                        agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                      />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard
+                            node={node}
+                            assignment={node.assignment}
+                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
+                          />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -670,7 +701,12 @@ export function PlanDetailView({
                   </div>
                   <div className="space-y-1">
                     {readyNodes.map((node) => (
-                      <TaskCard key={node.id} node={node} />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard node={node} />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -690,7 +726,12 @@ export function PlanDetailView({
                   </div>
                   <div className="space-y-1">
                     {blockedNodes.map((node) => (
-                      <TaskCard key={node.id} node={node} />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard node={node} />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -710,12 +751,16 @@ export function PlanDetailView({
                   </div>
                   <div className="space-y-1">
                     {failedNodes.map((node) => (
-                      <TaskCard
-                        key={node.id}
-                        node={node}
-                        assignment={node.assignment}
-                        agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                      />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard
+                            node={node}
+                            assignment={node.assignment}
+                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
+                          />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -736,12 +781,16 @@ export function PlanDetailView({
                   </summary>
                   <div className="space-y-1 mt-1">
                     {completedNodes.map((node) => (
-                      <TaskCard
-                        key={node.id}
-                        node={node}
-                        assignment={node.assignment}
-                        agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                      />
+                      <div key={node.id} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <TaskCard
+                            node={node}
+                            assignment={node.assignment}
+                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
+                          />
+                        </div>
+                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
+                      </div>
                     ))}
                   </div>
                 </details>

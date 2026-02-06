@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -36,6 +36,7 @@ import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
+import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -64,6 +65,14 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
   dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
   devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+  toggleAgentSidebar: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+  togglePlansSidebar: { key: 'p', modifiers: { meta: true, shift: true, alt: false } },
+  nextTab: { key: ']', modifiers: { meta: true, shift: true, alt: false } },
+  previousTab: { key: '[', modifiers: { meta: true, shift: true, alt: false } },
+  newTab: { key: 't', modifiers: { meta: true, shift: false, alt: false } },
+  closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
+  toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
+  closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -192,6 +201,18 @@ function App() {
     isInProgress: boolean
   } | null>(null)
 
+  // Diff overlay state (tracks which workspace has diff open)
+  const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
+
+  // Track whether agent was expanded before diff was opened (to restore on close)
+  const [expandedBeforeDiff, setExpandedBeforeDiff] = useState<boolean>(false)
+
+  // Track which agent directories are git repos (for hiding diff button)
+  const [gitRepoStatus, setGitRepoStatus] = useState<Map<string, boolean>>(new Map())
+
+  // Track file change counts per workspace for diff badge
+  const [fileChangeCounts, setFileChangeCounts] = useState<Map<string, number>>(new Map())
+
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
   const [isDestroying, setIsDestroying] = useState(false)
@@ -234,6 +255,70 @@ function App() {
       setShouldStartTutorial(true)
     }
   }, [preferencesLoaded, agents.length, preferences.tutorialCompleted])
+
+  // Check git repo status for agent directories (to hide diff button for non-git repos)
+  useEffect(() => {
+    const directories = new Set(agents.map(a => a.directory))
+    const unchecked = [...directories].filter(d => !gitRepoStatus.has(d))
+    if (unchecked.length === 0) return
+
+    Promise.all(
+      unchecked.map(async (dir) => {
+        try {
+          const isGit = await window.electronAPI.isGitRepo(dir)
+          return [dir, isGit] as const
+        } catch {
+          // If check fails (e.g., IPC not available), assume git repo to keep button visible
+          return [dir, true] as const
+        }
+      })
+    ).then((results) => {
+      setGitRepoStatus(prev => {
+        const next = new Map(prev)
+        for (const [dir, isGit] of results) {
+          next.set(dir, isGit)
+        }
+        return next
+      })
+    })
+  }, [agents])
+
+  // Poll file change counts for visible agents (for diff badge)
+  useEffect(() => {
+    const pollChangeCounts = async () => {
+      if (preferences.showDiffView === false) return
+      const activeTab = tabs.find(t => t.id === activeTabId)
+      if (!activeTab) return
+
+      const agentsToCheck = activeTerminals
+        .filter(t => activeTab.workspaceIds.includes(t.workspaceId))
+        .map(t => agents.find(a => a.id === t.workspaceId))
+        .filter((a): a is Agent => !!a && !a.isHeadless && !a.isStandaloneHeadless && gitRepoStatus.get(a.directory) !== false)
+
+      if (agentsToCheck.length === 0) return
+
+      const results = await Promise.allSettled(
+        agentsToCheck.map(async (agent) => {
+          const result = await window.electronAPI.getChangedFiles(agent.directory)
+          return [agent.id, result.files.length] as const
+        })
+      )
+
+      setFileChangeCounts(prev => {
+        const next = new Map(prev)
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            next.set(r.value[0], r.value[1])
+          }
+        }
+        return next
+      })
+    }
+
+    pollChangeCounts()
+    const interval = setInterval(pollChangeCounts, 5000)
+    return () => clearInterval(interval)
+  }, [activeTabId, activeTerminals, agents, gitRepoStatus, tabs, preferences.showDiffView])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -444,6 +529,14 @@ function App() {
     }
   }, [focusedAgentId, waitingQueue])
 
+  // Close diff overlay and restore agent expansion state
+  const closeDiffAndRestore = useCallback((tabId: string) => {
+    if (!expandedBeforeDiff) {
+      setMaximizedAgentIdByTab(prev => ({ ...prev, [tabId]: null }))
+    }
+    setDiffOpenForWorkspace(null)
+  }, [expandedBeforeDiff])
+
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
@@ -474,6 +567,132 @@ function App() {
       if (matchesShortcut(e, shortcuts.commandPalette)) {
         e.preventDefault()
         setCommandSearchOpen(true)
+        return
+      }
+
+      // Toggle agent sidebar shortcut
+      if (matchesShortcut(e, shortcuts.toggleAgentSidebar)) {
+        e.preventDefault()
+        setSidebarCollapsed(prev => !prev)
+        return
+      }
+
+      // Toggle plans sidebar shortcut (only in team mode)
+      if (matchesShortcut(e, shortcuts.togglePlansSidebar)) {
+        if (preferences.operatingMode === 'team') {
+          e.preventDefault()
+          const newOpen = !planSidebarOpen
+          setPlanSidebarOpen(newOpen)
+          window.electronAPI?.setPlanSidebarOpen?.(newOpen)
+        }
+        return
+      }
+
+      // Next tab shortcut
+      if (matchesShortcut(e, shortcuts.nextTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const nextIndex = (currentIndex + 1) % tabs.length
+          const nextTabId = tabs[nextIndex].id
+          setActiveTabId(nextTabId)
+          window.electronAPI?.setActiveTab?.(nextTabId)
+        }
+        return
+      }
+
+      // Previous tab shortcut
+      if (matchesShortcut(e, shortcuts.previousTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length
+          const prevTabId = tabs[prevIndex].id
+          setActiveTabId(prevTabId)
+          window.electronAPI?.setActiveTab?.(prevTabId)
+        }
+        return
+      }
+
+      // New tab shortcut
+      if (matchesShortcut(e, shortcuts.newTab)) {
+        e.preventDefault()
+        window.electronAPI?.createTab?.().then((newTab) => {
+          if (newTab) {
+            setActiveTabId(newTab.id)
+          }
+        })
+        return
+      }
+
+      // Close tab shortcut
+      if (matchesShortcut(e, shortcuts.closeTab)) {
+        e.preventDefault()
+        if (activeTabId && tabs.length > 1) {
+          // Don't close if it's the only tab
+          const activeTab = tabs.find(t => t.id === activeTabId)
+          if (activeTab) {
+            // Trigger deletion - this will show confirmation if there are agents
+            handleTabDeleteRequest(activeTabId)
+          }
+        }
+        return
+      }
+
+      // Toggle maximize agent shortcut
+      if (matchesShortcut(e, shortcuts.toggleMaximizeAgent)) {
+        e.preventDefault()
+        if (activeTabId && focusedAgentIdRef.current) {
+          const currentMaximized = maximizedAgentIdByTab[activeTabId]
+          if (currentMaximized === focusedAgentIdRef.current) {
+            // Already maximized, minimize
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+          } else {
+            // Maximize the focused agent
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: focusedAgentIdRef.current }))
+          }
+        }
+        return
+      }
+
+      // Close agent shortcut
+      if (matchesShortcut(e, shortcuts.closeAgent)) {
+        e.preventDefault()
+        if (focusedAgentIdRef.current) {
+          window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
+        }
+        return
+      }
+
+      // Cmd+D: Toggle diff overlay for focused agent
+      if (e.key === 'd' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        if (preferences.showDiffView === false) return
+
+        // If diff is already open, close it and restore expansion state
+        if (diffOpenForWorkspace) {
+          const tabForDiff = tabs.find(t => t.workspaceIds.includes(diffOpenForWorkspace))
+          if (tabForDiff) {
+            closeDiffAndRestore(tabForDiff.id)
+          } else {
+            setDiffOpenForWorkspace(null)
+          }
+          return
+        }
+
+        // Otherwise, open diff for the focused agent (if any)
+        if (focusedAgentId) {
+          const tabForAgent = tabs.find(t => t.workspaceIds.includes(focusedAgentId))
+          if (tabForAgent) {
+            const activeTabMaxId = maximizedAgentIdByTab[tabForAgent.id] || null
+            const isExpandMode = preferences.attentionMode === 'expand' && waitingQueue.length > 0
+            const autoExpId = isExpandMode ? waitingQueue[0] : null
+            const isCurrentlyExpanded = activeTabMaxId === focusedAgentId || autoExpId === focusedAgentId
+            setExpandedBeforeDiff(isCurrentlyExpanded)
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [tabForAgent.id]: focusedAgentId }))
+          }
+          setDiffOpenForWorkspace(focusedAgentId)
+        }
         return
       }
 
@@ -525,7 +744,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -1895,7 +2114,7 @@ function App() {
       {/* Main workspace view - always rendered to preserve terminal state */}
       <div className={`h-screen bg-background flex flex-col ${currentView === 'settings' ? 'hidden' : ''}`}>
       {/* Header */}
-      <header className="relative border-b px-4 py-2 flex items-center justify-between">
+      <header data-testid="app-header" className="relative border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo />
           <BootProgressIndicator
@@ -1949,12 +2168,13 @@ function App() {
               Next ({waitingQueue.length - 1})
             </Button>
           )}
-          <Button size="sm" onClick={handleAddAgent}>
+          <Button size="sm" onClick={handleAddAgent} data-testid="add-agent-button">
             <Plus className="h-4 w-4 mr-1" />
             Add
           </Button>
           {preferences.operatingMode === 'team' && (
             <Button
+              data-testid="plans-button"
               data-tutorial="plan-mode"
               size="sm"
               variant={planSidebarOpen ? 'secondary' : 'ghost'}
@@ -1970,6 +2190,7 @@ function App() {
             </Button>
           )}
           <Button
+            data-testid="settings-button"
             data-tutorial="settings-button"
             size="sm"
             variant="ghost"
@@ -2491,10 +2712,12 @@ function App() {
                             !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                           }`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                            info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
+                          }`}>
                             <div className="flex items-center gap-2">
                               <GripVertical className="w-4 h-4 text-muted-foreground/50" />
-                              <span>Task {info.taskId}</span>
+                              <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -2676,7 +2899,7 @@ function App() {
                               }`}>{iteration.status}</span>
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
                               {loopState.config.prompt && (
-                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt })} className="h-6 w-6 p-0" title="View prompt">
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, planId: loopState.id, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt, worktreePath: loopState.worktreeInfo.path, startedAt: iteration.startedAt })} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
                                 </Button>
                               )}
@@ -2789,6 +3012,40 @@ function App() {
                                   Waiting
                                 </span>
                               )}
+                              {/* Diff toggle button (only for non-headless agents in git repos) */}
+                              {preferences.showDiffView !== false && !agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === workspaceId) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: workspaceId }))
+                                        setDiffOpenForWorkspace(workspaceId)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {fileChangeCounts.has(workspaceId) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      fileChangeCounts.get(workspaceId) === 0
+                                        ? 'bg-green-500'
+                                        : fileChangeCounts.get(workspaceId)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {fileChangeCounts.get(workspaceId)! > 99 ? '99+' : fileChangeCounts.get(workspaceId)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {/* Maximize/Minimize button */}
                               <Button
                                 size="sm"
@@ -2850,7 +3107,7 @@ function App() {
                               )}
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <Terminal
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
@@ -2860,6 +3117,13 @@ function App() {
                               unregisterWriter={unregisterWriter}
                               getBufferedContent={getBufferedContent}
                             />
+                            {/* Diff overlay (absolute position over terminal) */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === workspaceId && (
+                              <DiffOverlay
+                                directory={agent.directory}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
