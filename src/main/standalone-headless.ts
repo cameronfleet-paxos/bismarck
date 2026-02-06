@@ -113,6 +113,12 @@ function saveStandaloneHeadlessAgentInfo(): void {
   writeConfigAtomic(getStandaloneHeadlessAgentInfoPath(), agents)
 }
 
+let onStatusChangeCallback: ((headlessId: string, status: string) => void) | null = null
+
+export function onStandaloneAgentStatusChange(cb: (headlessId: string, status: string) => void): void {
+  onStatusChangeCallback = cb
+}
+
 /**
  * Emit headless agent update to renderer
  */
@@ -121,6 +127,7 @@ function emitHeadlessAgentUpdate(info: HeadlessAgentInfo): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('headless-agent-update', info)
   }
+  onStatusChangeCallback?.(info.id, info.status)
 }
 
 /**

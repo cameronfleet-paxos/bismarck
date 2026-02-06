@@ -3611,10 +3611,17 @@ async function updatePlanStatuses(): Promise<void> {
 /**
  * Emit plan update event to renderer
  */
+let onPlanStatusChangeCallback: ((planId: string, status: string) => void) | null = null
+
+export function onPlanStatusChange(cb: (planId: string, status: string) => void): void {
+  onPlanStatusChangeCallback = cb
+}
+
 function emitPlanUpdate(plan: Plan): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('plan-update', plan)
   }
+  onPlanStatusChangeCallback?.(plan.id, plan.status)
 }
 
 /**

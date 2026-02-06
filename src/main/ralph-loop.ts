@@ -128,6 +128,12 @@ function saveRalphLoopStates(): void {
   writeConfigAtomic(getRalphLoopStatePath(), states)
 }
 
+let onStatusChangeCallback: ((loopId: string, status: string) => void) | null = null
+
+export function onRalphLoopStatusChange(cb: (loopId: string, status: string) => void): void {
+  onStatusChangeCallback = cb
+}
+
 /**
  * Emit Ralph Loop update to renderer
  */
@@ -136,6 +142,7 @@ function emitRalphLoopUpdate(state: RalphLoopState): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('ralph-loop-update', state)
   }
+  onStatusChangeCallback?.(state.id, state.status)
 }
 
 /**

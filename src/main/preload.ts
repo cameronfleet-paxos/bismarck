@@ -389,6 +389,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }): Promise<void> =>
     ipcRenderer.invoke('update-debug-settings', settings),
 
+  // Prevent sleep settings
+  getPreventSleepSettings: (): Promise<{ enabled: boolean }> =>
+    ipcRenderer.invoke('get-prevent-sleep-settings'),
+  updatePreventSleepSettings: (settings: { enabled?: boolean }): Promise<void> =>
+    ipcRenderer.invoke('update-prevent-sleep-settings', settings),
+  getPowerSaveState: (): Promise<{ enabled: boolean; active: boolean; reasons: string[] }> =>
+    ipcRenderer.invoke('get-power-save-state'),
+
   // Crash logging (for renderer process errors)
   reportRendererCrash: (error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }): Promise<void> =>
     ipcRenderer.invoke('report-renderer-crash', error, context),

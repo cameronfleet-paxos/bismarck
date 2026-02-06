@@ -173,6 +173,11 @@ export interface ElectronAPI {
   getDebugSettings: () => Promise<{ enabled: boolean; logPath: string }>
   updateDebugSettings: (settings: { enabled?: boolean; logPath?: string }) => Promise<void>
 
+  // Prevent sleep settings
+  getPreventSleepSettings: () => Promise<{ enabled: boolean }>
+  updatePreventSleepSettings: (settings: { enabled?: boolean }) => Promise<void>
+  getPowerSaveState: () => Promise<{ enabled: boolean; active: boolean; reasons: string[] }>
+
   // Crash logging (for renderer process errors)
   reportRendererCrash: (error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }) => Promise<void>
 

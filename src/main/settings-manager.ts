@@ -74,6 +74,9 @@ export interface AppSettings {
     enabled: boolean              // Toggle logging on/off
     logPath: string               // Log file path (default ~/.bismarck/debug.log)
   }
+  preventSleep: {
+    enabled: boolean              // Prevent macOS sleep while agents are running
+  }
 }
 
 /**
@@ -173,6 +176,9 @@ export function getDefaultSettings(): AppSettings {
       enabled: true,  // Enabled by default for troubleshooting
       logPath: path.join(getConfigDir(), 'debug.log'),
     },
+    preventSleep: {
+      enabled: true,  // Prevent sleep by default while agents run
+    },
   }
 }
 
@@ -223,6 +229,7 @@ export async function loadSettings(): Promise<AppSettings> {
       updates: { ...defaults.updates, ...(loaded.updates || {}) },
       ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
+      preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -324,6 +331,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     debug: {
       ...(currentSettings.debug || defaults.debug),
       ...(updates.debug || {}),
+    },
+    preventSleep: {
+      ...(currentSettings.preventSleep || defaults.preventSleep),
+      ...(updates.preventSleep || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -722,6 +733,27 @@ export async function updateDebugSettings(debugSettings: Partial<AppSettings['de
   settings.debug = {
     ...(settings.debug || defaults.debug),
     ...debugSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Get prevent sleep settings
+ */
+export async function getPreventSleepSettings(): Promise<AppSettings['preventSleep']> {
+  const settings = await loadSettings()
+  return settings.preventSleep
+}
+
+/**
+ * Update prevent sleep settings
+ */
+export async function updatePreventSleepSettings(preventSleepSettings: Partial<AppSettings['preventSleep']>): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.preventSleep = {
+    ...(settings.preventSleep || defaults.preventSleep),
+    ...preventSleepSettings,
   }
   await saveSettings(settings)
 }

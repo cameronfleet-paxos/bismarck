@@ -40,6 +40,9 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
   const [debugEnabled, setDebugEnabled] = useState(true)
   const [debugLogPath, setDebugLogPath] = useState('')
 
+  // Prevent sleep state
+  const [preventSleepEnabled, setPreventSleepEnabled] = useState(true)
+
   // Grid size reduction confirmation state
   const [gridSizeConfirm, setGridSizeConfirm] = useState<{
     pendingSize: GridSize
@@ -70,8 +73,18 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
       }
     }
 
+    const loadPreventSleepSettings = async () => {
+      try {
+        const settings = await window.electronAPI.getPreventSleepSettings()
+        setPreventSleepEnabled(settings.enabled)
+      } catch (error) {
+        console.error('Failed to load prevent sleep settings:', error)
+      }
+    }
+
     loadPreferences()
     loadDebugSettings()
+    loadPreventSleepSettings()
   }, [])
 
   const handleAttentionModeChange = (mode: AttentionMode) => {
@@ -156,6 +169,18 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
       console.error('Failed to restart tutorial:', error)
     } finally {
       setRestarting(false)
+    }
+  }
+
+  const handlePreventSleepChange = async (enabled: boolean) => {
+    setPreventSleepEnabled(enabled)
+    try {
+      await window.electronAPI.updatePreventSleepSettings({ enabled })
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update prevent sleep settings:', error)
+      setPreventSleepEnabled(!enabled)
     }
   }
 
@@ -255,6 +280,20 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
             <RotateCcw className="h-4 w-4 mr-2" />
             {restarting ? 'Restarting...' : 'Restart Tutorial'}
           </Button>
+        </div>
+
+        {/* Prevent Sleep Toggle */}
+        <div className="flex items-center justify-between py-2 border-t pt-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Prevent Sleep</Label>
+            <p className="text-sm text-muted-foreground">
+              Keep your Mac awake while agents are running
+            </p>
+          </div>
+          <Switch
+            checked={preventSleepEnabled}
+            onCheckedChange={handlePreventSleepChange}
+          />
         </div>
 
         {/* Debug Logging Toggle */}

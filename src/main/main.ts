@@ -102,6 +102,7 @@ import {
   startDiscussion,
   cancelDiscussion,
   requestFollowUps,
+  onPlanStatusChange,
 } from './plan-manager'
 import {
   detectRepository,
@@ -148,6 +149,8 @@ import {
   deleteRalphLoopPreset,
   getDebugSettings,
   updateDebugSettings,
+  getPreventSleepSettings,
+  updatePreventSleepSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -165,6 +168,7 @@ import {
   restartStandaloneHeadlessAgent,
   startHeadlessDiscussion,
   cancelHeadlessDiscussion,
+  onStandaloneAgentStatusChange,
 } from './standalone-headless'
 import {
   startRalphLoop,
@@ -177,8 +181,10 @@ import {
   setMainWindowForRalphLoop,
   initRalphLoop,
   getRalphLoopByTabId,
+  onRalphLoopStatusChange,
 } from './ralph-loop'
 import { initializeDockerEnvironment } from './docker-sandbox'
+import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
   setAutoUpdaterWindow,
@@ -991,6 +997,22 @@ function registerIpcHandlers() {
     clearDebugSettingsCache()
   })
 
+  // Prevent sleep settings
+  ipcMain.handle('get-prevent-sleep-settings', async () => {
+    return getPreventSleepSettings()
+  })
+
+  ipcMain.handle('update-prevent-sleep-settings', async (_event, settings: { enabled?: boolean }) => {
+    await updatePreventSleepSettings(settings)
+    if (settings.enabled !== undefined) {
+      setPreventSleepEnabled(settings.enabled)
+    }
+  })
+
+  ipcMain.handle('get-power-save-state', () => {
+    return getPowerSaveState()
+  })
+
   // Crash logging (for renderer process errors)
   ipcMain.handle('report-renderer-crash', async (_event, error: { message: string; stack?: string; name?: string }, context?: { component?: string; operation?: string }) => {
     const errorObj = new Error(error.message)
@@ -1065,6 +1087,41 @@ app.whenReady().then(async () => {
   // Initialize Ralph Loop module
   timeSync('main:initRalphLoop', 'main', () => initRalphLoop())
 
+  // Initialize power save blocker
+  // Acquire/release is driven entirely by status change callbacks from each module —
+  // no per-IPC-handler calls needed.
+  await timeAsync('main:initPowerSave', 'main', async () => {
+    const preventSleepSettings = await getPreventSleepSettings()
+    initPowerSave(preventSleepSettings.enabled)
+
+    const PLAN_ACTIVE_STATUSES = new Set(['delegating', 'in_progress'])
+    onPlanStatusChange((planId, status) => {
+      if (PLAN_ACTIVE_STATUSES.has(status)) {
+        acquirePowerSave(`plan:${planId}`)
+      } else {
+        releasePowerSave(`plan:${planId}`)
+      }
+    })
+
+    const STANDALONE_ACTIVE_STATUSES = new Set(['starting', 'running'])
+    onStandaloneAgentStatusChange((headlessId, status) => {
+      if (STANDALONE_ACTIVE_STATUSES.has(status)) {
+        acquirePowerSave(`standalone:${headlessId}`)
+      } else {
+        releasePowerSave(`standalone:${headlessId}`)
+      }
+    })
+
+    const RALPH_ACTIVE_STATUSES = new Set(['running'])
+    onRalphLoopStatusChange((loopId, status) => {
+      if (RALPH_ACTIVE_STATUSES.has(status)) {
+        acquirePowerSave(`ralph:${loopId}`)
+      } else {
+        releasePowerSave(`ralph:${loopId}`)
+      }
+    })
+  })
+
   // Create hook script and configure Claude settings
   timeSync('main:createHookScript', 'main', () => createHookScript())
   timeSync('main:configureClaudeHook', 'main', () => configureClaudeHook())
@@ -1113,6 +1170,7 @@ app.on('window-all-closed', async () => {
   closeAllTerminals()
   closeAllSocketServers()
   stopPeriodicChecks()
+  cleanupPowerSave()
   await cleanupPlanManager()
   await cleanupDevHarness()
   destroyTray()
@@ -1131,6 +1189,7 @@ app.on('before-quit', async () => {
   clearQueue()
   closeAllTerminals()
   closeAllSocketServers()
+  cleanupPowerSave()
   await cleanupPlanManager()
   await cleanupDevHarness()
   destroyTray()
