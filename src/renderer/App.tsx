@@ -2908,9 +2908,15 @@ function App() {
                               {/* Git Summary */}
                               {loopState.gitSummary && (
                                 <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1" title={`Branch: ${loopState.gitSummary.branch}`}>
+                                  <span className="flex items-center cursor-pointer" title={loopState.gitSummary.branch} onClick={() => {
+                                    // Try to derive repo URL from a PR URL if available
+                                    const prUrl = loopState.gitSummary?.pullRequests?.[0]?.url
+                                    if (prUrl) {
+                                      const repoUrl = prUrl.replace(/\/pull\/\d+$/, '')
+                                      window.electronAPI?.openExternal?.(`${repoUrl}/tree/${loopState.gitSummary!.branch}`)
+                                    }
+                                  }}>
                                     <GitBranch className="h-3 w-3" />
-                                    <span className="max-w-[120px] truncate">{loopState.gitSummary.branch}</span>
                                   </span>
                                   {loopState.gitSummary.commits.length > 0 && (
                                     <span className="flex items-center gap-1" title={`${loopState.gitSummary.commits.length} commit${loopState.gitSummary.commits.length !== 1 ? 's' : ''}`}>
