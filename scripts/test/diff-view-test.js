@@ -83,6 +83,123 @@ class TestRunner {
       console.warn('  Tests may fail if onboarding wizard is shown\n');
     }
 
+    // Check if wizard is still visible and click Skip Setup if needed
+    await new Promise(resolve => setTimeout(resolve, 500)); // Wait for UI to update
+    try {
+      const wizardVisible = await this.cdp.evaluate(`
+        !!document.querySelector('h2')?.textContent?.includes('Check Dependencies')
+      `);
+
+      if (wizardVisible) {
+        console.log('Wizard still visible, clicking "Skip Setup"...');
+        await this.cdp.evaluate(`
+          (function() {
+            const buttons = [...document.querySelectorAll('button')];
+            const skipButton = buttons.find(b => b.textContent.trim() === 'Skip Setup');
+            if (skipButton) {
+              skipButton.click();
+            } else {
+              throw new Error('Skip Setup button not found');
+            }
+          })()
+        `);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for wizard to close
+        console.log('✓ Wizard dismissed\n');
+      }
+
+      // Check if "Add Agent" dialog appeared and close it
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const addAgentVisible = await this.cdp.evaluate(`
+        !!document.querySelector('h2')?.textContent?.includes('Add Agent')
+      `);
+
+      if (addAgentVisible) {
+        console.log('Add Agent dialog visible, closing it...');
+        await this.cdp.evaluate(`
+          (function() {
+            const buttons = [...document.querySelectorAll('button')];
+            const cancelButton = buttons.find(b => b.textContent.trim() === 'Cancel');
+            if (cancelButton) {
+              cancelButton.click();
+            } else {
+              // Try clicking the X button
+              const closeButton = document.querySelector('button[aria-label="Close"]');
+              if (closeButton) {
+                closeButton.click();
+              } else {
+                throw new Error('Cancel or Close button not found');
+              }
+            }
+          })()
+        `);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('✓ Add Agent dialog dismissed\n');
+      }
+
+      // Check if tutorial dialog appeared and skip it
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const tutorialVisible = await this.cdp.evaluate(`
+        !!document.querySelector('h2')?.textContent?.includes('Welcome to Bismarck')
+      `);
+
+      if (tutorialVisible) {
+        console.log('Tutorial dialog visible, skipping it...');
+        await this.cdp.evaluate(`
+          (function() {
+            const buttons = [...document.querySelectorAll('button')];
+            const skipButton = buttons.find(b => b.textContent.trim() === 'Skip Tutorial');
+            if (skipButton) {
+              skipButton.click();
+            } else {
+              throw new Error('Skip Tutorial button not found');
+            }
+          })()
+        `);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('✓ Tutorial dismissed\n');
+      }
+    } catch (error) {
+      console.warn('⚠ Warning: Failed to dismiss wizard/dialog:', error.message);
+      console.warn('  Tests may fail if wizard is still shown\n');
+    }
+
+    // ALWAYS check for tutorial dialog after agent creation (it appears even if wizard was bypassed)
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Extra wait for tutorial to appear
+
+      // More robust check for tutorial dialog
+      const dialogCheck = await this.cdp.evaluate(`
+        (function() {
+          const allH2 = [...document.querySelectorAll('h2')];
+          const tutorialH2 = allH2.find(h => h.textContent.includes('Welcome to Bismarck'));
+          return {
+            hasTutorial: !!tutorialH2,
+            h2Texts: allH2.map(h => h.textContent),
+            hasSkipButton: !!([...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Skip Tutorial'))
+          };
+        })()
+      `);
+
+      if (dialogCheck.hasTutorial || dialogCheck.hasSkipButton) {
+        console.log('Tutorial dialog detected, skipping it...');
+        await this.cdp.evaluate(`
+          (function() {
+            const buttons = [...document.querySelectorAll('button')];
+            const skipButton = buttons.find(b => b.textContent.trim() === 'Skip Tutorial');
+            if (skipButton) {
+              skipButton.click();
+            } else {
+              throw new Error('Skip Tutorial button not found');
+            }
+          })()
+        `);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('✓ Tutorial dismissed\n');
+      }
+    } catch (error) {
+      console.warn('⚠ Warning: Failed to dismiss tutorial:', error.message);
+    }
+
     // Setup screenshot directory if needed
     if (SCREENSHOT_MODE && !fs.existsSync(SCREENSHOT_DIR)) {
       fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
