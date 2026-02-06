@@ -55,6 +55,7 @@ export interface Repository {
   purpose?: string        // Description of what repo is for
   completionCriteria?: string  // What "done" looks like
   protectedBranches?: string[]  // Branches that should not be modified
+  guidance?: string       // Custom guidance/quirks for headless agents
 }
 
 // Agent definition (stored in ~/.bismarck/config.json)

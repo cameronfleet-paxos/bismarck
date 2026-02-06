@@ -49,6 +49,7 @@ export interface PromptVariables {
   // Headless task agent variables
   gitCommands?: string           // Branch-strategy-dependent git instructions
   completionCriteria?: string    // Repository completion criteria (PR mode only)
+  guidance?: string              // Repository-specific guidance for headless agents
 
   // Standalone headless agent variables
   userPrompt?: string            // The user's task description
@@ -295,7 +296,7 @@ Title: {{taskTitle}}
 === FIRST STEP ===
 Read your task details to understand what you need to do:
   bd show {{taskId}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
@@ -357,7 +358,7 @@ All these commands work normally (they are proxied to the host automatically):
 
 === YOUR TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 When you complete your work:
 
@@ -410,7 +411,7 @@ All these commands work normally (they are proxied to the host automatically):
 
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 1. Review the previous commits above to understand what was done
 
@@ -510,11 +511,11 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
     case 'task':
-      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria']
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':
-      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria', 'guidance']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
     default:
