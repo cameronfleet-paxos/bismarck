@@ -261,9 +261,18 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
                   isTooLarge={currentDiff.isTooLarge}
                   isLoading={isDiffLoading}
                   error={diffError}
-                  onLoadAnyway={() => {
-                    // For large files, user can force load
-                    // This is handled by the backend already
+                  onLoadAnyway={async () => {
+                    if (!selectedFile) return
+                    setIsDiffLoading(true)
+                    setDiffError(null)
+                    try {
+                      const content = await window.electronAPI.getFileDiff(directory, selectedFile, true)
+                      setDiffCache(prev => new Map(prev).set(selectedFile, content))
+                    } catch (err) {
+                      setDiffError(err instanceof Error ? err.message : 'Failed to load diff')
+                    } finally {
+                      setIsDiffLoading(false)
+                    }
                   }}
                 />
               ) : isDiffLoading ? (

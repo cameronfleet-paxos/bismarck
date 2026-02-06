@@ -191,6 +191,9 @@ function App() {
   // Diff overlay state (tracks which workspace has diff open)
   const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
 
+  // Track which agent directories are git repos (for hiding diff button)
+  const [gitRepoStatus, setGitRepoStatus] = useState<Map<string, boolean>>(new Map())
+
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
   const [isDestroying, setIsDestroying] = useState(false)
@@ -233,6 +236,33 @@ function App() {
       setShouldStartTutorial(true)
     }
   }, [preferencesLoaded, agents.length, preferences.tutorialCompleted])
+
+  // Check git repo status for agent directories (to hide diff button for non-git repos)
+  useEffect(() => {
+    const directories = new Set(agents.map(a => a.directory))
+    const unchecked = [...directories].filter(d => !gitRepoStatus.has(d))
+    if (unchecked.length === 0) return
+
+    Promise.all(
+      unchecked.map(async (dir) => {
+        try {
+          const isGit = await window.electronAPI.isGitRepo(dir)
+          return [dir, isGit] as const
+        } catch {
+          // If check fails (e.g., IPC not available), assume git repo to keep button visible
+          return [dir, true] as const
+        }
+      })
+    ).then((results) => {
+      setGitRepoStatus(prev => {
+        const next = new Map(prev)
+        for (const [dir, isGit] of results) {
+          next.set(dir, isGit)
+        }
+        return next
+      })
+    })
+  }, [agents])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -2806,8 +2836,8 @@ function App() {
                                   Waiting
                                 </span>
                               )}
-                              {/* Diff toggle button (only for non-headless agents) */}
-                              {!agent.isHeadless && !agent.isStandaloneHeadless && (
+                              {/* Diff toggle button (only for non-headless agents in git repos) */}
+                              {!agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
                                 <Button
                                   size="sm"
                                   variant="ghost"

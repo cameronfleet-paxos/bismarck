@@ -279,8 +279,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Git diff operations
   getChangedFiles: (directory: string): Promise<DiffResult> =>
     ipcRenderer.invoke('get-changed-files', directory),
-  getFileDiff: (directory: string, filepath: string): Promise<FileDiffContent> =>
-    ipcRenderer.invoke('get-file-diff', directory, filepath),
+  getFileDiff: (directory: string, filepath: string, force?: boolean): Promise<FileDiffContent> =>
+    ipcRenderer.invoke('get-file-diff', directory, filepath, force),
+  isGitRepo: (directory: string): Promise<boolean> =>
+    ipcRenderer.invoke('is-git-repo', directory),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>

@@ -205,6 +205,7 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import { getChangedFiles, getFileDiff } from './git-diff'
+import { isGitRepo } from './git-utils'
 import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
@@ -805,8 +806,12 @@ function registerIpcHandlers() {
     return getChangedFiles(directory)
   })
 
-  ipcMain.handle('get-file-diff', async (_event, directory: string, filepath: string) => {
-    return getFileDiff(directory, filepath)
+  ipcMain.handle('get-file-diff', async (_event, directory: string, filepath: string, force?: boolean) => {
+    return getFileDiff(directory, filepath, force)
+  })
+
+  ipcMain.handle('is-git-repo', async (_event, directory: string) => {
+    return isGitRepo(directory)
   })
 
   // Setup wizard

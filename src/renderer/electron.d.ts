@@ -127,7 +127,8 @@ export interface ElectronAPI {
 
   // Git diff operations
   getChangedFiles: (directory: string) => Promise<DiffResult>
-  getFileDiff: (directory: string, filepath: string) => Promise<FileDiffContent>
+  getFileDiff: (directory: string, filepath: string, force?: boolean) => Promise<FileDiffContent>
+  isGitRepo: (directory: string) => Promise<boolean>
 
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>

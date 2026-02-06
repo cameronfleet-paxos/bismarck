@@ -8,6 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { logger } from './logger';
 import { findBinary } from './exec-utils';
+import { isGitRepo } from './git-utils';
 import type { DiffResult, DiffFile, FileDiffContent } from '../shared/types';
 
 const execFileAsync = promisify(execFile);
@@ -103,6 +104,15 @@ async function hasHeadCommit(directory: string): Promise<boolean> {
 export async function getChangedFiles(directory: string): Promise<DiffResult> {
   const startTime = Date.now();
   logger.debug('git-diff', 'Getting changed files', { directory });
+
+  // Return empty result for non-git directories
+  if (!await isGitRepo(directory)) {
+    logger.debug('git-diff', 'Not a git repository, returning empty result', { directory });
+    return {
+      files: [],
+      summary: { filesChanged: 0, additions: 0, deletions: 0 },
+    };
+  }
 
   try {
     const gitPath = getGitPath();
@@ -250,9 +260,22 @@ export async function getChangedFiles(directory: string): Promise<DiffResult> {
  * @param filepath - Relative path to file from repository root
  * @returns FileDiffContent with old/new content and metadata
  */
-export async function getFileDiff(directory: string, filepath: string): Promise<FileDiffContent> {
+export async function getFileDiff(directory: string, filepath: string, force?: boolean): Promise<FileDiffContent> {
   const startTime = Date.now();
-  logger.debug('git-diff', 'Getting file diff', { directory, filepath });
+  logger.debug('git-diff', `Getting file diff${force ? ' (force)' : ''}`, { directory, filepath });
+
+  // Return error for non-git directories
+  if (!await isGitRepo(directory)) {
+    logger.debug('git-diff', 'Not a git repository', { directory });
+    return {
+      oldContent: '',
+      newContent: '',
+      language: detectLanguage(filepath),
+      isBinary: false,
+      isTooLarge: false,
+      error: 'Not a git repository',
+    };
+  }
 
   try {
     const gitPath = getGitPath();
@@ -262,10 +285,10 @@ export async function getFileDiff(directory: string, filepath: string): Promise<
     // Detect language
     const language = detectLanguage(filepath);
 
-    // Check if file is too large
+    // Check if file is too large (skip when force=true)
     try {
       const stats = await fs.stat(fullPath);
-      if (stats.size > MAX_FILE_SIZE_BYTES) {
+      if (!force && stats.size > MAX_FILE_SIZE_BYTES) {
         logger.warn('git-diff', 'File is too large to display', { directory, filepath, size: stats.size });
         return {
           oldContent: '',
