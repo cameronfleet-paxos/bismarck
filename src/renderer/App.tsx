@@ -65,6 +65,14 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
   dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
   devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+  toggleAgentSidebar: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+  togglePlansSidebar: { key: 'p', modifiers: { meta: true, shift: true, alt: false } },
+  nextTab: { key: ']', modifiers: { meta: true, shift: true, alt: false } },
+  previousTab: { key: '[', modifiers: { meta: true, shift: true, alt: false } },
+  newTab: { key: 't', modifiers: { meta: true, shift: false, alt: false } },
+  closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
+  toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
+  closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -557,6 +565,100 @@ function App() {
         return
       }
 
+      // Toggle agent sidebar shortcut
+      if (matchesShortcut(e, shortcuts.toggleAgentSidebar)) {
+        e.preventDefault()
+        setSidebarCollapsed(prev => !prev)
+        return
+      }
+
+      // Toggle plans sidebar shortcut (only in team mode)
+      if (matchesShortcut(e, shortcuts.togglePlansSidebar)) {
+        if (preferences.operatingMode === 'team') {
+          e.preventDefault()
+          const newOpen = !planSidebarOpen
+          setPlanSidebarOpen(newOpen)
+          window.electronAPI?.setPlanSidebarOpen?.(newOpen)
+        }
+        return
+      }
+
+      // Next tab shortcut
+      if (matchesShortcut(e, shortcuts.nextTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const nextIndex = (currentIndex + 1) % tabs.length
+          const nextTabId = tabs[nextIndex].id
+          setActiveTabId(nextTabId)
+          window.electronAPI?.setActiveTab?.(nextTabId)
+        }
+        return
+      }
+
+      // Previous tab shortcut
+      if (matchesShortcut(e, shortcuts.previousTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length
+          const prevTabId = tabs[prevIndex].id
+          setActiveTabId(prevTabId)
+          window.electronAPI?.setActiveTab?.(prevTabId)
+        }
+        return
+      }
+
+      // New tab shortcut
+      if (matchesShortcut(e, shortcuts.newTab)) {
+        e.preventDefault()
+        window.electronAPI?.createTab?.().then((newTab) => {
+          if (newTab) {
+            setActiveTabId(newTab.id)
+          }
+        })
+        return
+      }
+
+      // Close tab shortcut
+      if (matchesShortcut(e, shortcuts.closeTab)) {
+        e.preventDefault()
+        if (activeTabId && tabs.length > 1) {
+          // Don't close if it's the only tab
+          const activeTab = tabs.find(t => t.id === activeTabId)
+          if (activeTab) {
+            // Trigger deletion - this will show confirmation if there are agents
+            handleTabDeleteRequest(activeTabId)
+          }
+        }
+        return
+      }
+
+      // Toggle maximize agent shortcut
+      if (matchesShortcut(e, shortcuts.toggleMaximizeAgent)) {
+        e.preventDefault()
+        if (activeTabId && focusedAgentIdRef.current) {
+          const currentMaximized = maximizedAgentIdByTab[activeTabId]
+          if (currentMaximized === focusedAgentIdRef.current) {
+            // Already maximized, minimize
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+          } else {
+            // Maximize the focused agent
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: focusedAgentIdRef.current }))
+          }
+        }
+        return
+      }
+
+      // Close agent shortcut
+      if (matchesShortcut(e, shortcuts.closeAgent)) {
+        e.preventDefault()
+        if (focusedAgentIdRef.current) {
+          window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
+        }
+        return
+      }
+
       // Cmd+D: Toggle diff overlay for focused agent
       if (e.key === 'd' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
@@ -637,7 +739,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()

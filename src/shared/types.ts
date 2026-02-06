@@ -122,6 +122,14 @@ export interface KeyboardShortcuts {
   commandPalette: KeyboardShortcut    // Default: Cmd/Ctrl+K
   dismissAgent: KeyboardShortcut      // Default: Cmd/Ctrl+N
   devConsole?: KeyboardShortcut       // Default: Cmd/Ctrl+Shift+D (dev only)
+  toggleAgentSidebar?: KeyboardShortcut  // Default: Cmd/Ctrl+B
+  togglePlansSidebar?: KeyboardShortcut  // Default: Cmd/Ctrl+Shift+P
+  nextTab?: KeyboardShortcut             // Default: Cmd/Ctrl+Shift+]
+  previousTab?: KeyboardShortcut         // Default: Cmd/Ctrl+Shift+[
+  newTab?: KeyboardShortcut              // Default: Cmd/Ctrl+T
+  closeTab?: KeyboardShortcut            // Default: Cmd/Ctrl+W
+  toggleMaximizeAgent?: KeyboardShortcut // Default: Cmd/Ctrl+Shift+M
+  closeAgent?: KeyboardShortcut          // Default: Cmd/Ctrl+Shift+W
 }
 
 // App preferences (stored in ~/.bismarck/state.json)
