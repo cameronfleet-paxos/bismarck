@@ -1908,7 +1908,7 @@ function App() {
       {/* Main workspace view - always rendered to preserve terminal state */}
       <div className={`h-screen bg-background flex flex-col ${currentView === 'settings' ? 'hidden' : ''}`}>
       {/* Header */}
-      <header className="relative border-b px-4 py-2 flex items-center justify-between">
+      <header data-testid="app-header" className="relative border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo />
           <BootProgressIndicator
@@ -1962,12 +1962,13 @@ function App() {
               Next ({waitingQueue.length - 1})
             </Button>
           )}
-          <Button size="sm" onClick={handleAddAgent}>
+          <Button size="sm" onClick={handleAddAgent} data-testid="add-agent-button">
             <Plus className="h-4 w-4 mr-1" />
             Add
           </Button>
           {preferences.operatingMode === 'team' && (
             <Button
+              data-testid="plans-button"
               data-tutorial="plan-mode"
               size="sm"
               variant={planSidebarOpen ? 'secondary' : 'ghost'}
@@ -1983,6 +1984,7 @@ function App() {
             </Button>
           )}
           <Button
+            data-testid="settings-button"
             data-tutorial="settings-button"
             size="sm"
             variant="ghost"

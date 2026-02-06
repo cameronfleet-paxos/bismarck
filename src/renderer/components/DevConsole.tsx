@@ -141,7 +141,7 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
   if (!open) return null
 
   return (
-    <div className="fixed inset-4 z-50 bg-background/95 backdrop-blur-sm border rounded-lg shadow-2xl flex flex-col overflow-hidden">
+    <div data-testid="dev-console" className="fixed inset-4 z-50 bg-background/95 backdrop-blur-sm border rounded-lg shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
         <div className="flex items-center gap-2">
