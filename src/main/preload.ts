@@ -283,6 +283,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-file-diff', directory, filepath, force),
   isGitRepo: (directory: string): Promise<boolean> =>
     ipcRenderer.invoke('is-git-repo', directory),
+  revertFile: (directory: string, filepath: string): Promise<void> =>
+    ipcRenderer.invoke('revert-file', directory, filepath),
+  writeFileContent: (directory: string, filepath: string, content: string): Promise<void> =>
+    ipcRenderer.invoke('write-file-content', directory, filepath, content),
+  revertAllFiles: (directory: string): Promise<void> =>
+    ipcRenderer.invoke('revert-all-files', directory),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>

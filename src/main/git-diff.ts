@@ -408,3 +408,86 @@ export async function getFileDiff(directory: string, filepath: string, force?: b
     throw new Error(`Failed to get file diff: ${err.message}`);
   }
 }
+
+/**
+ * Validate that a filepath doesn't contain path traversal
+ */
+function validateFilepath(filepath: string): void {
+  if (filepath.includes('..') || path.isAbsolute(filepath)) {
+    throw new Error('Invalid filepath: path traversal not allowed');
+  }
+}
+
+/**
+ * Revert a single file to HEAD
+ * - For files that exist in HEAD: git checkout HEAD -- <filepath>
+ * - For added files (not in HEAD): delete the file
+ */
+export async function revertFile(directory: string, filepath: string): Promise<void> {
+  validateFilepath(filepath);
+  logger.debug('git-diff', 'Reverting file', { directory, filepath });
+
+  const gitPath = getGitPath();
+  const hasHead = await hasHeadCommit(directory);
+
+  if (!hasHead) {
+    // No HEAD commit - all files are "added", just delete them
+    const fullPath = path.join(directory, filepath);
+    await fs.unlink(fullPath);
+    logger.debug('git-diff', 'Deleted added file (no HEAD)', { directory, filepath });
+    return;
+  }
+
+  // Check if the file exists in HEAD
+  let existsInHead = false;
+  try {
+    await execFileAsync(gitPath, ['cat-file', '-e', `HEAD:${filepath}`], { cwd: directory });
+    existsInHead = true;
+  } catch {
+    existsInHead = false;
+  }
+
+  if (existsInHead) {
+    // File exists in HEAD - checkout from HEAD
+    await execFileAsync(gitPath, ['checkout', 'HEAD', '--', filepath], { cwd: directory });
+    logger.debug('git-diff', 'Reverted file to HEAD', { directory, filepath });
+  } else {
+    // File is newly added (not in HEAD) - delete it
+    const fullPath = path.join(directory, filepath);
+    await fs.unlink(fullPath);
+    logger.debug('git-diff', 'Deleted added file', { directory, filepath });
+  }
+}
+
+/**
+ * Write edited content to a file
+ */
+export async function writeFileContent(directory: string, filepath: string, content: string): Promise<void> {
+  validateFilepath(filepath);
+  const fullPath = path.join(directory, filepath);
+  await fs.writeFile(fullPath, content, 'utf8');
+  logger.debug('git-diff', 'Wrote file content', { directory, filepath, size: content.length });
+}
+
+/**
+ * Revert all changed files to HEAD
+ * Gets the file list via getChangedFiles(), then reverts each individually
+ */
+export async function revertAllFiles(directory: string): Promise<void> {
+  logger.debug('git-diff', 'Reverting all files', { directory });
+
+  const result = await getChangedFiles(directory);
+  if (result.files.length === 0) return;
+
+  for (const file of result.files) {
+    try {
+      await revertFile(directory, file.path);
+    } catch (error) {
+      const err = error as Error;
+      logger.error('git-diff', 'Failed to revert file during revert-all', { directory, filepath: file.path }, { error: err.message });
+      // Continue reverting other files
+    }
+  }
+
+  logger.debug('git-diff', `Reverted ${result.files.length} files`, { directory });
+}

@@ -1,9 +1,17 @@
-import { useState, useEffect } from 'react'
-import { X, RotateCw, Columns2, FileText } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, RotateCw, Columns2, FileText, ChevronUp, ChevronDown, Save } from 'lucide-react'
 import { DiffFileList } from './DiffFileList'
 import { DiffViewer } from './DiffViewer'
 import type { DiffFile, FileDiffContent } from '@/shared/types'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from './ui/dialog'
 
 export interface DiffOverlayProps {
   directory: string
@@ -21,6 +29,9 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
   const [error, setError] = useState<string | null>(null)
   const [isDiffLoading, setIsDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | null>(null)
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set())
+  const [editedContent, setEditedContent] = useState<Map<string, string>>(new Map())
+  const [revertConfirm, setRevertConfirm] = useState<{ type: 'file'; path: string } | { type: 'all' } | null>(null)
 
   // Load file list on mount
   useEffect(() => {
@@ -41,6 +52,22 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
     }
   }, [selectedFile])
 
+  function navigatePrevFile() {
+    if (files.length === 0 || !selectedFile) return
+    const currentIndex = files.findIndex(f => f.path === selectedFile)
+    if (currentIndex === -1) return
+    const newIndex = currentIndex === 0 ? files.length - 1 : currentIndex - 1
+    setSelectedFile(files[newIndex].path)
+  }
+
+  function navigateNextFile() {
+    if (files.length === 0 || !selectedFile) return
+    const currentIndex = files.findIndex(f => f.path === selectedFile)
+    if (currentIndex === -1) return
+    const newIndex = currentIndex === files.length - 1 ? 0 : currentIndex + 1
+    setSelectedFile(files[newIndex].path)
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -60,6 +87,14 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
         return
       }
 
+      // Cmd+S: Save current file edits
+      if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleSave()
+        return
+      }
+
       // Cmd+Shift+S: Toggle view mode
       if (e.key === 's' && e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
@@ -71,23 +106,13 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
       // Up/Down arrows: Navigate file list
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (files.length === 0 || !selectedFile) return
-
         e.preventDefault()
         e.stopPropagation()
-
-        const currentIndex = files.findIndex(f => f.path === selectedFile)
-        if (currentIndex === -1) return
-
-        let newIndex: number
         if (e.key === 'ArrowUp') {
-          // Move up, wrap to bottom if at top
-          newIndex = currentIndex === 0 ? files.length - 1 : currentIndex - 1
+          navigatePrevFile()
         } else {
-          // Move down, wrap to top if at bottom
-          newIndex = currentIndex === files.length - 1 ? 0 : currentIndex + 1
+          navigateNextFile()
         }
-
-        setSelectedFile(files[newIndex].path)
         return
       }
 
@@ -104,7 +129,7 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
 
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [files, selectedFile, onClose, handleRefresh])
+  }, [files, selectedFile, onClose, handleRefresh, handleSave])
 
   async function loadFileList() {
     setIsLoading(true)
@@ -149,6 +174,87 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
     setDiffError(null) // Clear any previous diff errors
   }
 
+  const handleContentChange = useCallback((content: string) => {
+    if (!selectedFile) return
+    setEditedContent(prev => new Map(prev).set(selectedFile, content))
+    setDirtyFiles(prev => new Set(prev).add(selectedFile))
+  }, [selectedFile])
+
+  async function handleSave() {
+    if (!selectedFile || !editedContent.has(selectedFile)) return
+    const savingFile = selectedFile
+    const savedContent = editedContent.get(savingFile)!
+    try {
+      await window.electronAPI.writeFileContent(directory, savingFile, savedContent)
+      // Clear dirty state
+      setDirtyFiles(prev => {
+        const next = new Set(prev)
+        next.delete(savingFile)
+        return next
+      })
+      setEditedContent(prev => {
+        const next = new Map(prev)
+        next.delete(savingFile)
+        return next
+      })
+      // Update the cache in-place with the new content (avoids destroying/recreating the editor)
+      setDiffCache(prev => {
+        const existing = prev.get(savingFile)
+        if (!existing) return prev
+        const next = new Map(prev)
+        next.set(savingFile, { ...existing, newContent: savedContent })
+        return next
+      })
+    } catch (err) {
+      setDiffError(err instanceof Error ? err.message : 'Failed to save file')
+    }
+  }
+
+  async function handleRevertFile(filepath: string) {
+    try {
+      await window.electronAPI.revertFile(directory, filepath)
+      // Clear edited state for this file
+      setDirtyFiles(prev => {
+        const next = new Set(prev)
+        next.delete(filepath)
+        return next
+      })
+      setEditedContent(prev => {
+        const next = new Map(prev)
+        next.delete(filepath)
+        return next
+      })
+      setDiffCache(prev => {
+        const next = new Map(prev)
+        next.delete(filepath)
+        return next
+      })
+      // If this was the selected file, clear selection
+      if (selectedFile === filepath) {
+        setSelectedFile(null)
+      }
+      // Reload file list
+      loadFileList()
+    } catch (err) {
+      setDiffError(err instanceof Error ? err.message : 'Failed to revert file')
+    }
+    setRevertConfirm(null)
+  }
+
+  async function handleRevertAll() {
+    try {
+      await window.electronAPI.revertAllFiles(directory)
+      setDirtyFiles(new Set())
+      setEditedContent(new Map())
+      setDiffCache(new Map())
+      setSelectedFile(null)
+      loadFileList()
+    } catch (err) {
+      setDiffError(err instanceof Error ? err.message : 'Failed to revert all files')
+    }
+    setRevertConfirm(null)
+  }
+
   // Calculate summary
   const summary = {
     filesChanged: files.length,
@@ -181,11 +287,43 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {selectedFile && dirtyFiles.has(selectedFile) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleSave}
+              title="Save (Cmd+S)"
+              className="h-8 px-2 gap-1 text-xs"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={navigatePrevFile}
+            title="Previous file (↑)"
+            className="h-8 w-8 p-0"
+            disabled={files.length === 0}
+          >
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={navigateNextFile}
+            title="Next file (↓)"
+            className="h-8 w-8 p-0"
+            disabled={files.length === 0}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={handleRefresh}
-            title="Refresh"
+            title="Refresh (r)"
             className="h-8 w-8 p-0"
           >
             <RotateCw className="h-4 w-4" />
@@ -249,6 +387,8 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
               selectedFile={selectedFile}
               onSelectFile={handleSelectFile}
               summary={summary}
+              onRevertFile={(filepath) => setRevertConfirm({ type: 'file', path: filepath })}
+              onRevertAll={() => setRevertConfirm({ type: 'all' })}
             />
             <div className="flex-1 overflow-hidden">
               {selectedFile && currentDiff ? (
@@ -261,6 +401,8 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
                   isTooLarge={currentDiff.isTooLarge}
                   isLoading={isDiffLoading}
                   error={diffError}
+                  onContentChange={handleContentChange}
+                  readOnly={currentFile?.status === 'deleted' || currentDiff.isBinary}
                   onLoadAnyway={async () => {
                     if (!selectedFile) return
                     setIsDiffLoading(true)
@@ -288,6 +430,40 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
           </>
         )}
       </div>
+
+      {/* Revert Confirmation Dialog */}
+      <Dialog open={revertConfirm !== null} onOpenChange={(open) => { if (!open) setRevertConfirm(null) }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>
+              {revertConfirm?.type === 'all' ? 'Revert All Files?' : 'Revert File?'}
+            </DialogTitle>
+            <DialogDescription>
+              {revertConfirm?.type === 'all'
+                ? 'This will discard all uncommitted changes and revert every file to its last committed state. This action cannot be undone.'
+                : `This will discard all uncommitted changes to "${revertConfirm?.type === 'file' ? revertConfirm.path : ''}" and revert it to its last committed state. This action cannot be undone.`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevertConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (revertConfirm?.type === 'all') {
+                  handleRevertAll()
+                } else if (revertConfirm?.type === 'file') {
+                  handleRevertFile(revertConfirm.path)
+                }
+              }}
+            >
+              Revert
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

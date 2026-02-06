@@ -132,6 +132,7 @@ export interface AppPreferences {
   gridSize: GridSize
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
+  showDiffView?: boolean
 }
 
 // ============================================

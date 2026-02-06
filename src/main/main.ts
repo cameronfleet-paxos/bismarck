@@ -204,7 +204,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import { getChangedFiles, getFileDiff } from './git-diff'
+import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
 import { isGitRepo } from './git-utils'
 import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
@@ -812,6 +812,18 @@ function registerIpcHandlers() {
 
   ipcMain.handle('is-git-repo', async (_event, directory: string) => {
     return isGitRepo(directory)
+  })
+
+  ipcMain.handle('revert-file', async (_event, directory: string, filepath: string) => {
+    return revertFile(directory, filepath)
+  })
+
+  ipcMain.handle('write-file-content', async (_event, directory: string, filepath: string, content: string) => {
+    return writeFileContent(directory, filepath, content)
+  })
+
+  ipcMain.handle('revert-all-files', async (_event, directory: string) => {
+    return revertAllFiles(directory)
   })
 
   // Setup wizard

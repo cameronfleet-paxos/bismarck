@@ -17,6 +17,8 @@ interface DiffViewerProps {
   isLoading: boolean
   error: string | null
   onLoadAnyway?: () => void
+  onContentChange?: (content: string) => void
+  readOnly?: boolean
 }
 
 export function DiffViewer({
@@ -29,6 +31,8 @@ export function DiffViewer({
   isLoading,
   error,
   onLoadAnyway,
+  onContentChange,
+  readOnly = false,
 }: DiffViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mergeViewRef = useRef<MergeView | null>(null)
@@ -92,16 +96,28 @@ export function DiffViewer({
       syntaxHighlightDeletions: true,
     }
 
-    // Build extensions array with loaded language support
-    const extensions = [
+    // Build base extensions (shared)
+    const baseExtensions = [
       basicSetup,
-      EditorState.readOnly.of(true),
       oneDark,
       ...(languageSupport ? [languageSupport] : []),
     ]
 
     if (viewMode === 'unified') {
-      // Unified view mode using extension
+      // Unified view mode — editable unless readOnly
+      const unifiedReadOnly = readOnly
+      const extensions = [
+        ...baseExtensions,
+        ...(unifiedReadOnly ? [EditorState.readOnly.of(true)] : []),
+        ...(!unifiedReadOnly && onContentChange ? [
+          EditorView.updateListener.of(update => {
+            if (update.docChanged) {
+              onContentChange(update.state.doc.toString())
+            }
+          }),
+        ] : []),
+      ]
+
       const state = EditorState.create({
         doc: newContent,
         extensions: [
@@ -121,15 +137,20 @@ export function DiffViewer({
 
       editorViewRef.current = view
     } else {
-      // Split view mode using MergeView class
+      // Split view mode — always read-only
+      const splitExtensions = [
+        ...baseExtensions,
+        EditorState.readOnly.of(true),
+      ]
+
       const mergeView = new MergeView({
         a: {
           doc: oldContent,
-          extensions,
+          extensions: splitExtensions,
         },
         b: {
           doc: newContent,
-          extensions,
+          extensions: splitExtensions,
         },
         parent: container,
         ...mergeConfig,
@@ -151,7 +172,7 @@ export function DiffViewer({
         editorViewRef.current = null
       }
     }
-  }, [oldContent, newContent, viewMode, languageSupport, isLoading, error, isBinary, isTooLarge])
+  }, [oldContent, newContent, viewMode, languageSupport, isLoading, error, isBinary, isTooLarge, readOnly, onContentChange])
 
   // Loading state
   if (isLoading) {

@@ -187,6 +187,7 @@ export function getDefaultPreferences(): AppPreferences {
     agentModel: 'sonnet',
     gridSize: '2x2',
     keyboardShortcuts: getDefaultKeyboardShortcuts(),
+    showDiffView: true,
   }
 }
 

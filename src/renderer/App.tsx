@@ -191,8 +191,14 @@ function App() {
   // Diff overlay state (tracks which workspace has diff open)
   const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
 
+  // Track whether agent was expanded before diff was opened (to restore on close)
+  const [expandedBeforeDiff, setExpandedBeforeDiff] = useState<boolean>(false)
+
   // Track which agent directories are git repos (for hiding diff button)
   const [gitRepoStatus, setGitRepoStatus] = useState<Map<string, boolean>>(new Map())
+
+  // Track file change counts per workspace for diff badge
+  const [fileChangeCounts, setFileChangeCounts] = useState<Map<string, number>>(new Map())
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
@@ -263,6 +269,43 @@ function App() {
       })
     })
   }, [agents])
+
+  // Poll file change counts for visible agents (for diff badge)
+  useEffect(() => {
+    const pollChangeCounts = async () => {
+      if (preferences.showDiffView === false) return
+      const activeTab = tabs.find(t => t.id === activeTabId)
+      if (!activeTab) return
+
+      const agentsToCheck = activeTerminals
+        .filter(t => activeTab.workspaceIds.includes(t.workspaceId))
+        .map(t => agents.find(a => a.id === t.workspaceId))
+        .filter((a): a is Agent => !!a && !a.isHeadless && !a.isStandaloneHeadless && gitRepoStatus.get(a.directory) !== false)
+
+      if (agentsToCheck.length === 0) return
+
+      const results = await Promise.allSettled(
+        agentsToCheck.map(async (agent) => {
+          const result = await window.electronAPI.getChangedFiles(agent.directory)
+          return [agent.id, result.files.length] as const
+        })
+      )
+
+      setFileChangeCounts(prev => {
+        const next = new Map(prev)
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            next.set(r.value[0], r.value[1])
+          }
+        }
+        return next
+      })
+    }
+
+    pollChangeCounts()
+    const interval = setInterval(pollChangeCounts, 5000)
+    return () => clearInterval(interval)
+  }, [activeTabId, activeTerminals, agents, gitRepoStatus, tabs, preferences.showDiffView])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -473,6 +516,14 @@ function App() {
     }
   }, [focusedAgentId, waitingQueue])
 
+  // Close diff overlay and restore agent expansion state
+  const closeDiffAndRestore = useCallback((tabId: string) => {
+    if (!expandedBeforeDiff) {
+      setMaximizedAgentIdByTab(prev => ({ ...prev, [tabId]: null }))
+    }
+    setDiffOpenForWorkspace(null)
+  }, [expandedBeforeDiff])
+
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
@@ -509,15 +560,30 @@ function App() {
       // Cmd+D: Toggle diff overlay for focused agent
       if (e.key === 'd' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
+        if (preferences.showDiffView === false) return
 
-        // If diff is already open, close it
+        // If diff is already open, close it and restore expansion state
         if (diffOpenForWorkspace) {
-          setDiffOpenForWorkspace(null)
+          const tabForDiff = tabs.find(t => t.workspaceIds.includes(diffOpenForWorkspace))
+          if (tabForDiff) {
+            closeDiffAndRestore(tabForDiff.id)
+          } else {
+            setDiffOpenForWorkspace(null)
+          }
           return
         }
 
         // Otherwise, open diff for the focused agent (if any)
         if (focusedAgentId) {
+          const tabForAgent = tabs.find(t => t.workspaceIds.includes(focusedAgentId))
+          if (tabForAgent) {
+            const activeTabMaxId = maximizedAgentIdByTab[tabForAgent.id] || null
+            const isExpandMode = preferences.attentionMode === 'expand' && waitingQueue.length > 0
+            const autoExpId = isExpandMode ? waitingQueue[0] : null
+            const isCurrentlyExpanded = activeTabMaxId === focusedAgentId || autoExpId === focusedAgentId
+            setExpandedBeforeDiff(isCurrentlyExpanded)
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [tabForAgent.id]: focusedAgentId }))
+          }
           setDiffOpenForWorkspace(focusedAgentId)
         }
         return
@@ -571,7 +637,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, diffOpenForWorkspace, focusedAgentId])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -2837,19 +2903,38 @@ function App() {
                                 </span>
                               )}
                               {/* Diff toggle button (only for non-headless agents in git repos) */}
-                              {!agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setDiffOpenForWorkspace(diffOpenForWorkspace === workspaceId ? null : workspaceId)
-                                  }}
-                                  title="View Changes (Cmd+D)"
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <GitCompareArrows className="h-3 w-3" />
-                                </Button>
+                              {preferences.showDiffView !== false && !agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === workspaceId) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: workspaceId }))
+                                        setDiffOpenForWorkspace(workspaceId)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {fileChangeCounts.has(workspaceId) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      fileChangeCounts.get(workspaceId) === 0
+                                        ? 'bg-green-500'
+                                        : fileChangeCounts.get(workspaceId)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {fileChangeCounts.get(workspaceId)! > 99 ? '99+' : fileChangeCounts.get(workspaceId)}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {/* Maximize/Minimize button */}
                               <Button
@@ -2923,10 +3008,10 @@ function App() {
                               getBufferedContent={getBufferedContent}
                             />
                             {/* Diff overlay (absolute position over terminal) */}
-                            {diffOpenForWorkspace === workspaceId && (
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === workspaceId && (
                               <DiffOverlay
                                 directory={agent.directory}
-                                onClose={() => setDiffOpenForWorkspace(null)}
+                                onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
                           </div>

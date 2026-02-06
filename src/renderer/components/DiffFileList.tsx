@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft } from 'lucide-react'
+import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DiffFile } from '@/shared/types'
 
@@ -7,6 +7,8 @@ interface DiffFileListProps {
   selectedFile: string | null
   onSelectFile: (path: string) => void
   summary: { filesChanged: number; additions: number; deletions: number }
+  onRevertFile?: (filepath: string) => void
+  onRevertAll?: () => void
 }
 
 // Group files by status
@@ -42,10 +44,12 @@ function FileItem({
   file,
   isSelected,
   onSelect,
+  onRevert,
 }: {
   file: DiffFile
   isSelected: boolean
   onSelect: () => void
+  onRevert?: () => void
 }) {
   const statusConfig = {
     modified: { icon: Pencil, color: 'text-yellow-500' },
@@ -58,14 +62,14 @@ function FileItem({
   const truncated = truncatePath(file.path)
 
   return (
-    <button
-      onClick={onSelect}
-      title={file.path}
+    <div
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors rounded-md',
+        'group w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors rounded-md cursor-pointer',
         'hover:bg-accent/50',
         isSelected && 'bg-accent'
       )}
+      onClick={onSelect}
+      title={file.path}
     >
       <Icon className={cn('w-4 h-4 flex-shrink-0', color)} />
       <span className="flex-1 truncate text-foreground">{truncated}</span>
@@ -76,8 +80,20 @@ function FileItem({
         {file.deletions > 0 && (
           <span className="text-red-500">-{file.deletions}</span>
         )}
+        {onRevert && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRevert()
+            }}
+            title="Revert file"
+            className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-all"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -86,11 +102,13 @@ function FileGroup({
   files,
   selectedFile,
   onSelectFile,
+  onRevertFile,
 }: {
   title: string
   files: DiffFile[]
   selectedFile: string | null
   onSelectFile: (path: string) => void
+  onRevertFile?: (filepath: string) => void
 }) {
   if (files.length === 0) return null
 
@@ -106,6 +124,7 @@ function FileGroup({
             file={file}
             isSelected={selectedFile === file.path}
             onSelect={() => onSelectFile(file.path)}
+            onRevert={onRevertFile ? () => onRevertFile(file.path) : undefined}
           />
         ))}
       </div>
@@ -118,6 +137,8 @@ export function DiffFileList({
   selectedFile,
   onSelectFile,
   summary,
+  onRevertFile,
+  onRevertAll,
 }: DiffFileListProps) {
   const grouped = groupFilesByStatus(files)
 
@@ -135,9 +156,21 @@ export function DiffFileList({
     <div className="w-[280px] h-full border-r border-border bg-background flex flex-col">
       {/* Summary Header */}
       <div className="px-3 py-3 border-b border-border">
-        <div className="text-sm font-medium text-foreground">
-          {summary.filesChanged} file{summary.filesChanged !== 1 ? 's' : ''}{' '}
-          changed
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium text-foreground">
+            {summary.filesChanged} file{summary.filesChanged !== 1 ? 's' : ''}{' '}
+            changed
+          </div>
+          {onRevertAll && (
+            <button
+              onClick={onRevertAll}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              title="Revert all files"
+            >
+              <Undo2 className="w-3 h-3" />
+              Revert All
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3 mt-1 text-xs">
           <span className="text-green-500">+{summary.additions}</span>
@@ -152,24 +185,28 @@ export function DiffFileList({
           files={grouped.modified}
           selectedFile={selectedFile}
           onSelectFile={onSelectFile}
+          onRevertFile={onRevertFile}
         />
         <FileGroup
           title="Added"
           files={grouped.added}
           selectedFile={selectedFile}
           onSelectFile={onSelectFile}
+          onRevertFile={onRevertFile}
         />
         <FileGroup
           title="Renamed"
           files={grouped.renamed}
           selectedFile={selectedFile}
           onSelectFile={onSelectFile}
+          onRevertFile={onRevertFile}
         />
         <FileGroup
           title="Deleted"
           files={grouped.deleted}
           selectedFile={selectedFile}
           onSelectFile={onSelectFile}
+          onRevertFile={onRevertFile}
         />
       </div>
     </div>
