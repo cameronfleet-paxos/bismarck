@@ -204,7 +204,9 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig } from '../shared/types'
+import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { isGitRepo } from './git-utils'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -474,6 +476,20 @@ function registerIpcHandlers() {
         }
       }
 
+      // Check if this is a plan tab with an in-progress plan
+      const plans = getPlans()
+      const planForTab = plans.find((p) => p.orchestratorTabId === tabId)
+      if (planForTab && (planForTab.status === 'delegating' || planForTab.status === 'in_progress' || planForTab.status === 'discussing')) {
+        try {
+          // Cancel the plan properly - this stops all agents and cleans up worktrees
+          await cancelPlan(planForTab.id)
+          // cancelPlan already deletes the tab, so return success
+          return { success: true, workspaceIds: [] }
+        } catch (error) {
+          console.error('[main] Failed to cancel plan on tab delete:', error)
+        }
+      }
+
       // Return workspace IDs that need to be stopped
       const workspaceIds = [...tab.workspaceIds]
       const success = deleteTab(tabId)
@@ -484,6 +500,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('set-active-tab', (_event, tabId: string) => {
     setActiveTab(tabId)
+  })
+
+  // Check if a tab has an in-progress plan (for confirmation dialog)
+  ipcMain.handle('get-tab-plan-status', (_event, tabId: string) => {
+    const plans = getPlans()
+    const planForTab = plans.find((p) => p.orchestratorTabId === tabId)
+    if (planForTab) {
+      return {
+        hasPlan: true,
+        planId: planForTab.id,
+        planTitle: planForTab.title,
+        planStatus: planForTab.status,
+        isInProgress: planForTab.status === 'delegating' || planForTab.status === 'in_progress' || planForTab.status === 'discussing',
+      }
+    }
+    return { hasPlan: false, isInProgress: false }
   })
 
   ipcMain.handle('get-tabs', () => {
@@ -799,6 +831,31 @@ function registerIpcHandlers() {
     return removeRepository(id)
   })
 
+  // Git diff operations
+  ipcMain.handle('get-changed-files', async (_event, directory: string) => {
+    return getChangedFiles(directory)
+  })
+
+  ipcMain.handle('get-file-diff', async (_event, directory: string, filepath: string, force?: boolean) => {
+    return getFileDiff(directory, filepath, force)
+  })
+
+  ipcMain.handle('is-git-repo', async (_event, directory: string) => {
+    return isGitRepo(directory)
+  })
+
+  ipcMain.handle('revert-file', async (_event, directory: string, filepath: string) => {
+    return revertFile(directory, filepath)
+  })
+
+  ipcMain.handle('write-file-content', async (_event, directory: string, filepath: string, content: string) => {
+    return writeFileContent(directory, filepath, content)
+  })
+
+  ipcMain.handle('revert-all-files', async (_event, directory: string) => {
+    return revertAllFiles(directory)
+  })
+
   // Setup wizard
   ipcMain.handle('setup-wizard:show-folder-picker', async () => {
     return showFolderPicker()
@@ -951,11 +1008,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task', template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: PromptType, template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task') => {
+  ipcMain.handle('get-default-prompt', (_event, type: PromptType) => {
     return getDefaultPrompt(type)
   })
 
