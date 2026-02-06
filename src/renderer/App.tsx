@@ -206,6 +206,9 @@ function App() {
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
 
+  // Terminal search state (CMD-F) - tracks which agent has search open
+  const [terminalSearchAgentId, setTerminalSearchAgentId] = useState<string | null>(null)
+
   // Discussion execute state - maps planId to selected agent id
   const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
   const [discussionExecuting, setDiscussionExecuting] = useState<Record<string, boolean>>({})
@@ -446,6 +449,11 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to return to main view from settings or close command search
       if (e.key === 'Escape') {
+        if (terminalSearchAgentId) {
+          e.preventDefault()
+          setTerminalSearchAgentId(null)
+          return
+        }
         if (currentView === 'settings') {
           e.preventDefault()
           setCurrentView('main')
@@ -456,6 +464,17 @@ function App() {
           setCommandSearchOpen(false)
           return
         }
+      }
+
+      // CMD+F: Open terminal search for focused agent
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        // Focus the current agent if we have one (interactive or headless)
+        const focusedId = focusedAgentIdRef.current
+        if (focusedId) {
+          setTerminalSearchAgentId(focusedId)
+        }
+        return
       }
 
       // Dev console shortcut (development only)
@@ -520,7 +539,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -2428,6 +2447,8 @@ function App() {
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                                searchOpen={terminalSearchAgentId === agent.id}
+                                onSearchClose={() => setTerminalSearchAgentId(null)}
                                 registerWriter={registerWriter}
                                 unregisterWriter={unregisterWriter}
                                 getBufferedContent={getBufferedContent}
@@ -2533,7 +2554,15 @@ function App() {
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
-                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} model={info.model} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                            <HeadlessTerminal
+                              events={info.events}
+                              theme="teal"
+                              status={info.status}
+                              model={info.model}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
+                            />
                           </div>
                         </div>
                       )
@@ -2605,6 +2634,8 @@ function App() {
                               model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -2684,6 +2715,8 @@ function App() {
                               status={iteration.status === 'pending' ? 'starting' : iteration.status}
                               model={loopState.config.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === uniqueId}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                             />
                           </div>
                         </div>
@@ -2848,6 +2881,8 @@ function App() {
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === agent.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               registerWriter={registerWriter}
                               unregisterWriter={unregisterWriter}
                               getBufferedContent={getBufferedContent}
@@ -2935,6 +2970,8 @@ function App() {
                               model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
