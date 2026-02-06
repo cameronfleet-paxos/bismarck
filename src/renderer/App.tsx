@@ -2919,7 +2919,7 @@ function App() {
                                     </span>
                                   )}
                                   {loopState.gitSummary.pullRequests.length > 0 && (
-                                    <span className="flex items-center gap-1">
+                                    <span className="flex items-center gap-1 cursor-pointer">
                                       <GitPullRequest className="h-3 w-3" />
                                       {loopState.gitSummary.pullRequests.map((pr, i) => (
                                         <a
