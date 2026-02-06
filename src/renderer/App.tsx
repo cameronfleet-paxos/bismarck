@@ -2446,16 +2446,6 @@ function App() {
                       return (
                         <div
                           key={info.id}
-                          draggable={!expandedAgentId}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData('headlessId', info.id)
-                            e.dataTransfer.effectAllowed = 'move'
-                            setDraggedHeadlessId(info.id)
-                          }}
-                          onDragEnd={() => {
-                            setDraggedHeadlessId(null)
-                            setDropTargetHeadlessId(null)
-                          }}
                           onDragOver={(e) => {
                             e.preventDefault()
                             if (draggedHeadlessId && draggedHeadlessId !== info.id) {
@@ -2479,13 +2469,23 @@ function App() {
                             !isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
                             isDragging ? 'opacity-50' : ''
-                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''} ${
-                            !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
-                          }`}
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
-                            info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
-                          }`}>
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('headlessId', info.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(info.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                              info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
+                            } ${!expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          >
                             <div className="flex items-center gap-2">
                               <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
@@ -2543,15 +2543,54 @@ function App() {
                     {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
                     {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
                       const isExpanded = expandedAgentId === info.id
+                      const isDragging = draggedHeadlessId === info.id
+                      const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
                       return (
                         <div
                           key={`standalone-${info.id}-${tab.id}`}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id) {
+                              setDropTargetHeadlessId(info.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === info.id) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            // Standalone agents in same tab can be reordered
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id) {
+                              handleHeadlessAgentReorder(tab.id, draggedHeadlessId, info.id)
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('headlessId', info.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(info.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               <AgentIcon icon={agent.icon} className="w-4 h-4" />
                               <span>{agent.name}</span>
                             </div>
@@ -2633,15 +2672,54 @@ function App() {
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
                       const isExpanded = expandedAgentId === uniqueId
+                      const isDragging = draggedHeadlessId === uniqueId
+                      const isDropTarget = dropTargetHeadlessId === uniqueId && !isDragging
                       return (
                         <div
                           key={uniqueId}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== uniqueId) {
+                              setDropTargetHeadlessId(uniqueId)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === uniqueId) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            // Ralph Loop iterations can be reordered within the same tab
+                            if (draggedHeadlessId && draggedHeadlessId !== uniqueId) {
+                              handleHeadlessAgentReorder(tab.id, draggedHeadlessId, uniqueId)
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('headlessId', uniqueId)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(uniqueId)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
                               <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
                             </div>
@@ -2866,17 +2944,55 @@ function App() {
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
+                      const isDragging = draggedHeadlessId === info.id
+                      const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
 
                       return (
                         <div
                           key={`headless-${info.id}-${tab.id}`}
                           style={{ gridRow, gridColumn: gridCol }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id) {
+                              setDropTargetHeadlessId(info.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === info.id) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== info.id) {
+                              handleHeadlessAgentReorder(tab.id, draggedHeadlessId, info.id)
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('headlessId', info.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(info.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               <AgentIcon icon={agent.icon} className="w-4 h-4" />
                               <span>{agent.name}</span>
                             </div>
