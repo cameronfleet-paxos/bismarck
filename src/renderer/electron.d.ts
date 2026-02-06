@@ -167,6 +167,10 @@ export interface ElectronAPI {
   onDockerPullProgress: (callback: (message: string) => void) => void
   removeDockerPullProgressListener: () => void
 
+  // Docker image status
+  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }>
+  pullDockerImage: (imageName: string) => Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }>
+
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>

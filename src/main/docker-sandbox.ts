@@ -41,6 +41,13 @@ export interface ContainerResult {
   wait: () => Promise<number>
 }
 
+export interface DockerImageInfo {
+  exists: boolean
+  imageId?: string
+  created?: string
+  size?: number
+}
+
 // Default image name - Docker Hub registry image
 export const DEFAULT_IMAGE = 'bismarckapp/bismarck-agent:latest'
 
@@ -339,6 +346,50 @@ export async function checkImageExists(
 
     proc.on('error', () => {
       resolve(false)
+    })
+  })
+}
+
+/**
+ * Get detailed info about a Docker image
+ */
+export async function getImageInfo(
+  imageName: string = DEFAULT_IMAGE
+): Promise<DockerImageInfo> {
+  return new Promise((resolve) => {
+    const proc = spawnWithPath(
+      'docker',
+      ['image', 'inspect', '--format', '{{json .}}', imageName],
+      { stdio: 'pipe' }
+    )
+
+    let output = ''
+
+    proc.stdout?.on('data', (data) => {
+      output += data.toString()
+    })
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        resolve({ exists: false })
+        return
+      }
+
+      try {
+        const info = JSON.parse(output.trim())
+        resolve({
+          exists: true,
+          imageId: info.Id?.replace('sha256:', '').substring(0, 12),
+          created: info.Created,
+          size: info.Size,
+        })
+      } catch {
+        resolve({ exists: true })
+      }
+    })
+
+    proc.on('error', () => {
+      resolve({ exists: false })
     })
   })
 }

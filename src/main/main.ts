@@ -183,7 +183,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE, checkDockerAvailable, getImageInfo } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -952,6 +952,28 @@ function registerIpcHandlers() {
       mainWindow?.webContents.send('docker-pull-progress', message)
     })
     return result
+  })
+
+  ipcMain.handle('check-docker-image-status', async (_event, imageName: string) => {
+    const [dockerAvailable, imageInfo] = await Promise.all([
+      checkDockerAvailable(),
+      getImageInfo(imageName),
+    ])
+    return {
+      dockerAvailable,
+      ...imageInfo,
+    }
+  })
+
+  ipcMain.handle('pull-docker-image', async (_event, imageName: string) => {
+    const result = await pullImage(imageName, (message) => {
+      mainWindow?.webContents.send('docker-pull-progress', message)
+    })
+    return {
+      success: result.success,
+      output: result.output,
+      alreadyUpToDate: result.success && result.output.includes('Image is up to date'),
+    }
   })
 
   // GitHub token management

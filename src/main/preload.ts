@@ -358,6 +358,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('docker-pull-progress')
   },
 
+  // Docker image status
+  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }> =>
+    ipcRenderer.invoke('check-docker-image-status', imageName),
+  pullDockerImage: (imageName: string): Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }> =>
+    ipcRenderer.invoke('pull-docker-image', imageName),
+
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('has-github-token'),

@@ -4,7 +4,6 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Label } from '@/renderer/components/ui/label'
-import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
 import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
@@ -14,6 +13,7 @@ import { PlayboxSettings } from '@/renderer/components/settings/sections/Playbox
 import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sections/KeyboardShortcutsSettings'
 import { UpdatesSettings } from '@/renderer/components/settings/sections/UpdatesSettings'
 import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
+import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -141,11 +141,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [saving, setSaving] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
 
-  // Docker settings local state
-  const [newImage, setNewImage] = useState('')
-  const [cpuLimit, setCpuLimit] = useState('')
-  const [memoryLimit, setMemoryLimit] = useState('')
-
   // Tool paths local state
   const [bdPath, setBdPath] = useState('')
   const [ghPath, setGhPath] = useState('')
@@ -191,8 +186,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       setAutoDetectedPaths(detectedPaths)
 
       // Initialize local state from loaded settings
-      setCpuLimit(loaded.docker.resourceLimits.cpu)
-      setMemoryLimit(loaded.docker.resourceLimits.memory)
       setBdPath(loaded.paths.bd || '')
       setGhPath(loaded.paths.gh || '')
       setGitPath(loaded.paths.git || '')
@@ -204,78 +197,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       console.error('Failed to load settings:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAddImage = async () => {
-    if (!newImage.trim()) return
-
-    try {
-      await window.electronAPI.addDockerImage(newImage.trim())
-      setNewImage('')
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to add image:', error)
-    }
-  }
-
-  const handleRemoveImage = async (image: string) => {
-    try {
-      await window.electronAPI.removeDockerImage(image)
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to remove image:', error)
-    }
-  }
-
-  const handleSelectImage = async (image: string) => {
-    try {
-      await window.electronAPI.setSelectedDockerImage(image)
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to select image:', error)
-    }
-  }
-
-  const handleSaveResourceLimits = async () => {
-    setSaving(true)
-    try {
-      await window.electronAPI.updateDockerResourceLimits({
-        cpu: cpuLimit,
-        memory: memoryLimit,
-      })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to save resource limits:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSshAgentToggle = async (enabled: boolean) => {
-    try {
-      await window.electronAPI.updateDockerSshSettings({ enabled })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to update SSH agent settings:', error)
-    }
-  }
-
-  const handleDockerSocketToggle = async (enabled: boolean) => {
-    try {
-      await window.electronAPI.updateDockerSocketSettings({ enabled })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to update Docker socket settings:', error)
     }
   }
 
@@ -444,180 +365,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
         )
 
       case 'docker':
-        return (
-          <div className="space-y-6">
-            {/* Docker Images */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Container Images</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Docker images used for headless task agents. Select which image to use.
-              </p>
-
-              <div className="space-y-3">
-                {settings.docker.images.map((image) => (
-                  <div
-                    key={image}
-                    className="flex items-center justify-between p-3 bg-muted/50 rounded-md"
-                  >
-                    <label className="flex items-center gap-3 flex-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="selectedImage"
-                        value={image}
-                        checked={settings.docker.selectedImage === image}
-                        onChange={() => handleSelectImage(image)}
-                        className="h-4 w-4"
-                      />
-                      <span className="font-mono text-sm">{image}</span>
-                    </label>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleRemoveImage(image)}
-                      disabled={settings.docker.images.length === 1}
-                      className="h-7 w-7 p-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <Input
-                  placeholder="e.g., bismarck-agent:latest"
-                  value={newImage}
-                  onChange={(e) => setNewImage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddImage()
-                    }
-                  }}
-                />
-                <Button onClick={handleAddImage} disabled={!newImage.trim()}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-            </div>
-
-            {/* Resource Limits */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Resource Limits</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Default CPU and memory limits for Docker containers
-              </p>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cpu-limit">CPU Cores</Label>
-                  <Input
-                    id="cpu-limit"
-                    placeholder="e.g., 2"
-                    value={cpuLimit}
-                    onChange={(e) => setCpuLimit(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of CPU cores allocated to each container
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="memory-limit">Memory</Label>
-                  <Input
-                    id="memory-limit"
-                    placeholder="e.g., 4g"
-                    value={memoryLimit}
-                    onChange={(e) => setMemoryLimit(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Memory limit per container (e.g., 4g, 8g, 512m)
-                  </p>
-                </div>
-
-                <Button
-                  onClick={handleSaveResourceLimits}
-                  disabled={saving || !cpuLimit || !memoryLimit}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Resource Limits'}
-                </Button>
-              </div>
-            </div>
-
-            {/* SSH Agent Forwarding */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">SSH Agent Forwarding</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Forward your SSH agent to containers for private repository access (Bazel, Go modules, npm)
-              </p>
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <Label htmlFor="ssh-agent-enabled">Enable SSH Agent Forwarding</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Allows containers to authenticate with GitHub using your SSH keys
-                  </p>
-                </div>
-                <Switch
-                  id="ssh-agent-enabled"
-                  checked={settings.docker.sshAgent?.enabled ?? true}
-                  onCheckedChange={handleSshAgentToggle}
-                />
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  <strong>Security note:</strong> When enabled, processes inside containers can use your SSH keys
-                  to authenticate with remote services. Only enable this if you trust the code running in your
-                  containers. Your keys remain on your host machine and are never copied into containers.
-                </p>
-              </div>
-            </div>
-
-            {/* Docker Socket Access */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Docker Socket Access</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Mount the Docker socket into containers for testcontainers and integration tests
-              </p>
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <Label htmlFor="docker-socket-enabled">Enable Docker Socket Access</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Allows containers to spawn sibling containers (required for testcontainers)
-                  </p>
-                </div>
-                <Switch
-                  id="docker-socket-enabled"
-                  checked={settings.docker.dockerSocket?.enabled ?? false}
-                  onCheckedChange={handleDockerSocketToggle}
-                />
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  <strong>Security note:</strong> When enabled, containers can control Docker on your host machine,
-                  including spawning and managing other containers. This is required for integration tests that use
-                  testcontainers-go or similar frameworks. Only enable if you need to run integration tests that
-                  require Docker access.
-                </p>
-              </div>
-
-              {settings.docker.dockerSocket?.enabled && (
-                <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                    <strong>How it works:</strong> The Docker socket (<code className="bg-muted px-1 rounded">/var/run/docker.sock</code>)
-                    is mounted into containers, allowing them to communicate with your host's Docker daemon.
-                    On macOS, the <code className="bg-muted px-1 rounded">TESTCONTAINERS_HOST_OVERRIDE</code> environment
-                    variable is automatically set to enable proper networking with spawned containers.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )
+        return <DockerSettings settings={settings} onSettingsChange={loadSettings} />
 
       case 'tools':
         return (
