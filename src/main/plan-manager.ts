@@ -59,7 +59,7 @@ import { runSetupToken } from './oauth-setup'
 import { startToolProxy, stopToolProxy, isProxyRunning, proxyEvents } from './tool-proxy'
 import { checkDockerAvailable, checkImageExists, stopAllContainers } from './docker-sandbox'
 import { execWithPath } from './exec-utils'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
 
 let mainWindow: BrowserWindow | null = null
 let pollInterval: NodeJS.Timeout | null = null
@@ -83,6 +83,18 @@ const EVENT_PERSIST_DEBOUNCE_MS = 2000 // Persist events every 2 seconds max
 
 // Track headless agent info for UI
 const headlessAgentInfo: Map<string, HeadlessAgentInfo> = new Map()
+
+function isCriticTask(task: BeadTask): boolean {
+  return task.labels?.includes('bismarck-critic') ?? false
+}
+
+function isFixupTask(task: BeadTask): boolean {
+  return task.labels?.includes('critic-fixup') ?? false
+}
+
+function getOriginalTaskIdFromLabels(task: BeadTask): string | undefined {
+  return task.labels?.find(l => l.startsWith('fixup-for:'))?.substring('fixup-for:'.length)
+}
 
 /**
  * Register a headless agent info entry (for mock/test agents)
@@ -1385,6 +1397,71 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
 }
 
 /**
+ * Process a fix-up task from a critic - runs in the same worktree as the original task.
+ */
+async function processFixupTask(planId: string, task: BeadTask, originalTaskId: string): Promise<void> {
+  const plan = getPlanById(planId)
+  if (!plan || !plan.worktrees) return
+
+  const logCtx: LogContext = { planId, taskId: task.id }
+
+  // Find the original task's worktree
+  const worktree = plan.worktrees.find(w => w.taskId === originalTaskId)
+  if (!worktree) {
+    addPlanActivity(planId, 'warning', `Fix-up ${task.id}: original worktree not found for ${originalTaskId}`)
+    return
+  }
+
+  // Find the repository
+  const repository = worktree.repositoryId ? await getRepositoryById(worktree.repositoryId) : null
+  if (!repository) {
+    addPlanActivity(planId, 'warning', `Fix-up ${task.id}: repository not found`)
+    return
+  }
+
+  // Create task assignment
+  const assignment: TaskAssignment = {
+    beadId: task.id,
+    agentId: worktree.agentId, // Reuse the existing agent ID reference
+    planId,
+    status: 'pending',
+    assignedAt: new Date().toISOString(),
+  }
+  saveTaskAssignment(planId, assignment)
+  emitTaskAssignmentUpdate(assignment)
+
+  logger.info('task', 'Processing fix-up task in existing worktree', logCtx, {
+    originalTaskId,
+    worktreePath: worktree.path,
+  })
+  addPlanActivity(planId, 'info', `Processing fix-up: ${task.id}`, `Using worktree from ${originalTaskId}`)
+
+  // Ensure tool proxy is running
+  if (!isProxyRunning()) {
+    await startToolProxy()
+  }
+  setupBdCloseListener()
+
+  // Start headless agent in the existing worktree
+  try {
+    await startHeadlessTaskAgent(planId, task, worktree, repository)
+
+    assignment.status = 'in_progress'
+    saveTaskAssignment(planId, assignment)
+    emitTaskAssignmentUpdate(assignment)
+
+    // Update bd labels
+    await bdUpdate(planId, task.id, {
+      removeLabels: ['bismarck-ready'],
+      addLabels: ['bismarck-sent'],
+    })
+  } catch (error) {
+    addPlanActivity(planId, 'error', `Failed to start fix-up agent: ${task.id}`,
+      error instanceof Error ? error.message : 'Unknown error')
+  }
+}
+
+/**
  * Process a task that's ready to be sent to an agent
  * New model: Creates a fresh task agent with a worktree
  */
@@ -1401,6 +1478,15 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
   if (existing) {
     logger.debug('task', 'Task already assigned, skipping', logCtx)
     return // Already processing or processed
+  }
+
+  // Handle critic fix-up tasks - reuse existing worktree
+  if (task.labels?.includes('critic-fixup')) {
+    const originalTaskId = getOriginalTaskIdFromLabels(task)
+    if (originalTaskId) {
+      await processFixupTask(planId, task, originalTaskId)
+      return
+    }
   }
 
   // Check if we can spawn more agents
@@ -1996,7 +2082,30 @@ async function startHeadlessTaskAgent(
 
     if (effectiveSuccess) {
       addPlanActivity(planId, 'success', `Task ${task.id} completed (headless)`)
-      await markWorktreeReadyForReview(planId, task.id)
+
+      const settings = await loadSettings()
+      const criticEnabled = settings.critic?.enabled ?? true
+      const maxIterations = settings.critic?.maxIterations ?? 2
+
+      if (criticEnabled && maxIterations > 0 && !isCriticTask(task) && !isFixupTask(task)) {
+        // Regular task → spawn critic
+        await spawnCriticAgent(planId, task.id)
+      } else if (isFixupTask(task)) {
+        // Fix-up completed → re-trigger critic on original task
+        const originalTaskId = getOriginalTaskIdFromLabels(task)
+        if (originalTaskId && criticEnabled && maxIterations > 0) {
+          await spawnCriticAgent(planId, originalTaskId)
+        } else {
+          await markWorktreeReadyForReview(planId, task.id)
+        }
+      } else {
+        // Critic task completed OR critics disabled → handle critic completion
+        if (isCriticTask(task)) {
+          await handleCriticCompletion(planId, task)
+        } else {
+          await markWorktreeReadyForReview(planId, task.id)
+        }
+      }
     } else {
       addPlanActivity(planId, 'error', `Task ${task.id} failed`, result.error)
     }
@@ -2903,6 +3012,358 @@ ${conflictError.message}
     image: selectedImage,
     claudeFlags: ['--model', agentModel],
   })
+}
+
+/**
+ * Spawn a critic agent to review completed task work.
+ * The critic runs in the same worktree as the original task agent.
+ */
+async function spawnCriticAgent(planId: string, originalTaskId: string): Promise<void> {
+  const plan = getPlanById(planId)
+  if (!plan || !plan.worktrees) return
+
+  const worktree = plan.worktrees.find(w => w.taskId === originalTaskId)
+  if (!worktree) {
+    logger.warn('plan', 'Cannot spawn critic - worktree not found', { planId, taskId: originalTaskId })
+    await markWorktreeReadyForReview(planId, originalTaskId)
+    return
+  }
+
+  const settings = await loadSettings()
+  const maxIterations = settings.critic?.maxIterations ?? 2
+  const currentIteration = worktree.criticIteration ?? 0
+
+  const logCtx: LogContext = { planId, taskId: originalTaskId }
+
+  // Check if max iterations exceeded → auto-approve
+  if (currentIteration >= maxIterations) {
+    logger.info('plan', 'Max critic iterations reached, auto-approving', logCtx, { currentIteration, maxIterations })
+    addPlanActivity(planId, 'info', `Max critic iterations reached for ${originalTaskId}, auto-approving`)
+    worktree.criticStatus = 'approved'
+    await savePlan(plan)
+    emitPlanUpdate(plan)
+    await markWorktreeReadyForReview(planId, originalTaskId)
+    return
+  }
+
+  // Update worktree state
+  worktree.criticIteration = currentIteration
+  worktree.criticStatus = 'reviewing'
+
+  // Create critic beads task
+  let criticTaskId: string
+  try {
+    criticTaskId = await bdCreate(planId, {
+      title: `Review: ${originalTaskId}`,
+      labels: ['bismarck-critic', 'bismarck-internal', `review-for:${originalTaskId}`],
+    })
+    worktree.criticTaskId = criticTaskId
+    logger.info('plan', 'Created critic task in beads', logCtx, { criticTaskId })
+
+    // Block dependent tasks: find ALL tasks that depend on the original task
+    // and add the critic as a blocker so dependents don't start until review passes
+    const dependentTaskIds = await bdGetDependents(planId, originalTaskId)
+    for (const depTaskId of dependentTaskIds) {
+      await bdAddDependency(planId, depTaskId, criticTaskId)
+      logger.info('plan', 'Added critic dependency', logCtx, {
+        criticTaskId,
+        dependentTaskId: depTaskId,
+      })
+    }
+
+    await savePlan(plan)
+  } catch (err) {
+    logger.warn('plan', 'Failed to create critic task in beads', logCtx, {
+      error: err instanceof Error ? err.message : 'Unknown error',
+    })
+    // Fallback: auto-approve on error
+    addPlanActivity(planId, 'warning', `Failed to create critic task for ${originalTaskId}, auto-approving`)
+    worktree.criticStatus = 'approved'
+    await savePlan(plan)
+    emitPlanUpdate(plan)
+    await markWorktreeReadyForReview(planId, originalTaskId)
+    return
+  }
+
+  // Load critic criteria from discussion output
+  const criticCriteria = await loadCriticCriteria(planId)
+
+  // Find the epic ID for the plan
+  const tasks = await bdList(planId)
+  const epicTask = tasks.find(t => t.type === 'epic')
+  const epicId = epicTask?.id || ''
+
+  // Get repo and worktree names from labels
+  const repoName = worktree.repositoryId
+    ? (await getRepositoryById(worktree.repositoryId))?.name || 'unknown'
+    : 'unknown'
+  // Extract worktree name from path (last segment)
+  const worktreeNameFromPath = path.basename(worktree.path)
+
+  // Build last iteration warning
+  const lastIterationWarning = (currentIteration + 1 >= maxIterations)
+    ? `\n=== LAST ITERATION WARNING ===\nThis is your LAST review iteration. You MUST approve the work unless there are CRITICAL bugs (crashes, security vulnerabilities, data loss). Minor style issues or improvements should be noted but NOT cause rejection.\n`
+    : ''
+
+  // Build the critic prompt
+  const baseBranch = worktree.baseBranch || 'main'
+  const prompt = await buildPrompt('critic', {
+    taskId: criticTaskId,
+    originalTaskId,
+    originalTaskTitle: originalTaskId, // We use the task ID here; the critic will bd show to get the title
+    criticCriteria,
+    criticIteration: currentIteration + 1,
+    maxCriticIterations: maxIterations,
+    baseBranch,
+    epicId,
+    repoName,
+    worktreeName: worktreeNameFromPath,
+    lastIterationWarning,
+  })
+
+  addPlanActivity(planId, 'info', `Spawning critic for ${originalTaskId}`, `Iteration ${currentIteration + 1}/${maxIterations}`)
+
+  // Get model from preferences
+  const agentModel = getPreferences().agentModel || 'sonnet'
+
+  // Create headless agent info for tracking
+  const agentInfo: HeadlessAgentInfo = {
+    id: `headless-${criticTaskId}`,
+    taskId: criticTaskId,
+    planId,
+    status: 'starting',
+    worktreePath: worktree.path,
+    events: [],
+    startedAt: new Date().toISOString(),
+    model: agentModel,
+    originalPrompt: prompt,
+    agentType: 'critic',
+  }
+  headlessAgentInfo.set(criticTaskId, agentInfo)
+  emitHeadlessAgentUpdate(agentInfo)
+
+  // Create and start the critic agent
+  const agent = new HeadlessAgent()
+  headlessAgents.set(criticTaskId, agent)
+
+  // Set up event listeners (same pattern as merge agent)
+  agent.on('status', (status: HeadlessAgentStatus) => {
+    agentInfo.status = status
+    emitHeadlessAgentUpdate(agentInfo)
+  })
+
+  agent.on('event', (event: StreamEvent) => {
+    agentInfo.events.push(event)
+    emitHeadlessAgentEvent(planId, criticTaskId, event)
+  })
+
+  agent.on('complete', async (result) => {
+    const bdCloseSucceeded = tasksWithSuccessfulBdClose.has(criticTaskId)
+    const effectiveSuccess = result.success || bdCloseSucceeded
+
+    logger.info('agent', 'Critic agent complete', logCtx, {
+      success: result.success,
+      exitCode: result.exitCode,
+      bdCloseSucceeded,
+      effectiveSuccess,
+    })
+
+    agentInfo.status = effectiveSuccess ? 'completed' : 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    agentInfo.result = result
+    emitHeadlessAgentUpdate(agentInfo)
+
+    headlessAgents.delete(criticTaskId)
+    tasksWithSuccessfulBdClose.delete(criticTaskId)
+
+    if (effectiveSuccess) {
+      // Look up the bead task to check for labels/status
+      const criticTask: BeadTask = {
+        id: criticTaskId,
+        title: `Review: ${originalTaskId}`,
+        status: 'closed',
+        labels: ['bismarck-critic', 'bismarck-internal', `review-for:${originalTaskId}`],
+      }
+      await handleCriticCompletion(planId, criticTask)
+    } else {
+      // Critic failed → auto-approve (don't block pipeline)
+      addPlanActivity(planId, 'warning', `Critic failed for ${originalTaskId}, auto-approving`)
+      worktree.criticStatus = 'approved'
+      await savePlan(plan)
+      emitPlanUpdate(plan)
+      await markWorktreeReadyForReview(planId, originalTaskId)
+    }
+  })
+
+  agent.on('error', (error: Error) => {
+    agentInfo.status = 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    emitHeadlessAgentUpdate(agentInfo)
+
+    headlessAgents.delete(criticTaskId)
+    addPlanActivity(planId, 'warning', `Critic error for ${originalTaskId}, auto-approving`, error.message)
+
+    // Auto-approve on error
+    worktree.criticStatus = 'approved'
+    savePlan(plan).catch(() => {})
+    emitPlanUpdate(plan)
+    markWorktreeReadyForReview(planId, originalTaskId).catch(() => {})
+  })
+
+  // Start the agent in the SAME worktree as the original task
+  const planDir = getPlanDir(planId)
+  const selectedImage = await getSelectedDockerImage()
+
+  try {
+    await agent.start({
+      prompt,
+      worktreePath: worktree.path,
+      planDir,
+      planId,
+      taskId: criticTaskId,
+      image: selectedImage,
+      claudeFlags: ['--model', agentModel],
+    })
+
+    // Create task assignment for tracking
+    const assignment: TaskAssignment = {
+      beadId: criticTaskId,
+      agentId: worktree.agentId,
+      planId,
+      status: 'in_progress',
+      assignedAt: new Date().toISOString(),
+    }
+    saveTaskAssignment(planId, assignment)
+    emitTaskAssignmentUpdate(assignment)
+
+    // Mark beads task as sent
+    await bdUpdate(planId, criticTaskId, {
+      addLabels: ['bismarck-sent'],
+    })
+
+    addPlanActivity(planId, 'info', `Critic started for ${originalTaskId}`)
+  } catch (error) {
+    agentInfo.status = 'failed'
+    agentInfo.completedAt = new Date().toISOString()
+    emitHeadlessAgentUpdate(agentInfo)
+
+    headlessAgents.delete(criticTaskId)
+    addPlanActivity(planId, 'warning', `Failed to start critic for ${originalTaskId}, auto-approving`,
+      error instanceof Error ? error.message : 'Unknown error')
+
+    // Auto-approve on startup failure
+    worktree.criticStatus = 'approved'
+    await savePlan(plan)
+    emitPlanUpdate(plan)
+    await markWorktreeReadyForReview(planId, originalTaskId)
+  }
+}
+
+/**
+ * Handle critic task completion - check if it approved or created fix-up tasks.
+ */
+async function handleCriticCompletion(planId: string, criticTask: BeadTask): Promise<void> {
+  const plan = getPlanById(planId)
+  if (!plan || !plan.worktrees) return
+
+  // Find which original task this critic reviewed
+  const reviewForLabel = criticTask.labels?.find(l => l.startsWith('review-for:'))
+  const originalTaskId = reviewForLabel?.substring('review-for:'.length)
+  if (!originalTaskId) {
+    logger.warn('plan', 'Critic task missing review-for label', { planId, taskId: criticTask.id })
+    return
+  }
+
+  const worktree = plan.worktrees.find(w => w.taskId === originalTaskId)
+  if (!worktree) return
+
+  const logCtx: LogContext = { planId, taskId: originalTaskId }
+
+  // Mark critic assignment as completed
+  const assignments = loadTaskAssignments(planId)
+  const criticAssignment = assignments.find(a => a.beadId === criticTask.id)
+  if (criticAssignment && criticAssignment.status !== 'completed') {
+    criticAssignment.status = 'completed'
+    criticAssignment.completedAt = new Date().toISOString()
+    saveTaskAssignment(planId, criticAssignment)
+    emitTaskAssignmentUpdate(criticAssignment)
+  }
+
+  // Close the critic beads task to unblock dependent tasks in the dependency graph
+  // (The critic agent should have already closed it via bd close, but ensure it's closed)
+  try {
+    await bdClose(planId, criticTask.id)
+    logger.info('plan', 'Closed critic task in beads', logCtx, { criticTaskId: criticTask.id })
+  } catch (err) {
+    // Expected if critic already closed it via bd close
+    logger.debug('plan', 'Critic task close returned error (likely already closed)', logCtx, {
+      error: err instanceof Error ? err.message : 'Unknown error',
+    })
+  }
+
+  // Check if critic created fix-up tasks
+  const allTasks = await bdList(planId)
+  const fixupTasks = allTasks.filter(t =>
+    t.labels?.includes('critic-fixup') &&
+    t.labels?.some(l => l === `fixup-for:${originalTaskId}`) &&
+    t.status === 'open'
+  )
+
+  if (fixupTasks.length > 0) {
+    // Critic rejected - fix-ups exist
+    worktree.criticStatus = 'rejected'
+    addPlanActivity(planId, 'warning', `Critic rejected ${originalTaskId}`, `${fixupTasks.length} fix-up task(s) created`)
+
+    // Add fix-up tasks as blockers for dependents (so dependents stay blocked until fix-ups complete AND next critic approves)
+    const dependentTaskIds = await bdGetDependents(planId, originalTaskId)
+    for (const fixup of fixupTasks) {
+      for (const depTaskId of dependentTaskIds) {
+        try {
+          await bdAddDependency(planId, depTaskId, fixup.id)
+        } catch {
+          // Ignore dependency errors
+        }
+      }
+    }
+
+    await savePlan(plan)
+    emitPlanUpdate(plan)
+    // Fix-up tasks already have bismarck-ready label (set by critic agent)
+    // They'll be picked up by the orchestrator/processReadyTask loop
+  } else {
+    // Critic approved (no fix-ups found)
+    worktree.criticStatus = 'approved'
+    addPlanActivity(planId, 'success', `Critic approved ${originalTaskId}`)
+    await savePlan(plan)
+    emitPlanUpdate(plan)
+    await markWorktreeReadyForReview(planId, originalTaskId)
+  }
+}
+
+/**
+ * Load critic criteria from the discussion output file.
+ */
+async function loadCriticCriteria(planId: string): Promise<string> {
+  const planDir = getPlanDir(planId)
+  const outputPath = path.join(planDir, 'discussion-output.md')
+
+  try {
+    const content = await fs.readFile(outputPath, 'utf-8')
+
+    // Parse out the ## Critic Criteria section
+    const match = content.match(/## Critic Criteria\s*\n([\s\S]*?)(?=\n## |\n# |$)/)
+    if (match && match[1].trim()) {
+      return match[1].trim()
+    }
+  } catch {
+    // File doesn't exist or can't be read
+  }
+
+  // Fallback to generic criteria
+  return `- Code compiles without errors
+- No obvious bugs or security issues
+- Changes match the task requirements
+- Code follows existing project patterns`
 }
 
 /**

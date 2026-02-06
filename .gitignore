@@ -7,3 +7,4 @@ dist/
 .vite/
 .claude/ralph-loop.local.md
 CLAUDE.local.md
+.beads/daemon-error

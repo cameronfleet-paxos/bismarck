@@ -249,7 +249,7 @@ COMPLETION_CRITERIA:
 - <criterion 3>`
 
   // Use claude CLI with -p flag for headless prompt
-  const result = await runClaudePrompt(prompt)
+  const result = await runClaudePrompt(prompt, repo.path)
 
   // Parse the response
   const purposeMatch = result.match(/PURPOSE:\s*(.+?)(?=\nCOMPLETION_CRITERIA:|$)/s)
@@ -271,7 +271,7 @@ COMPLETION_CRITERIA:
 /**
  * Run a prompt using claude CLI and return the result
  */
-async function runClaudePrompt(prompt: string): Promise<string> {
+async function runClaudePrompt(prompt: string, cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = [
       '-p', prompt,
@@ -281,6 +281,7 @@ async function runClaudePrompt(prompt: string): Promise<string> {
 
     const process = spawnWithPath('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: cwd || undefined,
     })
 
     let stdout = ''

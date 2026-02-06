@@ -73,6 +73,7 @@ export function AgentCard({
 
   return (
     <div
+      data-testid={`agent-card-${agent.id}`}
       data-tutorial={dataTutorial}
       draggable={canDrag}
       className={`
@@ -118,7 +119,7 @@ export function AgentCard({
         >
           <AgentIcon icon={agent.icon} className="w-4 h-4" />
         </div>
-        <h3 className="font-medium truncate flex-1">{agent.name}</h3>
+        <h3 className="font-medium truncate flex-1" data-testid={`agent-card-name-${agent.id}`}>{agent.name}</h3>
         {agent.isHeadless && (
           <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded flex-shrink-0 flex items-center gap-1">
             <Container className="w-3 h-3" />

@@ -53,6 +53,7 @@ export interface AppSettings {
     standalone_headless: string | null  // Standalone headless agents (CMD-K one-off tasks)
     standalone_followup: string | null  // Follow-up agents on existing worktrees
     headless_discussion: string | null  // Headless discussion (Discuss: Headless Agent)
+    critic: string | null              // Critic review agents
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -76,6 +77,10 @@ export interface AppSettings {
   }
   preventSleep: {
     enabled: boolean              // Prevent macOS sleep while agents are running
+  }
+  critic: {
+    enabled: boolean              // Enable critic review of completed tasks
+    maxIterations: number         // Maximum critic review cycles per task
   }
 }
 
@@ -113,8 +118,8 @@ export function getDefaultSettings(): AppSettings {
       git: null,
     },
     docker: {
-      images: ['bismarck-agent:latest'],
-      selectedImage: 'bismarck-agent:latest',
+      images: ['bismarckapp/bismarck-agent:latest'],
+      selectedImage: 'bismarckapp/bismarck-agent:latest',
       resourceLimits: {
         cpu: '2',
         memory: '4g',
@@ -155,6 +160,7 @@ export function getDefaultSettings(): AppSettings {
       standalone_headless: null,
       standalone_followup: null,
       headless_discussion: null,
+      critic: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -178,6 +184,10 @@ export function getDefaultSettings(): AppSettings {
     },
     preventSleep: {
       enabled: true,  // Prevent sleep by default while agents run
+    },
+    critic: {
+      enabled: true,
+      maxIterations: 2,
     },
   }
 }
@@ -230,6 +240,7 @@ export async function loadSettings(): Promise<AppSettings> {
       ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
+      critic: { ...defaults.critic, ...(loaded.critic || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -248,6 +259,18 @@ export async function loadSettings(): Promise<AppSettings> {
       // No old flags and no new personaMode - use default
       merged.playbox.personaMode = 'none'
       merged.playbox.customPersonaPrompt = null
+      needsMigration = true
+    }
+
+    // Migration: Rename old Docker image from local name to Docker Hub name
+    const OLD_IMAGE_NAME = 'bismarck-agent:latest'
+    const NEW_IMAGE_NAME = 'bismarckapp/bismarck-agent:latest'
+    if (merged.docker.images.includes(OLD_IMAGE_NAME)) {
+      merged.docker.images = merged.docker.images.map(img => img === OLD_IMAGE_NAME ? NEW_IMAGE_NAME : img)
+      needsMigration = true
+    }
+    if (merged.docker.selectedImage === OLD_IMAGE_NAME) {
+      merged.docker.selectedImage = NEW_IMAGE_NAME
       needsMigration = true
     }
 
@@ -335,6 +358,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     preventSleep: {
       ...(currentSettings.preventSleep || defaults.preventSleep),
       ...(updates.preventSleep || {}),
+    },
+    critic: {
+      ...(currentSettings.critic || defaults.critic),
+      ...(updates.critic || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -459,7 +486,7 @@ export async function setSelectedDockerImage(image: string): Promise<void> {
  */
 export async function getSelectedDockerImage(): Promise<string> {
   const settings = await loadSettings()
-  return settings.docker.selectedImage || 'bismarck-agent:latest'
+  return settings.docker.selectedImage || 'bismarckapp/bismarck-agent:latest'
 }
 
 /**
@@ -521,7 +548,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion'): Promise<string | null> {
+export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -531,7 +558,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic', template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {
@@ -609,11 +636,21 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 }
 
 /**
- * Check if a GitHub token is configured (without returning the actual token)
+ * Check if a GitHub token is available from any source (env vars or settings)
  */
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Check if a GitHub token is saved in settings.json (ignores env vars)
+ * Used by the setup wizard to determine if a detected token needs to be persisted
+ */
+export async function hasConfiguredGitHubToken(): Promise<boolean> {
+  const settings = await loadSettings()
+  const token = settings.tools?.githubToken
+  return token !== null && token !== undefined && token.length > 0
 }
 
 /**
