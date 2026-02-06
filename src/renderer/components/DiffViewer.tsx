@@ -34,13 +34,36 @@ export function DiffViewer({
   const mergeViewRef = useRef<MergeView | null>(null)
   const editorViewRef = useRef<EditorView | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
+  const [languageSupport, setLanguageSupport] = useState<any>(null)
 
   // Memoize language detection
-  const languageExtension = useMemo(() => {
-    if (!language) return []
-    const langDesc = LanguageDescription.matchFilename(languages, language)
-    return langDesc ? [langDesc] : []
+  const languageDesc = useMemo(() => {
+    if (!language) return null
+    return LanguageDescription.matchFilename(languages, language)
   }, [language])
+
+  // Load language support asynchronously
+  useEffect(() => {
+    if (!languageDesc) {
+      setLanguageSupport(null)
+      return
+    }
+
+    let cancelled = false
+    languageDesc.load().then((lang) => {
+      if (!cancelled) {
+        setLanguageSupport(lang)
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setLanguageSupport(null)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [languageDesc])
 
   // Create editor when content or mode changes
   useEffect(() => {
@@ -69,24 +92,20 @@ export function DiffViewer({
       syntaxHighlightDeletions: true,
     }
 
-    // Load language support if available
-    let languageSupport: LanguageDescription[] = []
-    if (languageExtension.length > 0) {
-      languageExtension[0].load().then((lang) => {
-        // Language loaded, will be used on next render
-      })
-      languageSupport = languageExtension
-    }
+    // Build extensions array with loaded language support
+    const extensions = [
+      basicSetup,
+      EditorState.readOnly.of(true),
+      oneDark,
+      ...(languageSupport ? [languageSupport] : []),
+    ]
 
     if (viewMode === 'unified') {
       // Unified view mode using extension
       const state = EditorState.create({
         doc: newContent,
         extensions: [
-          basicSetup,
-          EditorState.readOnly.of(true),
-          oneDark,
-          ...languageSupport,
+          ...extensions,
           unifiedMergeView({
             original: oldContent,
             ...mergeConfig,
@@ -105,21 +124,11 @@ export function DiffViewer({
       const mergeView = new MergeView({
         a: {
           doc: oldContent,
-          extensions: [
-            basicSetup,
-            EditorState.readOnly.of(true),
-            oneDark,
-            ...languageSupport,
-          ],
+          extensions,
         },
         b: {
           doc: newContent,
-          extensions: [
-            basicSetup,
-            EditorState.readOnly.of(true),
-            oneDark,
-            ...languageSupport,
-          ],
+          extensions,
         },
         parent: container,
         ...mergeConfig,
@@ -141,7 +150,7 @@ export function DiffViewer({
         editorViewRef.current = null
       }
     }
-  }, [oldContent, newContent, viewMode, languageExtension, isLoading, error, isBinary, isTooLarge])
+  }, [oldContent, newContent, viewMode, languageSupport, isLoading, error, isBinary, isTooLarge])
 
   // Loading state
   if (isLoading) {
