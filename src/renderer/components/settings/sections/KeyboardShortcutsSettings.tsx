@@ -125,7 +125,7 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
       try {
         const prefs = await window.electronAPI.getPreferences()
         if (prefs.keyboardShortcuts) {
-          setShortcuts(prefs.keyboardShortcuts)
+          setShortcuts({ ...getDefaultKeyboardShortcuts(), ...prefs.keyboardShortcuts })
         }
       } catch (error) {
         console.error('Failed to load preferences:', error)
