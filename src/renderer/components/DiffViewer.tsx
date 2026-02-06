@@ -70,7 +70,7 @@ export function DiffViewer({
     }
 
     // Load language support if available
-    let languageSupport: any[] = []
+    let languageSupport: LanguageDescription[] = []
     if (languageExtension.length > 0) {
       languageExtension[0].load().then((lang) => {
         // Language loaded, will be used on next render
