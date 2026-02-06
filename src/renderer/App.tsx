@@ -186,6 +186,8 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+  // Track tabs currently being closed (show spinner)
+  const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set())
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
@@ -1406,24 +1408,35 @@ function App() {
   }
 
   const handleTabDelete = async (tabId: string) => {
-    const result = await window.electronAPI?.deleteTab?.(tabId)
-    if (result?.success) {
-      // Stop all agents in the deleted tab
-      for (const workspaceId of result.workspaceIds) {
-        const terminal = activeTerminals.find(
-          (t) => t.workspaceId === workspaceId
-        )
-        if (terminal) {
-          await window.electronAPI.closeTerminal(terminal.terminalId)
-          setActiveTerminals((prev) =>
-            prev.filter((t) => t.workspaceId !== workspaceId)
+    // Mark the tab as closing to show spinner
+    setClosingTabIds((prev) => new Set(prev).add(tabId))
+    try {
+      const result = await window.electronAPI?.deleteTab?.(tabId)
+      if (result?.success) {
+        // Stop all agents in the deleted tab
+        for (const workspaceId of result.workspaceIds) {
+          const terminal = activeTerminals.find(
+            (t) => t.workspaceId === workspaceId
           )
+          if (terminal) {
+            await window.electronAPI.closeTerminal(terminal.terminalId)
+            setActiveTerminals((prev) =>
+              prev.filter((t) => t.workspaceId !== workspaceId)
+            )
+          }
         }
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
       }
-      // Refresh tabs
-      const state = await window.electronAPI.getState()
-      setTabs(state.tabs || [])
-      setActiveTabId(state.activeTabId)
+    } finally {
+      // Remove from closing state (in case of failure or success)
+      setClosingTabIds((prev) => {
+        const next = new Set(prev)
+        next.delete(tabId)
+        return next
+      })
     }
   }
 
@@ -1986,6 +1999,7 @@ function App() {
         onTabDragLeave={() => setDropTargetTabId(null)}
         onTabDrop={handleDropOnTab}
         onTabReorder={handleTabReorder}
+        closingTabIds={closingTabIds}
       />
 
       {/* Main content */}

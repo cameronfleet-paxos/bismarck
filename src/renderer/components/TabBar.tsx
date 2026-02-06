@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, X, Pencil, GripVertical } from 'lucide-react'
+import { Plus, X, Pencil, GripVertical, Loader2 } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import type { AgentTab } from '@/shared/types'
 
@@ -18,6 +18,8 @@ interface TabBarProps {
   onTabDrop?: (workspaceId: string, tabId: string) => void
   // Tab reordering support
   onTabReorder?: (draggedTabId: string, targetTabId: string) => void
+  // Set of tab IDs currently being closed (shows spinner)
+  closingTabIds?: Set<string>
 }
 
 export function TabBar({
@@ -33,6 +35,7 @@ export function TabBar({
   onTabDragLeave,
   onTabDrop,
   onTabReorder,
+  closingTabIds,
 }: TabBarProps) {
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
@@ -83,6 +86,8 @@ export function TabBar({
         // Tab reordering state
         const isDraggingThisTab = draggedTabId === tab.id
         const isReorderDropTarget = reorderDropTargetTabId === tab.id && draggedTabId && draggedTabId !== tab.id
+        // Check if this tab is being closed
+        const isClosing = closingTabIds?.has(tab.id) ?? false
 
         return (
           <div
@@ -169,26 +174,32 @@ export function TabBar({
             )}
 
             {!isEditing && (
-              <div className="flex items-center gap-0.5 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  className="p-0.5 hover:bg-muted rounded"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleStartRename(tab)
-                  }}
-                >
-                  <Pencil className="h-3 w-3 text-muted-foreground" />
-                </button>
-                {tabs.length > 1 && (
-                  <button
-                    className="p-0.5 hover:bg-destructive/20 rounded"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onTabDelete(tab.id)
-                    }}
-                  >
-                    <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                  </button>
+              <div className="flex items-center gap-0.5 ml-1">
+                {isClosing ? (
+                  <Loader2 className="h-3 w-3 text-muted-foreground animate-spin ml-1" />
+                ) : (
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className="p-0.5 hover:bg-muted rounded"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleStartRename(tab)
+                      }}
+                    >
+                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                    {tabs.length > 1 && (
+                      <button
+                        className="p-0.5 hover:bg-destructive/20 rounded"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onTabDelete(tab.id)
+                        }}
+                      >
+                        <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
