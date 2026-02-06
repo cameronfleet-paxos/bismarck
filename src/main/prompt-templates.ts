@@ -173,11 +173,14 @@ Note: Max {{maxParallel}} parallel agents - Bismarck auto-queues if exceeded.
 6. Mark tasks as ready ONLY when their dependencies are complete
 
 === COMMANDS ===
-List tasks (open by default):
-  bd --sandbox list --json
+Quick status (counts only):
+  bd --sandbox stats --no-activity
 
-List all tasks (including closed):
-  bd --sandbox list --all --json
+List open tasks (one-line summaries):
+  bd --sandbox list
+
+List open tasks (detailed JSON, use sparingly):
+  bd --sandbox list --json
 
 Assign task to repo with worktree:
   bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<name>-<number>"
@@ -201,13 +204,17 @@ Phase 1 - Initial Setup (after Planner exits):
 Phase 2 - Monitoring Loop (REQUIRED):
 CRITICAL: You are a long-running coordinator. Do NOT exit until ALL tasks are closed.
 
-Loop every 30 seconds:
-1. sleep 30
-2. bd --sandbox list --all --json
-3. For newly closed tasks, find dependents: bd --sandbox dep list <task-id> --direction=up
-4. If all blockers closed, mark dependent ready: bd --sandbox update <task-id> --add-label bismarck-ready
-5. Report: "Monitoring... X complete, Y in progress, Z waiting"
-6. Exit only when ALL tasks closed, otherwise repeat from step 1
+Loop every 2 minutes:
+1. sleep 120
+2. bd --sandbox stats --no-activity
+3. If open + in_progress counts are 0, all work is done - exit
+4. bd --sandbox list (one-line format, only shows open/in_progress tasks)
+5. Compare with previous iteration - for any tasks that disappeared (newly closed), find dependents:
+   bd --sandbox dep list <task-id> --direction=up
+6. If all blockers of a dependent are closed, mark it ready:
+   bd --sandbox update <task-id> --add-label bismarck-ready
+7. Report: "Monitoring... X in progress, Y waiting"
+8. Repeat from step 1
 
 Begin by waiting for Planner to create tasks, then start Phase 1.`,
 
