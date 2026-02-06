@@ -195,6 +195,11 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+  const [deleteConfirmPlanInfo, setDeleteConfirmPlanInfo] = useState<{
+    hasPlan: boolean
+    planTitle?: string
+    isInProgress: boolean
+  } | null>(null)
 
   // Diff overlay state (tracks which workspace has diff open)
   const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
@@ -1619,7 +1624,10 @@ function App() {
     )
   }
 
-  const handleTabDeleteRequest = (tabId: string) => {
+  const handleTabDeleteRequest = async (tabId: string) => {
+    // Check if this tab has an in-progress plan
+    const planStatus = await window.electronAPI?.getTabPlanStatus?.(tabId)
+    setDeleteConfirmPlanInfo(planStatus || null)
     // Show confirmation dialog instead of deleting immediately
     setDeleteConfirmTabId(tabId)
   }
@@ -3361,21 +3369,45 @@ function App() {
       {/* Delete Tab Confirmation Dialog */}
       <Dialog
         open={deleteConfirmTabId !== null}
-        onOpenChange={(open) => !open && setDeleteConfirmTabId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteConfirmTabId(null)
+            setDeleteConfirmPlanInfo(null)
+          }
+        }}
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Close Tab</DialogTitle>
+            <DialogTitle className={deleteConfirmPlanInfo?.isInProgress ? 'text-red-400' : ''}>
+              {deleteConfirmPlanInfo?.isInProgress ? 'Cancel Running Plan?' : 'Close Tab'}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to close this tab? All workspaces in this tab will be closed.
+              {deleteConfirmPlanInfo?.isInProgress ? (
+                <>
+                  <span className="font-medium text-foreground">"{deleteConfirmPlanInfo.planTitle}"</span> has agents actively running.
+                  Closing this tab will:
+                </>
+              ) : (
+                'Are you sure you want to close this tab? All workspaces in this tab will be closed.'
+              )}
             </DialogDescription>
           </DialogHeader>
+          {deleteConfirmPlanInfo?.isInProgress && (
+            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+              <li>Stop all running agents</li>
+              <li>Cancel the plan execution</li>
+              <li>Clean up worktrees and branches</li>
+            </ul>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteConfirmTabId(null)}
+              onClick={() => {
+                setDeleteConfirmTabId(null)
+                setDeleteConfirmPlanInfo(null)
+              }}
             >
-              Cancel
+              {deleteConfirmPlanInfo?.isInProgress ? 'Keep Running' : 'Cancel'}
             </Button>
             <Button
               variant="destructive"
@@ -3383,10 +3415,11 @@ function App() {
                 if (deleteConfirmTabId) {
                   handleTabDelete(deleteConfirmTabId)
                   setDeleteConfirmTabId(null)
+                  setDeleteConfirmPlanInfo(null)
                 }
               }}
             >
-              Close Tab
+              {deleteConfirmPlanInfo?.isInProgress ? 'Cancel Plan & Close' : 'Close Tab'}
             </Button>
           </DialogFooter>
         </DialogContent>
