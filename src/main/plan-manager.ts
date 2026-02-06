@@ -3,6 +3,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { logger, createScopedLogger, LogContext } from './logger'
 import {
+import { devLog } from './dev-log'
   loadPlans,
   savePlan,
   getPlanById,
@@ -231,7 +232,7 @@ function initializePlanState(): void {
     const activities = loadPlanActivities(plan.id)
     if (activities.length > 0) {
       planActivities.set(plan.id, activities)
-      console.log(`[PlanManager] Loaded ${activities.length} activities for plan ${plan.id}`)
+      devLog(`[PlanManager] Loaded ${activities.length} activities for plan ${plan.id}`)
     }
 
     // Only load headless agent info for active plans (they may need monitoring)
@@ -240,7 +241,7 @@ function initializePlanState(): void {
       for (const agent of agents) {
         if (agent.taskId) {
           headlessAgentInfo.set(agent.taskId, agent)
-          console.log(`[PlanManager] Loaded headless agent info for task ${agent.taskId}`)
+          devLog(`[PlanManager] Loaded headless agent info for task ${agent.taskId}`)
         }
       }
     }
@@ -515,7 +516,7 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
 
   // Only start discussion from draft status
   if (plan.status !== 'draft') {
-    console.log(`[PlanManager] Cannot start discussion for plan ${planId} - status is ${plan.status}`)
+    devLog(`[PlanManager] Cannot start discussion for plan ${planId} - status is ${plan.status}`)
     return plan
   }
 
@@ -572,12 +573,12 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
       // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
       const claudeFlags = `--add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
 
-      console.log(`[PlanManager] Creating terminal for discussion agent ${discussionWorkspace.id}`)
+      devLog(`[PlanManager] Creating terminal for discussion agent ${discussionWorkspace.id}`)
       const terminalId = await queueTerminalCreation(discussionWorkspace.id, mainWindow, {
         initialPrompt: discussionPrompt,
         claudeFlags,
       })
-      console.log(`[PlanManager] Created discussion terminal: ${terminalId}`)
+      devLog(`[PlanManager] Created discussion terminal: ${terminalId}`)
 
       addActiveWorkspace(discussionWorkspace.id)
       addWorkspaceToTab(discussionWorkspace.id, discussionTab.id)
@@ -792,7 +793,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   await savePlan(plan)
 
   // Create terminal for orchestrator and add to its dedicated tab
-  console.log(`[PlanManager] mainWindow is: ${mainWindow ? 'defined' : 'NULL'}`)
+  devLog(`[PlanManager] mainWindow is: ${mainWindow ? 'defined' : 'NULL'}`)
   if (mainWindow) {
     try {
       // Build the orchestrator prompt and pass it to queueTerminalCreation
@@ -801,12 +802,12 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
       const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
       const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents)
-      console.log(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
+      devLog(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
       const orchestratorTerminalId = await queueTerminalCreation(orchestratorWorkspace.id, mainWindow, {
         initialPrompt: orchestratorPrompt,
         claudeFlags,
       })
-      console.log(`[PlanManager] Created terminal: ${orchestratorTerminalId}`)
+      devLog(`[PlanManager] Created terminal: ${orchestratorTerminalId}`)
       addActiveWorkspace(orchestratorWorkspace.id)
       addWorkspaceToTab(orchestratorWorkspace.id, orchestratorTab.id)
       addPlanActivity(planId, 'info', 'Orchestrator agent started')
@@ -844,12 +845,12 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
         ? await getRepositoryById(referenceWorkspace.repositoryId)
         : await getRepositoryByPath(referenceWorkspace.directory)
       const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository)
-      console.log(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
+      devLog(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
       const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {
         initialPrompt: planAgentPrompt,
         claudeFlags: planAgentClaudeFlags,
       })
-      console.log(`[PlanManager] Created plan agent terminal: ${planAgentTerminalId}`)
+      devLog(`[PlanManager] Created plan agent terminal: ${planAgentTerminalId}`)
       addActiveWorkspace(planAgentWorkspace.id)
       addWorkspaceToTab(planAgentWorkspace.id, orchestratorTab.id)
       addPlanActivity(planId, 'info', 'Plan agent started')
@@ -961,7 +962,7 @@ export async function restartPlan(planId: string): Promise<Plan | null> {
   if (!plan) return null
 
   if (plan.status !== 'failed') {
-    console.log(`[PlanManager] Cannot restart plan ${planId} - status is ${plan.status}`)
+    devLog(`[PlanManager] Cannot restart plan ${planId} - status is ${plan.status}`)
     return plan
   }
 
@@ -1045,10 +1046,10 @@ async function deleteRemoteBranchesForPlan(plan: Plan): Promise<void> {
   for (const { repoPath, branch } of branchesToDelete) {
     try {
       await deleteRemoteBranch(repoPath, branch)
-      console.log(`[PlanManager] Deleted remote branch: ${branch}`)
+      devLog(`[PlanManager] Deleted remote branch: ${branch}`)
     } catch (error) {
       // Branch may not exist on remote, or already deleted
-      console.log(`[PlanManager] Could not delete remote branch ${branch}: ${error}`)
+      devLog(`[PlanManager] Could not delete remote branch ${branch}: ${error}`)
     }
   }
 }
@@ -1569,16 +1570,16 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
       })
 
       // Notify renderer about headless agent
-      console.log('[PlanManager] Sending headless-agent-started event', { taskId: task.id, planId, worktreePath: worktree.path })
+      devLog('[PlanManager] Sending headless-agent-started event', { taskId: task.id, planId, worktreePath: worktree.path })
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('headless-agent-started', {
           taskId: task.id,
           planId,
           worktreePath: worktree.path,
         })
-        console.log('[PlanManager] headless-agent-started event sent successfully')
+        devLog('[PlanManager] headless-agent-started event sent successfully')
       } else {
-        console.log('[PlanManager] Cannot send headless-agent-started - mainWindow:', mainWindow ? 'exists but destroyed' : 'null')
+        devLog('[PlanManager] Cannot send headless-agent-started - mainWindow:', mainWindow ? 'exists but destroyed' : 'null')
       }
 
       emitStateUpdate()
@@ -2320,7 +2321,7 @@ function persistHeadlessAgentInfo(planId: string): void {
  * Emit headless agent update to renderer
  */
 function emitHeadlessAgentUpdate(info: HeadlessAgentInfo): void {
-  console.log('[PlanManager] Emitting headless-agent-update', { taskId: info.taskId, status: info.status })
+  devLog('[PlanManager] Emitting headless-agent-update', { taskId: info.taskId, status: info.status })
 
   // Persist to disk on status changes
   persistHeadlessAgentInfo(info.planId)
@@ -2328,7 +2329,7 @@ function emitHeadlessAgentUpdate(info: HeadlessAgentInfo): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('headless-agent-update', info)
   } else {
-    console.log('[PlanManager] Cannot emit headless-agent-update - mainWindow:', mainWindow ? 'exists but destroyed' : 'null')
+    devLog('[PlanManager] Cannot emit headless-agent-update - mainWindow:', mainWindow ? 'exists but destroyed' : 'null')
   }
 }
 
@@ -2477,7 +2478,7 @@ async function ensureFeatureBranchExists(
   }
 
   // Create the feature branch on remote by pushing the base branch to it
-  console.log(`[PlanManager] Creating feature branch ${featureBranch} from ${defaultBase}`)
+  devLog(`[PlanManager] Creating feature branch ${featureBranch} from ${defaultBase}`)
   await pushBranchToRemoteBranch(
     repository.rootPath,
     `origin/${defaultBase}`,
@@ -3666,7 +3667,7 @@ function emitStateUpdate(): void {
  * Cleanup all plan-related resources (called on app shutdown)
  */
 export async function cleanupPlanManager(): Promise<void> {
-  console.log('[PlanManager] Cleaning up...')
+  devLog('[PlanManager] Cleaning up...')
 
   // Stop task polling
   stopTaskPolling()
@@ -3696,5 +3697,5 @@ export async function cleanupPlanManager(): Promise<void> {
     }
   }
 
-  console.log('[PlanManager] Cleanup complete')
+  devLog('[PlanManager] Cleanup complete')
 }

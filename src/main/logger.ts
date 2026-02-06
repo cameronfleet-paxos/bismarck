@@ -13,6 +13,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { getConfigDir } from './config'
+import { devLog } from './dev-log'
 
 // Log categories for filtering
 export type LogCategory =
@@ -194,7 +195,7 @@ function writeLog(
   } else if (level === 'WARN') {
     console.warn(`[${category}] ${message}${contextStr}`)
   } else if (debugEnabled) {
-    console.log(`[${category}] ${message}${contextStr}`)
+    devLog(`[${category}] ${message}${contextStr}`)
   }
 }
 

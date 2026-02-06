@@ -27,6 +27,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import type {
+import { devLog } from './dev-log'
   StreamEvent,
   StreamInitEvent,
   StreamMessageEvent,
@@ -87,7 +88,7 @@ function generateMockEventSequence(taskId: string): StreamEvent[] {
       type: 'tool_result',
       timestamp: now(),
       tool_id: `tool-${Date.now()}-1`,
-      output: '// Main entry point\nimport { app } from "electron"\n\napp.whenReady().then(() => {\n  console.log("App ready")\n})',
+      output: '// Main entry point\nimport { app } from "electron"\n\napp.whenReady().then(() => {\n  devLog("App ready")\n})',
       is_error: false,
     } as StreamToolResultEvent,
 
@@ -107,8 +108,8 @@ function generateMockEventSequence(taskId: string): StreamEvent[] {
       tool_id: `tool-${Date.now()}-2`,
       input: {
         file_path: '/workspace/src/main.ts',
-        old_string: 'console.log("App ready")',
-        new_string: 'console.log("App ready - Task complete!")',
+        old_string: 'devLog("App ready")',
+        new_string: 'devLog("App ready - Task complete!")',
       },
     } as StreamToolUseEvent,
 
@@ -337,7 +338,7 @@ export class MockOrchestrator extends EventEmitter {
    * Emit an activity event to the renderer via IPC
    */
   private emitActivity(type: 'info' | 'success' | 'error', message: string): void {
-    console.log(`[MockOrchestrator] Activity (${type}): ${message}`)
+    devLog(`[MockOrchestrator] Activity (${type}): ${message}`)
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('plan-activity', {
         id: `orch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -351,7 +352,7 @@ export class MockOrchestrator extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    console.log('[MockOrchestrator] Starting orchestrator for plan:', this.planId)
+    devLog('[MockOrchestrator] Starting orchestrator for plan:', this.planId)
     this.emitActivity('info', 'Orchestrator started, polling for task completion...')
 
     // Start polling for task status changes
@@ -369,7 +370,7 @@ export class MockOrchestrator extends EventEmitter {
       for (const task of tasks) {
         if (task.status === 'completed' && !this.completedTasks.has(task.id)) {
           this.completedTasks.add(task.id)
-          console.log('[MockOrchestrator] Task completed:', task.id)
+          devLog('[MockOrchestrator] Task completed:', task.id)
           this.emitActivity('success', `Task completed: ${task.id}`)
           this.emit('task-completed', task.id)
 
@@ -381,7 +382,7 @@ export class MockOrchestrator extends EventEmitter {
       // Check if all tasks are done
       const allDone = tasks.every(t => t.status === 'completed')
       if (allDone && tasks.length > 0) {
-        console.log('[MockOrchestrator] All tasks completed!')
+        devLog('[MockOrchestrator] All tasks completed!')
         this.emitActivity('success', 'All tasks completed!')
         this.emit('plan-completed')
         this.stop()
@@ -444,7 +445,7 @@ export class MockOrchestrator extends EventEmitter {
           if (!hasOpenBlockers) {
             // All blockers are closed (or no blockers), mark as ready
             await execAsync(`bd --sandbox --db "${dbPath}" label add "${task.id}" bismarck-ready`)
-            console.log('[MockOrchestrator] Marked task ready:', task.id, '(blocker completed:', completedTaskId, ')')
+            devLog('[MockOrchestrator] Marked task ready:', task.id, '(blocker completed:', completedTaskId, ')')
             this.emitActivity('info', `Marked task ready: ${task.id}`)
             if (this.onTaskReadyCallback) {
               this.onTaskReadyCallback(task.id)
@@ -532,7 +533,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
   // Ensure directory exists
   await fs.promises.mkdir(planDir, { recursive: true })
 
-  console.log('[MockPlanSetup] Creating mock plan in:', planDir, `(${taskCount} tasks, parallel: ${parallelTasks})`)
+  devLog('[MockPlanSetup] Creating mock plan in:', planDir, `(${taskCount} tasks, parallel: ${parallelTasks})`)
 
   // Initialize beads repo (must run from within the directory)
   await execAsync(`cd "${planDir}" && bd --sandbox init`)
@@ -557,7 +558,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
       tasks[i].blockedBy = [tasks[i - 1].id]
     }
 
-    console.log(`[MockPlanSetup] Created task ${i + 1}:`, tasks[i].id)
+    devLog(`[MockPlanSetup] Created task ${i + 1}:`, tasks[i].id)
   }
 
   // Mark first task as bismarck-ready (simulates orchestrator marking it)
@@ -570,7 +571,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
     await execAsync(bdCmd(planDir, `label add "${tasks[0].id}" bismarck-ready`))
   }
 
-  console.log('[MockPlanSetup] Created tasks:', tasks.map(t => t.id))
+  devLog('[MockPlanSetup] Created tasks:', tasks.map(t => t.id))
 
   return { planId, planDir, tasks }
 }
@@ -606,7 +607,7 @@ let mockFlowOptions: MockFlowOptions = {
  */
 export function setMockFlowOptions(options: Partial<MockFlowOptions>): void {
   mockFlowOptions = { ...mockFlowOptions, ...options }
-  console.log('[DevHarness] Mock flow options updated:', mockFlowOptions)
+  devLog('[DevHarness] Mock flow options updated:', mockFlowOptions)
 }
 
 /**
@@ -637,7 +638,7 @@ export async function startMockAgent(
   options?: { eventIntervalMs?: number }
 ): Promise<MockHeadlessAgent> {
   const eventIntervalMs = options?.eventIntervalMs ?? mockFlowOptions.eventIntervalMs ?? 1500
-  console.log('[DevHarness] Starting mock agent:', taskId, 'planId:', planId, 'eventIntervalMs:', eventIntervalMs)
+  devLog('[DevHarness] Starting mock agent:', taskId, 'planId:', planId, 'eventIntervalMs:', eventIntervalMs)
 
   const agent = new MockHeadlessAgent({
     taskId,
@@ -645,13 +646,13 @@ export async function startMockAgent(
     worktreePath,
     eventIntervalMs,
     onComplete: async () => {
-      console.log('[DevHarness] Mock agent completed:', taskId)
+      devLog('[DevHarness] Mock agent completed:', taskId)
       activeAgents.delete(taskId)
       // Close the beads task so orchestrator can detect completion
       try {
         const dbPath = path.join(worktreePath, '.beads', 'beads.db')
         await execAsync(`bd --sandbox --db "${dbPath}" close "${taskId}"`)
-        console.log('[DevHarness] Closed bd task:', taskId)
+        devLog('[DevHarness] Closed bd task:', taskId)
       } catch (error) {
         console.error('[DevHarness] Failed to close bd task:', taskId, error)
       }
@@ -671,7 +672,7 @@ export async function startMockAgent(
 
   // NEW: Register in plan-manager's map so renderer can find it
   registerHeadlessAgentInfo(agentInfo)
-  console.log('[DevHarness] Registered agent info:', agentInfo.id, 'planId:', planId)
+  devLog('[DevHarness] Registered agent info:', agentInfo.id, 'planId:', planId)
 
   // Forward events to renderer using proper IPC
   agent.on('status', (status: HeadlessAgentStatus) => {
@@ -690,7 +691,7 @@ export async function startMockAgent(
   // Notify renderer that agent started
   mainWindow?.webContents.send('headless-agent-started', { taskId, planId, worktreePath })
   emitHeadlessAgentUpdatePublic(agentInfo)
-  console.log('[DevHarness] Emitted headless-agent-started and update for:', taskId)
+  devLog('[DevHarness] Emitted headless-agent-started and update for:', taskId)
 
   activeAgents.set(taskId, agent)
   await agent.start()
@@ -709,7 +710,7 @@ export async function startMockAgentWithDocker(
   options?: { eventIntervalMs?: number }
 ): Promise<HeadlessAgent> {
   const eventIntervalMs = options?.eventIntervalMs ?? mockFlowOptions.eventIntervalMs ?? 1500
-  console.log('[DevHarness] Starting Docker mock agent:', taskId, 'planId:', planId, 'eventIntervalMs:', eventIntervalMs)
+  devLog('[DevHarness] Starting Docker mock agent:', taskId, 'planId:', planId, 'eventIntervalMs:', eventIntervalMs)
 
   // Check if mock image exists
   const imageExists = await checkImageExists(MOCK_IMAGE)
@@ -733,7 +734,7 @@ export async function startMockAgentWithDocker(
 
   // Register in plan-manager's map so renderer can find it
   registerHeadlessAgentInfo(agentInfo)
-  console.log('[DevHarness] Registered Docker mock agent info:', agentInfo.id, 'planId:', planId)
+  devLog('[DevHarness] Registered Docker mock agent info:', agentInfo.id, 'planId:', planId)
 
   // Log errors for debugging
   agent.on('error', (error) => {
@@ -743,7 +744,7 @@ export async function startMockAgentWithDocker(
   // Forward events to renderer using proper IPC
   agent.on('status', (status: HeadlessAgentStatus) => {
     agentInfo.status = status
-    console.log('[DevHarness] Docker mock agent status changed:', taskId, status)
+    devLog('[DevHarness] Docker mock agent status changed:', taskId, status)
     emitHeadlessAgentUpdatePublic(agentInfo)
   })
 
@@ -754,7 +755,7 @@ export async function startMockAgentWithDocker(
   })
 
   agent.on('complete', async (result) => {
-    console.log('[DevHarness] Docker mock agent completed:', taskId, result)
+    devLog('[DevHarness] Docker mock agent completed:', taskId, result)
     agentInfo.status = result.success ? 'completed' : 'failed'
     agentInfo.completedAt = new Date().toISOString()
     agentInfo.result = result
@@ -778,7 +779,7 @@ export async function startMockAgentWithDocker(
     try {
       const dbPath = path.join(worktreePath, '.beads', 'beads.db')
       await execAsync(`bd --sandbox --db "${dbPath}" close "${taskId}"`)
-      console.log('[DevHarness] Closed bd task:', taskId)
+      devLog('[DevHarness] Closed bd task:', taskId)
     } catch (error) {
       console.error('[DevHarness] Failed to close bd task:', taskId, error)
     }
@@ -789,7 +790,7 @@ export async function startMockAgentWithDocker(
   // Notify renderer that agent started
   mainWindow?.webContents.send('headless-agent-started', { taskId, planId, worktreePath })
   emitHeadlessAgentUpdatePublic(agentInfo)
-  console.log('[DevHarness] Emitted headless-agent-started and update for Docker mock:', taskId)
+  devLog('[DevHarness] Emitted headless-agent-started and update for Docker mock:', taskId)
 
   activeDockerAgents.set(taskId, agent)
 
@@ -854,7 +855,7 @@ export function getMockAgentsForPlan(planId: string): HeadlessAgentInfo[] {
  */
 export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<MockPlan> {
   const opts = { ...mockFlowOptions, ...options }
-  console.log('[DevHarness] Running full mock flow with options:', opts)
+  devLog('[DevHarness] Running full mock flow with options:', opts)
 
   // Stop any existing flow
   await stopMockFlow()
@@ -886,11 +887,11 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   // NEW: Create plan tab BEFORE saving the plan
   const planTab = createTab('Mock Plan', { isPlanTab: true })
   bismarckPlan.orchestratorTabId = planTab.id
-  console.log('[DevHarness] Created plan tab:', planTab.id, 'isPlanTab:', planTab.isPlanTab)
+  devLog('[DevHarness] Created plan tab:', planTab.id, 'isPlanTab:', planTab.isPlanTab)
 
   // NEW: Save plan so renderer can find it
   savePlan(bismarckPlan)
-  console.log('[DevHarness] Saved Bismarck plan:', bismarckPlan.id)
+  devLog('[DevHarness] Saved Bismarck plan:', bismarckPlan.id)
 
   // NEW: Switch to the plan tab
   setActiveTab(planTab.id)
@@ -898,19 +899,19 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   // FIXED ORDER: Emit plan-update FIRST so renderer has the plan in state
   // before we start agents (otherwise getHeadlessAgentsForTab returns [])
   mainWindow?.webContents.send('plan-update', bismarckPlan)
-  console.log('[DevHarness] Emitted plan-update for:', bismarckPlan.id)
+  devLog('[DevHarness] Emitted plan-update for:', bismarckPlan.id)
 
   // THEN emit state update so renderer knows about the new tab
   const state = getState()
   mainWindow?.webContents.send('state-update', state)
-  console.log('[DevHarness] Emitted state-update with tabs:', state.tabs.map(t => ({ id: t.id, name: t.name, isPlanTab: t.isPlanTab })))
+  devLog('[DevHarness] Emitted state-update with tabs:', state.tabs.map(t => ({ id: t.id, name: t.name, isPlanTab: t.isPlanTab })))
 
   // Small delay to let renderer process state updates before starting agents
   await new Promise(resolve => setTimeout(resolve, 100))
 
   // Apply additional start delay if specified
   if (opts.startDelayMs && opts.startDelayMs > 0) {
-    console.log(`[DevHarness] Waiting ${opts.startDelayMs}ms before starting agents...`)
+    devLog(`[DevHarness] Waiting ${opts.startDelayMs}ms before starting agents...`)
     await new Promise(resolve => setTimeout(resolve, opts.startDelayMs))
   }
 
@@ -931,7 +932,7 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
       console.warn('[DevHarness] To use Docker mock, run: cd bismarck/docker && ./build-mock.sh')
       opts.useMockImage = false
     } else {
-      console.log('[DevHarness] Using Docker mock image:', MOCK_IMAGE)
+      devLog('[DevHarness] Using Docker mock image:', MOCK_IMAGE)
     }
   }
 
@@ -947,7 +948,7 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   })
 
   activeOrchestrator.on('plan-completed', () => {
-    console.log('[DevHarness] Mock flow completed!')
+    devLog('[DevHarness] Mock flow completed!')
     bismarckPlan.status = 'completed'
     bismarckPlan.updatedAt = new Date().toISOString()
     savePlan(bismarckPlan)
@@ -960,7 +961,7 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   if (plan.tasks.length > 0) {
     if (opts.parallelTasks) {
       // For parallel tasks, start all agents at once
-      console.log('[DevHarness] Starting all agents in parallel mode')
+      devLog('[DevHarness] Starting all agents in parallel mode')
       for (const task of plan.tasks) {
         await startAgent(task.id)
       }

@@ -5,6 +5,7 @@ import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
+import { devLog } from './utils/dev-log'
   Dialog,
   DialogContent,
   DialogDescription,
@@ -367,10 +368,10 @@ function App() {
         const status = await window.electronAPI?.getUpdateStatus?.()
         if (!mounted) return
 
-        console.log('[App] Polled update status:', status?.state)
+        devLog('[App] Polled update status:', status?.state)
 
         if (status?.state === 'available') {
-          console.log('[App] Update available:', status.version)
+          devLog('[App] Update available:', status.version)
           setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
           // Stop polling once we have a result
           if (pollInterval) {
@@ -406,7 +407,7 @@ function App() {
 
     // Also listen for push updates (for manual checks from Settings)
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
-      console.log('[App] Received update status push:', status.state)
+      devLog('[App] Received update status push:', status.state)
       if (status.state === 'available') {
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
       } else {
@@ -557,7 +558,7 @@ function App() {
         // Load headless agents for the active plan
         const loadedHeadlessAgents = await window.electronAPI?.getHeadlessAgentsForPlan?.(activePlan.id)
         if (loadedHeadlessAgents && loadedHeadlessAgents.length > 0) {
-          console.log('[Renderer] Loaded headless agents from main process:', loadedHeadlessAgents.length)
+          devLog('[Renderer] Loaded headless agents from main process:', loadedHeadlessAgents.length)
           setHeadlessAgents((prev) => {
             const newMap = new Map(prev)
             for (const info of loadedHeadlessAgents) {
@@ -657,20 +658,20 @@ function App() {
 
     // Listen for agent waiting events
     window.electronAPI?.onAgentWaiting?.((agentId: string) => {
-      console.log(`[Renderer] Received agent-waiting event for ${agentId}`)
+      devLog(`[Renderer] Received agent-waiting event for ${agentId}`)
       // Check if user is already focused on this agent using the ref
       if (focusedAgentIdRef.current === agentId) {
-        console.log(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
+        devLog(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
         window.electronAPI?.acknowledgeWaiting?.(agentId)
         return  // Don't add to waiting queue or trigger attention
       }
 
       // Add to waiting queue since user isn't focused on this agent
       setWaitingQueue((prev) => {
-        console.log(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
+        devLog(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
         if (!prev.includes(agentId)) {
           const newQueue = [...prev, agentId]
-          console.log(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
+          devLog(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
           window.electronAPI?.updateTray?.(newQueue.length)
           return newQueue
         }
@@ -715,7 +716,7 @@ function App() {
 
     // Plan event listeners (Team Mode)
     window.electronAPI?.onPlanUpdate?.((plan: Plan) => {
-      console.log('[Renderer] Received plan-update', { id: plan.id, orchestratorTabId: plan.orchestratorTabId, status: plan.status })
+      devLog('[Renderer] Received plan-update', { id: plan.id, orchestratorTabId: plan.orchestratorTabId, status: plan.status })
       setPlans((prev) => {
         const index = prev.findIndex((p) => p.id === plan.id)
         if (index >= 0) {
@@ -736,7 +737,7 @@ function App() {
             }
           }
           if (agentsToRemove.length > 0) {
-            console.log('[Renderer] Clearing headless agents for plan', {
+            devLog('[Renderer] Clearing headless agents for plan', {
               planId: plan.id,
               planStatus: plan.status,
               agentsToRemove,
@@ -746,7 +747,7 @@ function App() {
             for (const taskId of agentsToRemove) {
               newMap.delete(taskId)
             }
-            console.log('[Renderer] Headless agents cleared', { totalAgentsAfter: newMap.size })
+            devLog('[Renderer] Headless agents cleared', { totalAgentsAfter: newMap.size })
             return newMap
           }
           return prev
@@ -755,7 +756,7 @@ function App() {
     })
 
     window.electronAPI?.onPlanDeleted?.((planId: string) => {
-      console.log('[Renderer] Received plan-deleted', { planId })
+      devLog('[Renderer] Received plan-deleted', { planId })
       setPlans((prev) => prev.filter((p) => p.id !== planId))
       // Clear any headless agents associated with this plan
       setHeadlessAgents((prev) => {
@@ -836,13 +837,13 @@ function App() {
 
     // Headless agent events
     window.electronAPI?.onHeadlessAgentStarted?.((data) => {
-      console.log('[Renderer] Received headless-agent-started', data)
+      devLog('[Renderer] Received headless-agent-started', data)
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
-        console.log('[Renderer] getHeadlessAgentInfo returned:', info)
+        devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
           setHeadlessAgents((prev) => {
             const newMap = new Map(prev).set(data.taskId, info)
-            console.log('[Renderer] Updated headlessAgents map, size:', newMap.size)
+            devLog('[Renderer] Updated headlessAgents map, size:', newMap.size)
             return newMap
           })
         }
@@ -850,12 +851,12 @@ function App() {
     })
 
     window.electronAPI?.onHeadlessAgentUpdate?.((info: HeadlessAgentInfo) => {
-      console.log('[Renderer] Received headless-agent-update', { taskId: info.taskId, status: info.status })
+      devLog('[Renderer] Received headless-agent-update', { taskId: info.taskId, status: info.status })
       const taskId = info.taskId
       if (taskId) {
         setHeadlessAgents((prev) => {
           const newMap = new Map(prev).set(taskId, info)
-          console.log('[Renderer] Updated headlessAgents via update event, size:', newMap.size)
+          devLog('[Renderer] Updated headlessAgents via update event, size:', newMap.size)
           return newMap
         })
       }
@@ -877,7 +878,7 @@ function App() {
 
     // Ralph Loop event listeners
     window.electronAPI?.onRalphLoopUpdate?.((state: RalphLoopState) => {
-      console.log('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
+      devLog('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
       setRalphLoops((prev) => {
         const newMap = new Map(prev)
         newMap.set(state.id, state)
@@ -1513,12 +1514,12 @@ function App() {
     if (!plan) {
       // Only log for plan tabs to avoid noise
       if (tab.isPlanTab) {
-        console.log('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
+        devLog('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
       }
       return []
     }
     const agentInfos = Array.from(headlessAgents.values()).filter((info) => info.planId === plan.id)
-    console.log('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
+    devLog('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
 
     // Apply custom order if available
     const customOrder = headlessAgentOrder.get(plan.id)
@@ -1574,9 +1575,9 @@ function App() {
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
     const results: Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> = []
-    console.log('[Renderer] getRalphLoopIterationsForTab:', { tabId: tab.id, ralphLoopsSize: ralphLoops.size, ralphLoopIds: Array.from(ralphLoops.keys()) })
+    devLog('[Renderer] getRalphLoopIterationsForTab:', { tabId: tab.id, ralphLoopsSize: ralphLoops.size, ralphLoopIds: Array.from(ralphLoops.keys()) })
     for (const [, loopState] of ralphLoops) {
-      console.log('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
+      devLog('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
       if (loopState.tabId === tab.id) {
         // Return ALL iterations, not just the running/most recent one
         for (const iteration of loopState.iterations) {
@@ -1590,7 +1591,7 @@ function App() {
 
   // Debug: Log headlessAgents state changes
   useEffect(() => {
-    console.log('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
+    devLog('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
   }, [headlessAgents])
 
   // Group agents by plan for sidebar display
@@ -1664,11 +1665,11 @@ function App() {
   }
 
   const handleExecutePlan = async (planId: string, referenceAgentId: string) => {
-    console.log('[App] handleExecutePlan called:', { planId, referenceAgentId })
-    console.log('[App] electronAPI available:', !!window.electronAPI)
-    console.log('[App] executePlan available:', !!window.electronAPI?.executePlan)
+    devLog('[App] handleExecutePlan called:', { planId, referenceAgentId })
+    devLog('[App] electronAPI available:', !!window.electronAPI)
+    devLog('[App] executePlan available:', !!window.electronAPI?.executePlan)
     const result = await window.electronAPI?.executePlan?.(planId, referenceAgentId)
-    console.log('[App] executePlan result:', result)
+    devLog('[App] executePlan result:', result)
 
     // Navigate to the plan's tab
     if (result?.orchestratorTabId) {
@@ -1787,13 +1788,13 @@ function App() {
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
-            console.log('[App.onComplete] Starting with', newAgents?.length, 'agents')
+            devLog('[App.onComplete] Starting with', newAgents?.length, 'agents')
 
             // Group agents into logical tabs using Haiku analysis
             if (newAgents && newAgents.length > 0) {
-              console.log('[App.onComplete] Grouping agents into tabs...')
+              devLog('[App.onComplete] Grouping agents into tabs...')
               await window.electronAPI.setupWizardGroupAgentsIntoTabs(newAgents)
-              console.log('[App.onComplete] Agents grouped into tabs')
+              devLog('[App.onComplete] Agents grouped into tabs')
             }
 
             // Create terminals BEFORE loadAgents triggers the wizard → main app transition
@@ -1801,23 +1802,23 @@ function App() {
             // loadAgents() sets agents.length > 0 which unmounts the wizard
             const createdTerminals: { terminalId: string; workspaceId: string }[] = []
             if (newAgents && newAgents.length > 0) {
-              console.log('[App.onComplete] Creating terminals for', newAgents.length, 'agents...')
+              devLog('[App.onComplete] Creating terminals for', newAgents.length, 'agents...')
               for (const agent of newAgents) {
                 // Skip headless agents - they don't use terminals
                 if (!agent.isHeadless && !agent.isStandaloneHeadless) {
-                  console.log('[App.onComplete] Creating terminal for agent:', agent.id, agent.name)
+                  devLog('[App.onComplete] Creating terminal for agent:', agent.id, agent.name)
                   const terminalId = await window.electronAPI.createTerminal(agent.id)
-                  console.log('[App.onComplete] Terminal created:', terminalId)
+                  devLog('[App.onComplete] Terminal created:', terminalId)
                   createdTerminals.push({ terminalId, workspaceId: agent.id })
                 }
               }
-              console.log('[App.onComplete] All terminals created:', createdTerminals.length)
+              devLog('[App.onComplete] All terminals created:', createdTerminals.length)
             }
 
             // NOW load agents - this triggers the wizard → main app transition
-            console.log('[App.onComplete] Loading agents...')
+            devLog('[App.onComplete] Loading agents...')
             await loadAgents()
-            console.log('[App.onComplete] Agents loaded')
+            devLog('[App.onComplete] Agents loaded')
 
             // Set terminals state after loadAgents (state updates are batched)
             if (createdTerminals.length > 0) {
@@ -1825,21 +1826,21 @@ function App() {
             }
 
             // Refresh tabs to get the grouped state
-            console.log('[App.onComplete] Refreshing tabs state...')
+            devLog('[App.onComplete] Refreshing tabs state...')
             const state = await window.electronAPI.getState()
             setTabs(state.tabs || [])
             setActiveTabId(state.activeTabId)
 
             // Reload preferences to get updated operatingMode from wizard
             // This ensures the tutorial includes the correct steps based on plan mode selection
-            console.log('[App.onComplete] Loading preferences...')
+            devLog('[App.onComplete] Loading preferences...')
             const freshPrefs = await window.electronAPI.getPreferences()
             setPreferences(freshPrefs)
             // Trigger tutorial after setup wizard completes (if not already completed)
             if (!freshPrefs.tutorialCompleted) {
               setShouldStartTutorial(true)
             }
-            console.log('[App.onComplete] Complete!')
+            devLog('[App.onComplete] Complete!')
           }}
           onSkip={() => {
             // Open the manual agent creation modal
@@ -2438,7 +2439,7 @@ function App() {
                       })}
                     {/* Headless agent terminals */}
                     {getHeadlessAgentsForTab(tab).map((info) => {
-                      console.log('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
+                      devLog('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
                       const isDragging = draggedHeadlessId === info.id
