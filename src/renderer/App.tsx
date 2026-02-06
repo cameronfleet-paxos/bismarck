@@ -281,6 +281,20 @@ function App() {
     }
   }
 
+  // Load Ralph Loop states from main process (for persisted/completed loops)
+  const loadRalphLoops = async () => {
+    const loops = await window.electronAPI?.getAllRalphLoops?.()
+    if (loops?.length) {
+      setRalphLoops((prev) => {
+        const newMap = new Map(prev)
+        for (const loop of loops) {
+          newMap.set(loop.id, loop)
+        }
+        return newMap
+      })
+    }
+  }
+
   // Load agents and state on mount
   useEffect(() => {
     const mountStartTime = performance.now()
@@ -303,6 +317,10 @@ function App() {
       const headlessStart = performance.now()
       await loadStandaloneHeadlessAgents()
       sendTiming('renderer:loadStandaloneHeadless', headlessStart - benchmarkStartTime, performance.now() - headlessStart)
+
+      const ralphLoopsStart = performance.now()
+      await loadRalphLoops()
+      sendTiming('renderer:loadRalphLoops', ralphLoopsStart - benchmarkStartTime, performance.now() - ralphLoopsStart)
 
       sendTiming('renderer:App-mount-total', mountStartTime - benchmarkStartTime, performance.now() - mountStartTime)
       sendMilestone('renderer-data-loaded')
