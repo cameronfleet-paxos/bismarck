@@ -255,6 +255,11 @@ function createWindow() {
   })
   endTimer('window:BrowserWindow-new')
 
+  // Maximize window in dev mode for better testing experience
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.maximize()
+  }
+
   // Bring app to foreground on macOS (skip in dev mode to avoid stealing focus)
   if (process.env.NODE_ENV !== 'development') {
     app.focus({ steal: true })
