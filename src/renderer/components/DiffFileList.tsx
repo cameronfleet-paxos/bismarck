@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DiffFile } from '@/shared/types'
 
@@ -15,6 +15,7 @@ function groupFilesByStatus(files: DiffFile[]) {
     modified: files.filter((f) => f.status === 'modified'),
     added: files.filter((f) => f.status === 'added'),
     deleted: files.filter((f) => f.status === 'deleted'),
+    renamed: files.filter((f) => f.status === 'renamed'),
   }
 }
 
@@ -50,6 +51,7 @@ function FileItem({
     modified: { icon: Pencil, color: 'text-yellow-500' },
     added: { icon: Plus, color: 'text-green-500' },
     deleted: { icon: Trash2, color: 'text-red-500' },
+    renamed: { icon: ArrowRightLeft, color: 'text-blue-500' },
   }
 
   const { icon: Icon, color } = statusConfig[file.status]
@@ -154,6 +156,12 @@ export function DiffFileList({
         <FileGroup
           title="Added"
           files={grouped.added}
+          selectedFile={selectedFile}
+          onSelectFile={onSelectFile}
+        />
+        <FileGroup
+          title="Renamed"
+          files={grouped.renamed}
           selectedFile={selectedFile}
           onSelectFile={onSelectFile}
         />
