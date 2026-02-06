@@ -1,7 +1,7 @@
 import type { AgentIconName } from './constants'
 
 // Prompt type for custom prompt configuration
-export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion'
+export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
 
 // Persona mode for interactive Claude sessions (injected via hooks)
 export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
@@ -272,6 +272,10 @@ export interface PlanWorktree {
   // Task dependency tracking
   blockedBy?: string[]          // Task IDs this task depends on
   baseBranch?: string           // Branch this worktree was created from (for PR base)
+  // Critic review tracking
+  criticIteration?: number                                    // Current review iteration (0-based)
+  criticStatus?: 'pending' | 'reviewing' | 'approved' | 'rejected'
+  criticTaskId?: string                                       // Current critic task ID in beads
 }
 
 // Plan definition for team mode coordination
@@ -303,6 +307,9 @@ export interface Plan {
 
   // Discussion output file path (written by discussion agent)
   discussionOutputPath?: string
+
+  // Critic criteria from discussion output
+  criticCriteriaPath?: string
 }
 
 // Task assignment status
@@ -461,6 +468,7 @@ export interface HeadlessAgentInfo {
   originalPrompt?: string  // Full resolved prompt (for Eye modal display)
   userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
+  agentType?: 'task' | 'critic' | 'merge'  // Type of headless agent (default: task)
 }
 
 // Extended Agent type to support both execution modes

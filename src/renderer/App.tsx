@@ -2483,10 +2483,12 @@ function App() {
                             !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                           }`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                            info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
+                          }`}>
                             <div className="flex items-center gap-2">
                               <GripVertical className="w-4 h-4 text-muted-foreground/50" />
-                              <span>Task {info.taskId}</span>
+                              <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -2668,7 +2670,7 @@ function App() {
                               }`}>{iteration.status}</span>
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
                               {loopState.config.prompt && (
-                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt })} className="h-6 w-6 p-0" title="View prompt">
+                                <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, planId: loopState.id, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt, worktreePath: loopState.worktreeInfo.path, startedAt: iteration.startedAt })} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
                                 </Button>
                               )}
