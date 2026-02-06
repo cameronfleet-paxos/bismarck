@@ -675,8 +675,8 @@ function registerIpcHandlers() {
     return confirmStandaloneAgentDone(headlessId)
   })
 
-  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string) => {
-    return startFollowUpAgent(headlessId, prompt)
+  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => {
+    return startFollowUpAgent(headlessId, prompt, model)
   })
 
   ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
