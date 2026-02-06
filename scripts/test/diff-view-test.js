@@ -55,6 +55,34 @@ class TestRunner {
       process.exit(1);
     }
 
+    // Bypass onboarding wizard by creating a test agent
+    try {
+      const result = await this.cdp.evaluate(`
+        (async function() {
+          try {
+            const repos = [{
+              path: '/workspace',
+              name: 'bismarck'
+            }];
+            const created = await window.electronAPI.setupWizardBulkCreateAgents(repos);
+            return { success: true, agents: created.map(a => ({ id: a.id, name: a.name, path: a.path })) };
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+        })()
+      `);
+
+      if (result.success) {
+        console.log('✓ Test environment setup complete\n');
+      } else {
+        console.warn('⚠ Warning: Could not bypass onboarding:', result.error);
+        console.warn('  Tests may fail if onboarding wizard is shown\n');
+      }
+    } catch (error) {
+      console.warn('⚠ Warning: Failed to setup test environment:', error.message);
+      console.warn('  Tests may fail if onboarding wizard is shown\n');
+    }
+
     // Setup screenshot directory if needed
     if (SCREENSHOT_MODE && !fs.existsSync(SCREENSHOT_DIR)) {
       fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });

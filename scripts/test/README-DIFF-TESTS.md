@@ -57,9 +57,14 @@ xvfb-run -a ./node_modules/.bin/electron --remote-debugging-port=9222 . &
 sleep 8
 node scripts/test/cdp-server.js &
 sleep 2
+
+# Bypass onboarding wizard (recommended)
+curl -s -X POST localhost:9333/setup-test-env
 ```
 
 ### Execute Tests
+
+**Note:** The test script automatically bypasses the onboarding wizard by creating a test agent, so no manual setup is required.
 
 ```bash
 # Run tests
