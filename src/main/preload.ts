@@ -347,6 +347,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
   },
 
+  // Docker image pull
+  setupWizardPullDockerImage: (): Promise<{ success: boolean; output: string }> =>
+    ipcRenderer.invoke('setup-wizard:pull-docker-image'),
+  onDockerPullProgress: (callback: (message: string) => void): void => {
+    ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.on('docker-pull-progress', (_event, message) => callback(message))
+  },
+  removeDockerPullProgressListener: (): void => {
+    ipcRenderer.removeAllListeners('docker-pull-progress')
+  },
+
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('has-github-token'),
@@ -494,6 +505,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-data')
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
+    ipcRenderer.removeAllListeners('docker-pull-progress')
   },
 
   // Dev test harness (development mode only)

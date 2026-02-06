@@ -17,6 +17,7 @@ import {
   spawnContainerAgent,
   ContainerConfig,
   ContainerResult,
+  DEFAULT_IMAGE,
 } from './docker-sandbox'
 import { logger, LogContext } from './logger'
 import {
@@ -142,7 +143,7 @@ export class HeadlessAgent extends EventEmitter {
 
       // Build container config
       const containerConfig: ContainerConfig = {
-        image: options.image || 'bismarck-agent:latest',
+        image: options.image || DEFAULT_IMAGE,
         workingDir: options.worktreePath,
         planDir: options.planDir,
         planId: options.planId,
