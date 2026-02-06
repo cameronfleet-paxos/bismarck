@@ -3100,31 +3100,52 @@ function App() {
         onOpenChange={(open) => !open && setDeleteConfirmTabId(null)}
       >
         <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Close Tab</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to close this tab? All workspaces in this tab will be closed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmTabId(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteConfirmTabId) {
-                  handleTabDelete(deleteConfirmTabId)
-                  setDeleteConfirmTabId(null)
-                }
-              }}
-            >
-              Close Tab
-            </Button>
-          </DialogFooter>
+          {(() => {
+            const tabToDelete = tabs.find((t) => t.id === deleteConfirmTabId)
+            const planForTab = tabToDelete?.isPlanTab && tabToDelete.planId
+              ? plans.find((p) => p.id === tabToDelete.planId)
+              : null
+            const isInProgressPlan = planForTab && (
+              planForTab.status === 'in_progress' ||
+              planForTab.status === 'delegating' ||
+              planForTab.status === 'discussing'
+            )
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    {isInProgressPlan ? 'Cancel Running Plan?' : 'Close Tab'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {isInProgressPlan
+                      ? 'This plan is currently running. Closing this tab will cancel the plan and stop all agents.'
+                      : 'Are you sure you want to close this tab? All workspaces in this tab will be closed.'
+                    }
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteConfirmTabId(null)}
+                  >
+                    {isInProgressPlan ? 'Keep Running' : 'Cancel'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (deleteConfirmTabId) {
+                        handleTabDelete(deleteConfirmTabId)
+                        setDeleteConfirmTabId(null)
+                      }
+                    }}
+                  >
+                    {isInProgressPlan ? 'Cancel Plan' : 'Close Tab'}
+                  </Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
 

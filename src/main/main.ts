@@ -474,6 +474,20 @@ function registerIpcHandlers() {
         }
       }
 
+      // Check if this is a plan orchestrator tab and cancel the plan if in progress
+      if (tab.isPlanTab && tab.planId) {
+        const plan = getPlans().find((p) => p.id === tab.planId)
+        if (plan && (plan.status === 'in_progress' || plan.status === 'delegating' || plan.status === 'discussing')) {
+          try {
+            await cancelPlan(plan.id)
+            // cancelPlan already deletes the tab and cleans up workspaces
+            return { success: true, workspaceIds: [] }
+          } catch (error) {
+            console.error('[main] Failed to cancel plan on tab delete:', error)
+          }
+        }
+      }
+
       // Return workspace IDs that need to be stopped
       const workspaceIds = [...tab.workspaceIds]
       const success = deleteTab(tabId)
