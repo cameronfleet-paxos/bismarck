@@ -607,6 +607,12 @@ export interface ClaudeOAuthTokenStatus {
   configured: boolean     // true if a token is saved
 }
 
+// Docker image availability status
+export interface DockerImageStatus {
+  available: boolean
+  imageName: string
+}
+
 // Collection of all plan mode dependencies
 export interface PlanModeDependencies {
   docker: DependencyStatus
@@ -616,6 +622,7 @@ export interface PlanModeDependencies {
   claude: DependencyStatus
   githubToken: GitHubTokenStatus
   claudeOAuthToken: ClaudeOAuthTokenStatus
+  dockerImage: DockerImageStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 

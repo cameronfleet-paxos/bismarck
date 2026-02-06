@@ -24,6 +24,9 @@
     "dev:check": "node scripts/test/dev-with-cdp.js --check",
     "test:tutorial": "node scripts/test/tutorial-test.js",
     "test:tutorial:screenshots": "node scripts/test/tutorial-test.js --screenshots",
+    "test:core": "node scripts/test/core-flows-test.js",
+    "test:core:screenshots": "node scripts/test/core-flows-test.js --screenshots",
+    "test:all": "node scripts/test/core-flows-test.js && node scripts/test/tutorial-test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },

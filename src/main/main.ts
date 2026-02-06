@@ -183,7 +183,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -945,6 +945,13 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:close-fix-terminal', (_event, terminalId: string) => {
     closeSetupTerminal(terminalId)
+  })
+
+  ipcMain.handle('setup-wizard:pull-docker-image', async () => {
+    const result = await pullImage(DEFAULT_IMAGE, (message) => {
+      mainWindow?.webContents.send('docker-pull-progress', message)
+    })
+    return result
   })
 
   // GitHub token management

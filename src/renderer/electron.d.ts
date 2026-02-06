@@ -162,6 +162,11 @@ export interface ElectronAPI {
   onSetupTerminalExit: (callback: (terminalId: string, code: number) => void) => void
   removeSetupTerminalListeners: () => void
 
+  // Docker image pull
+  setupWizardPullDockerImage: () => Promise<{ success: boolean; output: string }>
+  onDockerPullProgress: (callback: (message: string) => void) => void
+  removeDockerPullProgressListener: () => void
+
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>
