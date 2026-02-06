@@ -2908,39 +2908,47 @@ function App() {
                               {/* Git Summary */}
                               {loopState.gitSummary && (
                                 <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center cursor-pointer" title={loopState.gitSummary.branch} onClick={() => {
-                                    // Try to derive repo URL from a PR URL if available
-                                    const prUrl = loopState.gitSummary?.pullRequests?.[0]?.url
-                                    if (prUrl) {
-                                      const repoUrl = prUrl.replace(/\/pull\/\d+$/, '')
-                                      window.electronAPI?.openExternal?.(`${repoUrl}/tree/${loopState.gitSummary!.branch}`)
-                                    }
-                                  }}>
-                                    <GitBranch className="h-3 w-3" />
-                                  </span>
                                   {loopState.gitSummary.commits.length > 0 && (
                                     <span className="flex items-center gap-1" title={`${loopState.gitSummary.commits.length} commit${loopState.gitSummary.commits.length !== 1 ? 's' : ''}`}>
                                       <GitCommitHorizontal className="h-3 w-3" />
                                       <span>{loopState.gitSummary.commits.length}</span>
                                     </span>
                                   )}
-                                  {loopState.gitSummary.pullRequests.length > 0 && (
-                                    <span className="flex items-center gap-1 cursor-pointer">
-                                      <GitPullRequest className="h-3 w-3" />
-                                      {loopState.gitSummary.pullRequests.map((pr, i) => (
+                                  {loopState.gitSummary.pullRequests.length > 0 && (() => {
+                                    const prs = loopState.gitSummary!.pullRequests
+                                    const latestPr = prs[prs.length - 1]
+                                    return (
+                                      <span className="flex items-center gap-1 cursor-pointer relative group">
+                                        <GitPullRequest className="h-3 w-3" />
                                         <a
-                                          key={pr.number}
-                                          href={pr.url}
-                                          onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(pr.url) }}
+                                          href={latestPr.url}
+                                          onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(latestPr.url) }}
                                           className="text-blue-400 hover:underline cursor-pointer"
-                                          title={pr.title}
+                                          title={latestPr.title}
                                         >
-                                          #{pr.number}
-                                          {i < loopState.gitSummary!.pullRequests.length - 1 && ','}
+                                          #{latestPr.number}
                                         </a>
-                                      ))}
-                                    </span>
-                                  )}
+                                        {prs.length > 1 && (
+                                          <>
+                                            <span className="text-muted-foreground cursor-pointer">...</span>
+                                            <div className="hidden group-hover:block absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg p-2 z-50 min-w-[140px]">
+                                              {prs.map((pr) => (
+                                                <a
+                                                  key={pr.number}
+                                                  href={pr.url}
+                                                  onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(pr.url) }}
+                                                  className="block text-blue-400 hover:underline cursor-pointer py-0.5"
+                                                  title={pr.title}
+                                                >
+                                                  #{pr.number} - {pr.title.length > 30 ? pr.title.slice(0, 30) + '...' : pr.title}
+                                                </a>
+                                              ))}
+                                            </div>
+                                          </>
+                                        )}
+                                      </span>
+                                    )
+                                  })()}
                                 </div>
                               )}
                             </div>
