@@ -440,6 +440,18 @@ function App() {
     }
   }, [focusedAgentId, waitingQueue])
 
+  // Navigate to agent without acknowledging (for queue clicks)
+  const handleNavigateToAgent = useCallback((agentId: string) => {
+    setFocusedAgentId(agentId)
+    window.electronAPI?.setFocusedWorkspace?.(agentId)
+  }, [])
+
+  // Dismiss agent from waiting queue
+  const handleDismissFromQueue = useCallback((agentId: string) => {
+    window.electronAPI?.acknowledgeWaiting?.(agentId)
+    setWaitingQueue((prev) => prev.filter((id) => id !== agentId))
+  }, [])
+
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
@@ -3193,7 +3205,8 @@ function App() {
         <AttentionQueue
           waitingQueue={waitingQueue}
           agents={agents}
-          onFocusAgent={handleFocusAgent}
+          onNavigateToAgent={handleNavigateToAgent}
+          onDismissAgent={handleDismissFromQueue}
         />
       )}
 
