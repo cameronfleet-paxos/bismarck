@@ -8,6 +8,7 @@
 import type { Agent, AgentTab } from '../shared/types'
 import { spawnWithPath, findBinary } from './exec-utils'
 import * as stateManager from './state-manager'
+import { devLog } from './dev-log'
 
 export interface RepoGroup {
   name: string
@@ -26,7 +27,7 @@ export async function analyzeAndGroupAgents(agents: Agent[]): Promise<GroupingRe
   // Check if claude CLI is available
   const claudePath = findBinary('claude')
   if (!claudePath) {
-    console.log('[RepoGrouper] Claude CLI not found, using default grouping')
+    devLog('[RepoGrouper] Claude CLI not found, using default grouping')
     return createDefaultGrouping(agents)
   }
 
@@ -256,7 +257,7 @@ export function createTabsFromGroups(groups: RepoGroup[]): AgentTab[] {
  * Main entry point: analyze agents and create grouped tabs
  */
 export async function groupAgentsIntoTabs(agents: Agent[]): Promise<AgentTab[]> {
-  console.log(`[RepoGrouper] Grouping ${agents.length} agents into tabs...`)
+  devLog(`[RepoGrouper] Grouping ${agents.length} agents into tabs...`)
 
   const result = await analyzeAndGroupAgents(agents)
 
@@ -264,7 +265,7 @@ export async function groupAgentsIntoTabs(agents: Agent[]): Promise<AgentTab[]> 
     console.warn('[RepoGrouper] Grouping had errors:', result.error)
   }
 
-  console.log(`[RepoGrouper] Creating ${result.groups.length} groups:`,
+  devLog(`[RepoGrouper] Creating ${result.groups.length} groups:`,
     result.groups.map(g => `${g.name} (${g.agentIds.length})`).join(', '))
 
   const tabs = createTabsFromGroups(result.groups)

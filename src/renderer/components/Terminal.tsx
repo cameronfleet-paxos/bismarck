@@ -1,34 +1,75 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { ThemeName } from '@/shared/types'
 import { themes } from '@/shared/constants'
+import { TerminalSearch, SearchOptions, SearchResult } from './TerminalSearch'
 
 interface TerminalProps {
   terminalId: string
   theme: ThemeName
   isBooting: boolean
   isVisible?: boolean
+  searchOpen?: boolean
+  onSearchClose?: () => void
   registerWriter: (terminalId: string, writer: (data: string) => void) => void
   unregisterWriter: (terminalId: string) => void
   getBufferedContent?: (terminalId: string) => string | null
 }
 
-export function Terminal({
+export interface TerminalRef {
+  openSearch: () => void
+  closeSearch: () => void
+}
+
+export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal({
   terminalId,
   theme,
   isBooting,
   isVisible = true,
+  searchOpen: externalSearchOpen,
+  onSearchClose,
   registerWriter,
   unregisterWriter,
   getBufferedContent,
-}: TerminalProps) {
+}, ref) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
   const initializedRef = useRef(false)
+  const [internalSearchOpen, setInternalSearchOpen] = useState(false)
+
+  // Use external state if provided, otherwise use internal state
+  const searchOpen = externalSearchOpen !== undefined ? externalSearchOpen : internalSearchOpen
+
+  // Expose search control methods via ref
+  useImperativeHandle(ref, () => ({
+    openSearch: () => {
+      if (externalSearchOpen === undefined) {
+        setInternalSearchOpen(true)
+      }
+    },
+    closeSearch: () => {
+      if (externalSearchOpen === undefined) {
+        setInternalSearchOpen(false)
+      }
+      // Clear search highlighting when closing
+      searchAddonRef.current?.clearDecorations()
+    },
+  }), [externalSearchOpen])
+
+  const handleSearchClose = useCallback(() => {
+    if (onSearchClose) {
+      onSearchClose()
+    } else {
+      setInternalSearchOpen(false)
+    }
+    searchAddonRef.current?.clearDecorations()
+  }, [onSearchClose])
 
   useEffect(() => {
     if (!terminalRef.current || initializedRef.current) return
@@ -57,6 +98,11 @@ export function Terminal({
       window.electronAPI.openExternal(uri)
     })
     xterm.loadAddon(webLinksAddon)
+
+    // Add search addon
+    const searchAddon = new SearchAddon()
+    xterm.loadAddon(searchAddon)
+    searchAddonRef.current = searchAddon
 
     xterm.open(terminalRef.current)
     fitAddon.fit()
@@ -162,6 +208,40 @@ export function Terminal({
     }
   }, [isVisible, terminalId])
 
+  // Search handlers
+  const handleSearch = useCallback((query: string, options: SearchOptions): SearchResult => {
+    if (!searchAddonRef.current || !query) {
+      return { found: false }
+    }
+
+    const found = searchAddonRef.current.findNext(query, {
+      caseSensitive: options.caseSensitive,
+      wholeWord: options.wholeWord,
+      regex: options.regex,
+    })
+
+    // xterm search addon doesn't provide match count, so we can't show it
+    return { found, totalMatches: found ? undefined : 0 }
+  }, [])
+
+  const handleFindNext = useCallback((): SearchResult => {
+    if (!searchAddonRef.current) {
+      return { found: false }
+    }
+
+    const found = searchAddonRef.current.findNext()
+    return { found }
+  }, [])
+
+  const handleFindPrevious = useCallback((): SearchResult => {
+    if (!searchAddonRef.current) {
+      return { found: false }
+    }
+
+    const found = searchAddonRef.current.findPrevious()
+    return { found }
+  }, [])
+
   return (
     <div className="w-full h-full relative" style={{ backgroundColor: themes[theme].bg }}>
       {isBooting && (
@@ -189,6 +269,15 @@ export function Terminal({
         ref={terminalRef}
         className={`w-full h-full overflow-hidden ${isBooting ? 'invisible' : ''}`}
       />
+
+      {/* Search overlay */}
+      <TerminalSearch
+        isOpen={searchOpen}
+        onClose={handleSearchClose}
+        onSearch={handleSearch}
+        onFindNext={handleFindNext}
+        onFindPrevious={handleFindPrevious}
+      />
     </div>
   )
-}
+})

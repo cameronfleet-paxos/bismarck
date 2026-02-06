@@ -13,6 +13,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { getConfigDir } from './config'
+import { devLog } from './dev-log'
 
 // Log categories for filtering
 export type LogCategory =
@@ -21,6 +22,7 @@ export type LogCategory =
   | 'worktree'
   | 'agent'
   | 'git'
+  | 'git-diff'
   | 'bd'
   | 'docker'
   | 'proxy'
@@ -37,6 +39,9 @@ export interface LogContext {
   worktreePath?: string
   branch?: string
   repo?: string
+  directory?: string
+  filepath?: string
+  size?: number
 }
 
 // Debug settings cache
@@ -194,7 +199,7 @@ function writeLog(
   } else if (level === 'WARN') {
     console.warn(`[${category}] ${message}${contextStr}`)
   } else if (debugEnabled) {
-    console.log(`[${category}] ${message}${contextStr}`)
+    devLog(`[${category}] ${message}${contextStr}`)
   }
 }
 
