@@ -85,10 +85,20 @@ git push origin main
 git push origin v<new-version>
 ```
 
-### 7. Report success
+### 7. Wait for GitHub Actions to succeed
+After pushing, poll the GitHub Actions workflow until it completes:
+```bash
+gh run list --limit 1 --repo cameronfleet-paxos/bismarck
+```
+Check every 30 seconds until the run status is `completed` with conclusion `success`. If the run fails, alert the user immediately with the failure details:
+```bash
+gh run view <run-id> --repo cameronfleet-paxos/bismarck --log-failed
+```
+
+### 8. Report success
 Show:
 - Link to GitHub Actions workflow: `https://github.com/cameronfleet-paxos/bismarck/actions`
-- Remind user the release will be available shortly
+- Confirm the release build succeeded
 - Install command: `curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash`
 
 ## Important Notes
