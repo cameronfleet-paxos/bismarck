@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitBranch, GitCommitHorizontal, GitPullRequest } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   Dialog,
@@ -2642,6 +2642,38 @@ function App() {
                             <div className="flex items-center gap-2">
                               {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
                               <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
+                              {/* Git Summary */}
+                              {loopState.gitSummary && (
+                                <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1" title={`Branch: ${loopState.gitSummary.branch}`}>
+                                    <GitBranch className="h-3 w-3" />
+                                    <span className="max-w-[120px] truncate">{loopState.gitSummary.branch}</span>
+                                  </span>
+                                  {loopState.gitSummary.commits.length > 0 && (
+                                    <span className="flex items-center gap-1" title={`${loopState.gitSummary.commits.length} commit${loopState.gitSummary.commits.length !== 1 ? 's' : ''}`}>
+                                      <GitCommitHorizontal className="h-3 w-3" />
+                                      <span>{loopState.gitSummary.commits.length}</span>
+                                    </span>
+                                  )}
+                                  {loopState.gitSummary.pullRequests.length > 0 && (
+                                    <span className="flex items-center gap-1">
+                                      <GitPullRequest className="h-3 w-3" />
+                                      {loopState.gitSummary.pullRequests.map((pr, i) => (
+                                        <a
+                                          key={pr.number}
+                                          href={pr.url}
+                                          onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(pr.url) }}
+                                          className="text-blue-400 hover:underline cursor-pointer"
+                                          title={pr.title}
+                                        >
+                                          #{pr.number}
+                                          {i < loopState.gitSummary!.pullRequests.length - 1 && ','}
+                                        </a>
+                                      ))}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <button

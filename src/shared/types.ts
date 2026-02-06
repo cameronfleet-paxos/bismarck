@@ -638,6 +638,24 @@ export interface RalphLoopIteration {
   duration_ms?: number
 }
 
+// Git summary for Ralph Loop (commits and PRs produced by the agent)
+export interface RalphLoopGitSummary {
+  branch: string              // Working branch name
+  commits: Array<{
+    sha: string
+    shortSha: string
+    message: string
+    timestamp: string
+  }>
+  pullRequests: Array<{
+    number: number
+    title: string
+    url: string
+    baseBranch: string
+    status: 'open' | 'merged' | 'closed'
+  }>
+}
+
 // Full Ralph Loop state
 export interface RalphLoopState {
   id: string
@@ -653,4 +671,5 @@ export interface RalphLoopState {
   tabId: string               // Dedicated tab for all iterations
   phrase: string              // Random phrase for naming (e.g., "plucky-otter")
   referenceAgentDirectory: string  // Reference agent's directory (for bd proxy planId)
+  gitSummary?: RalphLoopGitSummary  // Git info: branch, commits, PRs
 }

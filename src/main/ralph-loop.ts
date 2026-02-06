@@ -37,6 +37,7 @@ import {
   deleteLocalBranch,
   deleteRemoteBranch,
   remoteBranchExists,
+  getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
 import type {
@@ -48,7 +49,9 @@ import type {
   StreamEvent,
   StandaloneWorktreeInfo,
   HeadlessAgentStatus,
+  RalphLoopGitSummary,
 } from '../shared/types'
+import { execWithPath } from './exec-utils'
 
 // Word lists for fun random names (same as standalone-headless)
 const ADJECTIVES = [
@@ -161,6 +164,58 @@ function emitStateUpdate(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     const { getState } = require('./state-manager')
     mainWindow.webContents.send('state-update', getState())
+  }
+}
+
+/**
+ * Update git summary for a Ralph Loop
+ * Fetches commits since main/master and any PRs created from the worktree branch
+ */
+async function updateGitSummary(state: RalphLoopState): Promise<void> {
+  try {
+    const { worktreeInfo } = state
+    if (!worktreeInfo?.path || !worktreeInfo?.branch) {
+      return
+    }
+
+    // Get commits since the default branch
+    const defaultBranch = await getDefaultBranch(worktreeInfo.repoPath)
+    const commits = await getCommitsBetween(
+      worktreeInfo.path,
+      `origin/${defaultBranch}`,
+      'HEAD'
+    )
+
+    // Get PRs for this branch using gh CLI
+    const pullRequests: RalphLoopGitSummary['pullRequests'] = []
+    try {
+      const { stdout } = await execWithPath(
+        `gh pr list --head "${worktreeInfo.branch}" --json number,title,url,baseRefName,state --limit 10`,
+        { cwd: worktreeInfo.repoPath }
+      )
+      const prs = JSON.parse(stdout)
+      for (const pr of prs) {
+        pullRequests.push({
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          baseBranch: pr.baseRefName,
+          status: pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : 'open',
+        })
+      }
+    } catch {
+      // gh CLI may not be available or auth issues - ignore
+    }
+
+    state.gitSummary = {
+      branch: worktreeInfo.branch,
+      commits,
+      pullRequests,
+    }
+
+    console.log(`[RalphLoop] Git summary updated: ${commits.length} commits, ${pullRequests.length} PRs`)
+  } catch (error) {
+    console.error('[RalphLoop] Failed to update git summary:', error)
   }
 }
 
@@ -367,6 +422,9 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
         state.totalCost.total_cost_usd += iteration.cost.total_cost_usd
       }
     }
+
+    // Update git summary after each iteration
+    await updateGitSummary(state)
 
     emitRalphLoopUpdate(state)
 
