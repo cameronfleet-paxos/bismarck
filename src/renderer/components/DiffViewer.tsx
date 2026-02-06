@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Extension } from '@codemirror/state'
 import { MergeView, unifiedMergeView } from '@codemirror/merge'
 import { LanguageDescription } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
@@ -34,7 +34,7 @@ export function DiffViewer({
   const mergeViewRef = useRef<MergeView | null>(null)
   const editorViewRef = useRef<EditorView | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
-  const [languageSupport, setLanguageSupport] = useState<any>(null)
+  const [languageSupport, setLanguageSupport] = useState<Extension | null>(null)
 
   // Memoize language detection
   const languageDesc = useMemo(() => {
