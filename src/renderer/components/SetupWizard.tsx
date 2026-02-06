@@ -6,6 +6,7 @@ import { Logo } from '@/renderer/components/Logo'
 import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 import { SetupTerminal } from './SetupTerminal'
+import { devLog } from '../utils/dev-log'
 
 // German/Bismarck-related fun facts for the loading screen
 const BISMARCK_FACTS = [
@@ -379,9 +380,9 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     try {
       // Save plan mode preference
-      console.log('[SetupWizard] Saving plan mode preference:', planModeEnabled)
+      devLog('[SetupWizard] Saving plan mode preference:', planModeEnabled)
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
-      console.log('[SetupWizard] Plan mode preference saved')
+      devLog('[SetupWizard] Plan mode preference saved')
 
       // Auto-save detected GitHub token if not already configured in settings
       if (planModeEnabled && dependencies?.githubToken.detected && !dependencies?.githubToken.configured) {
@@ -398,11 +399,11 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           completionCriteria: repoCompletionCriteria.get(r.path) || '',
           protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
-      console.log('[SetupWizard] Creating', reposToCreate.length, 'agents...')
+      devLog('[SetupWizard] Creating', reposToCreate.length, 'agents...')
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
-      console.log('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
+      devLog('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
       await onComplete(agents)
-      console.log('[SetupWizard] onComplete finished successfully')
+      devLog('[SetupWizard] onComplete finished successfully')
     } catch (err) {
       console.error('[SetupWizard] Failed to create agents:', err)
       const errorMessage = err instanceof Error ? err.message : String(err)

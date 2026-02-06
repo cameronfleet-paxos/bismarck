@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   initBenchmark,
   startTimer,
@@ -336,7 +337,7 @@ function registerIpcHandlers() {
       const repo = await getRepositoryById(workspace.repositoryId)
       // Only generate if the repository exists but lacks purpose/completionCriteria
       if (repo && !repo.purpose && !repo.completionCriteria) {
-        console.log('[Main] Auto-generating description for new agent:', workspace.name)
+        devLog('[Main] Auto-generating description for new agent:', workspace.name)
         // Run generation in background (don't await)
         generateDescriptions([
           {
@@ -353,7 +354,7 @@ function registerIpcHandlers() {
                 completionCriteria: results[0].completionCriteria,
                 protectedBranches: results[0].protectedBranches,
               })
-              console.log('[Main] Auto-generated description for:', repo.name)
+              devLog('[Main] Auto-generated description for:', repo.name)
             }
           })
           .catch((err) => {
@@ -396,11 +397,11 @@ function registerIpcHandlers() {
 
   // Terminal management
   ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
-    console.log('[Main] create-terminal called for workspace:', workspaceId)
+    devLog('[Main] create-terminal called for workspace:', workspaceId)
     try {
       // Use the queue for terminal creation with full setup
       const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
-      console.log('[Main] create-terminal succeeded:', terminalId)
+      devLog('[Main] create-terminal succeeded:', terminalId)
       return terminalId
     } catch (err) {
       console.error('[Main] create-terminal FAILED for workspace', workspaceId, ':', err)
@@ -602,9 +603,9 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('execute-plan', async (_event, planId: string, referenceAgentId: string) => {
-    console.log('[Main] execute-plan IPC received:', { planId, referenceAgentId })
+    devLog('[Main] execute-plan IPC received:', { planId, referenceAgentId })
     const result = await executePlan(planId, referenceAgentId)
-    console.log('[Main] execute-plan result:', result?.status)
+    devLog('[Main] execute-plan result:', result?.status)
     return result
   })
 
@@ -870,10 +871,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:bulk-create-agents', async (_event, repos: DiscoveredRepo[]) => {
-    console.log('[Main] setup-wizard:bulk-create-agents called with', repos.length, 'repos')
+    devLog('[Main] setup-wizard:bulk-create-agents called with', repos.length, 'repos')
     try {
       const result = await bulkCreateAgents(repos)
-      console.log('[Main] setup-wizard:bulk-create-agents succeeded, created', result.length, 'agents')
+      devLog('[Main] setup-wizard:bulk-create-agents succeeded, created', result.length, 'agents')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:bulk-create-agents FAILED:', err)
@@ -900,10 +901,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:enable-plan-mode', async (_event, enabled: boolean) => {
-    console.log('[Main] setup-wizard:enable-plan-mode called with', enabled)
+    devLog('[Main] setup-wizard:enable-plan-mode called with', enabled)
     try {
       const result = await enablePlanMode(enabled)
-      console.log('[Main] setup-wizard:enable-plan-mode succeeded')
+      devLog('[Main] setup-wizard:enable-plan-mode succeeded')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:enable-plan-mode FAILED:', err)
@@ -916,10 +917,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:group-agents-into-tabs', async (_event, agents: Workspace[]) => {
-    console.log('[Main] setup-wizard:group-agents-into-tabs called with', agents.length, 'agents')
+    devLog('[Main] setup-wizard:group-agents-into-tabs called with', agents.length, 'agents')
     try {
       const result = await groupAgentsIntoTabs(agents)
-      console.log('[Main] setup-wizard:group-agents-into-tabs succeeded, created', result.length, 'tabs')
+      devLog('[Main] setup-wizard:group-agents-into-tabs succeeded, created', result.length, 'tabs')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:group-agents-into-tabs FAILED:', err)
@@ -1236,7 +1237,7 @@ app.whenReady().then(async () => {
   initializeDockerEnvironment().then((result) => {
     endTimer('main:initializeDockerEnvironment')
     if (result.success) {
-      console.log('[Main] Docker environment ready:', result.message)
+      devLog('[Main] Docker environment ready:', result.message)
       if (result.imageBuilt) {
         // Notify renderer that image was built
         mainWindow?.webContents.send('docker-image-built', result)
