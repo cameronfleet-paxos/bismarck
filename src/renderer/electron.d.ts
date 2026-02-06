@@ -39,6 +39,13 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; workspaceIds: string[] }>
   setActiveTab: (tabId: string) => Promise<void>
   getTabs: () => Promise<AgentTab[]>
+  getTabPlanStatus: (tabId: string) => Promise<{
+    hasPlan: boolean
+    planId?: string
+    planTitle?: string
+    planStatus?: string
+    isInProgress: boolean
+  }>
   reorderTabs: (tabIds: string[]) => Promise<boolean>
   reorderWorkspaceInTab: (
     tabId: string,

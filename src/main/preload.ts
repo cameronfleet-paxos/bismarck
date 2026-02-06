@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setActiveTab: (tabId: string): Promise<void> =>
     ipcRenderer.invoke('set-active-tab', tabId),
   getTabs: (): Promise<AgentTab[]> => ipcRenderer.invoke('get-tabs'),
+  getTabPlanStatus: (tabId: string): Promise<{
+    hasPlan: boolean
+    planId?: string
+    planTitle?: string
+    planStatus?: string
+    isInProgress: boolean
+  }> => ipcRenderer.invoke('get-tab-plan-status', tabId),
   reorderTabs: (tabIds: string[]): Promise<boolean> =>
     ipcRenderer.invoke('reorder-tabs', tabIds),
   reorderWorkspaceInTab: (
