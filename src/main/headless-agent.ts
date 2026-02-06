@@ -28,6 +28,7 @@ import {
   extractTextContent,
 } from './stream-parser'
 import { isProxyRunning, getProxyConfig } from './tool-proxy'
+import { getGitHubToken } from './settings-manager'
 import { writeCrashLog } from './crash-logger'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 
@@ -136,6 +137,9 @@ export class HeadlessAgent extends EventEmitter {
     }
 
     try {
+      // Retrieve GitHub token from settings so containers can access private registries
+      const githubToken = await getGitHubToken()
+
       // Build container config
       const containerConfig: ContainerConfig = {
         image: options.image || 'bismarck-agent:latest',
@@ -145,6 +149,7 @@ export class HeadlessAgent extends EventEmitter {
         prompt: options.prompt,
         claudeFlags: options.claudeFlags,
         env: {
+          ...(githubToken ? { GITHUB_TOKEN: githubToken } : {}),
           ...options.env,
           BISMARCK_TASK_ID: options.taskId || '',
         },
