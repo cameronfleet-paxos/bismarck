@@ -3223,6 +3223,23 @@ async function spawnCriticAgent(planId: string, originalTaskId: string): Promise
       image: selectedImage,
       claudeFlags: ['--model', agentModel],
     })
+
+    // Create task assignment for tracking
+    const assignment: TaskAssignment = {
+      beadId: criticTaskId,
+      agentId: worktree.agentId,
+      planId,
+      status: 'in_progress',
+      assignedAt: new Date().toISOString(),
+    }
+    saveTaskAssignment(planId, assignment)
+    emitTaskAssignmentUpdate(assignment)
+
+    // Mark beads task as sent
+    await bdUpdate(planId, criticTaskId, {
+      addLabels: ['bismarck-sent'],
+    })
+
     addPlanActivity(planId, 'info', `Critic started for ${originalTaskId}`)
   } catch (error) {
     agentInfo.status = 'failed'
@@ -3261,12 +3278,24 @@ async function handleCriticCompletion(planId: string, criticTask: BeadTask): Pro
 
   const logCtx: LogContext = { planId, taskId: originalTaskId }
 
+  // Mark critic assignment as completed
+  const assignments = loadTaskAssignments(planId)
+  const criticAssignment = assignments.find(a => a.beadId === criticTask.id)
+  if (criticAssignment && criticAssignment.status !== 'completed') {
+    criticAssignment.status = 'completed'
+    criticAssignment.completedAt = new Date().toISOString()
+    saveTaskAssignment(planId, criticAssignment)
+    emitTaskAssignmentUpdate(criticAssignment)
+  }
+
   // Close the critic beads task to unblock dependent tasks in the dependency graph
+  // (The critic agent should have already closed it via bd close, but ensure it's closed)
   try {
     await bdClose(planId, criticTask.id)
     logger.info('plan', 'Closed critic task in beads', logCtx, { criticTaskId: criticTask.id })
   } catch (err) {
-    logger.warn('plan', 'Failed to close critic task', logCtx, {
+    // Expected if critic already closed it via bd close
+    logger.debug('plan', 'Critic task close returned error (likely already closed)', logCtx, {
       error: err instanceof Error ? err.message : 'Unknown error',
     })
   }
