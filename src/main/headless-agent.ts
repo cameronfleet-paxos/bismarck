@@ -150,7 +150,7 @@ export class HeadlessAgent extends EventEmitter {
         prompt: options.prompt,
         claudeFlags: options.claudeFlags,
         env: {
-          ...(githubToken ? { GITHUB_TOKEN: githubToken } : {}),
+          ...(githubToken ? { GITHUB_TOKEN: githubToken, GH_TOKEN: githubToken, GITHUB_ACCESS_TOKEN: githubToken } : {}),
           ...options.env,
           BISMARCK_TASK_ID: options.taskId || '',
         },
