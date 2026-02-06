@@ -383,6 +383,12 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
       console.log('[SetupWizard] Plan mode preference saved')
 
+      // Auto-save detected GitHub token if not already configured in settings
+      if (planModeEnabled && dependencies?.githubToken.detected && !dependencies?.githubToken.configured) {
+        console.log('[SetupWizard] Auto-saving detected GitHub token...')
+        await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+      }
+
       // Build repos with all details
       const reposToCreate = discoveredRepos
         .filter(r => selectedRepos.has(r.path))

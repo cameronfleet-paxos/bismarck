@@ -636,11 +636,21 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 }
 
 /**
- * Check if a GitHub token is configured (without returning the actual token)
+ * Check if a GitHub token is available from any source (env vars or settings)
  */
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Check if a GitHub token is saved in settings.json (ignores env vars)
+ * Used by the setup wizard to determine if a detected token needs to be persisted
+ */
+export async function hasConfiguredGitHubToken(): Promise<boolean> {
+  const settings = await loadSettings()
+  const token = settings.tools?.githubToken
+  return token !== null && token !== undefined && token.length > 0
 }
 
 /**

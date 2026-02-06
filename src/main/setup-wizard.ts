@@ -14,7 +14,7 @@ import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-u
 import { saveWorkspace, getWorkspaces, getClaudeOAuthToken } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
-import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
+import { loadSettings, updateSettings, setGitHubToken, hasConfiguredGitHubToken } from './settings-manager'
 import { findBinary, detectGitHubToken, detectGitHubTokenWithReason } from './exec-utils'
 import { setPreferences } from './state-manager'
 import { checkImageExists, pullImage, DEFAULT_IMAGE, checkDockerAvailable } from './docker-sandbox'
@@ -346,7 +346,7 @@ async function checkDocker(): Promise<{ path: string | null; version: string | n
  * Uses the shared detectGitHubToken from exec-utils
  */
 async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
-  const configured = await hasGitHubToken()
+  const configured = await hasConfiguredGitHubToken()
 
   if (configured) {
     return { detected: false, source: null, configured: true }
