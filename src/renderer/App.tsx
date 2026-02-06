@@ -476,6 +476,23 @@ function App() {
         return
       }
 
+      // Cmd+D: Toggle diff overlay for focused agent
+      if (e.key === 'd' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+
+        // If diff is already open, close it
+        if (diffOpenForWorkspace) {
+          setDiffOpenForWorkspace(null)
+          return
+        }
+
+        // Otherwise, open diff for the focused agent (if any)
+        if (focusedAgentId) {
+          setDiffOpenForWorkspace(focusedAgentId)
+        }
+        return
+      }
+
       // Determine if we're in auto-expand mode (not manually maximized)
       // For keyboard shortcuts, we need to check the current active tab's maximized state
       const activeTabMaximizedAgentId = activeTabId ? (maximizedAgentIdByTab[activeTabId] || null) : null
@@ -524,7 +541,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, diffOpenForWorkspace, focusedAgentId])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()

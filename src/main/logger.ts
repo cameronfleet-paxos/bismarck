@@ -21,6 +21,7 @@ export type LogCategory =
   | 'worktree'
   | 'agent'
   | 'git'
+  | 'git-diff'
   | 'bd'
   | 'docker'
   | 'proxy'
@@ -37,6 +38,9 @@ export interface LogContext {
   worktreePath?: string
   branch?: string
   repo?: string
+  directory?: string
+  filepath?: string
+  size?: number
 }
 
 // Debug settings cache

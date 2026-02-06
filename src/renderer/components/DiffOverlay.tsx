@@ -41,6 +41,71 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
     }
   }, [selectedFile])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape: Close overlay
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+        return
+      }
+
+      // r: Refresh diff data
+      if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleRefresh()
+        return
+      }
+
+      // Cmd+Shift+S: Toggle view mode
+      if (e.key === 's' && e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        setViewMode(prev => prev === 'unified' ? 'split' : 'unified')
+        return
+      }
+
+      // Up/Down arrows: Navigate file list
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        if (files.length === 0 || !selectedFile) return
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        const currentIndex = files.findIndex(f => f.path === selectedFile)
+        if (currentIndex === -1) return
+
+        let newIndex: number
+        if (e.key === 'ArrowUp') {
+          // Move up, wrap to bottom if at top
+          newIndex = currentIndex === 0 ? files.length - 1 : currentIndex - 1
+        } else {
+          // Move down, wrap to top if at bottom
+          newIndex = currentIndex === files.length - 1 ? 0 : currentIndex + 1
+        }
+
+        setSelectedFile(files[newIndex].path)
+        return
+      }
+
+      // n/p: Jump to next/prev change within file
+      // TODO: Implement once DiffViewer exposes a navigation API
+      // For now, these are reserved but not functional
+      if ((e.key === 'n' || e.key === 'p') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        // Future: currentDiff?.scrollToNextChange() / scrollToPrevChange()
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
+  }, [files, selectedFile, onClose])
+
   async function loadFileList() {
     setIsLoading(true)
     setError(null)
@@ -153,7 +218,7 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
             size="sm"
             variant="ghost"
             onClick={onClose}
-            title="Close (Cmd+D)"
+            title="Close (Escape or Cmd+D)"
             className="h-8 w-8 p-0"
           >
             <X className="h-4 w-4" />
