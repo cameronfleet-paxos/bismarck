@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Update status types
@@ -124,6 +124,14 @@ export interface ElectronAPI {
   updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
+
+  // Git diff operations
+  getChangedFiles: (directory: string) => Promise<DiffResult>
+  getFileDiff: (directory: string, filepath: string, force?: boolean) => Promise<FileDiffContent>
+  isGitRepo: (directory: string) => Promise<boolean>
+  revertFile: (directory: string, filepath: string) => Promise<void>
+  writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
+  revertAllFiles: (directory: string) => Promise<void>
 
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>

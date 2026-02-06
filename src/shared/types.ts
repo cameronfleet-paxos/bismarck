@@ -132,6 +132,7 @@ export interface AppPreferences {
   gridSize: GridSize
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
+  showDiffView?: boolean
 }
 
 // ============================================
@@ -661,4 +662,37 @@ export interface RalphLoopState {
   tabId: string               // Dedicated tab for all iterations
   phrase: string              // Random phrase for naming (e.g., "plucky-otter")
   referenceAgentDirectory: string  // Reference agent's directory (for bd proxy planId)
+}
+
+// ============================================
+// Git Diff Types
+// ============================================
+
+// Individual file in a diff result
+export interface DiffFile {
+  path: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed'
+  additions: number
+  deletions: number
+  isBinary: boolean
+}
+
+// Complete diff result with files and summary
+export interface DiffResult {
+  files: DiffFile[]
+  summary: {
+    filesChanged: number
+    additions: number
+    deletions: number
+  }
+}
+
+// Content and metadata for viewing a specific file's diff
+export interface FileDiffContent {
+  oldContent: string
+  newContent: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  error?: string
 }
