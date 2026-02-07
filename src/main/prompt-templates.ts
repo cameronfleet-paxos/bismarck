@@ -55,6 +55,7 @@ export interface PromptVariables {
   userPrompt?: string            // The user's task description
   workingDir?: string            // Worktree path
   branchName?: string            // Git branch name
+  protectedBranch?: string       // Protected branch for PR base (e.g., main or master)
   commitHistory?: string         // Recent commits for context (follow-up agents)
 
   // Headless discussion variables
@@ -318,7 +319,16 @@ Title: {{taskTitle}}
 === FIRST STEP ===
 Read your task details to understand what you need to do:
   bd show {{taskId}}
-{{completionCriteria}}{{guidance}}
+{{guidance}}
+=== WORKFLOW ===
+For non-trivial tasks (more than a simple fix or small change):
+1. After reading your task details, enter plan mode to explore the codebase and design your approach
+   - Investigate existing patterns, utilities, and code structure
+   - Auto-accept the plan and proceed to implementation
+2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
+
+For trivial tasks, skip planning and just do the work directly.
+
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
@@ -345,7 +355,7 @@ You are in a dedicated git worktree: /workspace
 Base branch: {{baseBranch}}
 
 === COMPLETION REQUIREMENTS ===
-1. Complete the work described in the task title
+{{completionCriteria}}1. Complete the work described in the task title
 {{completionInstructions}}
 
 CRITICAL: There is no interactive mode. You must:
@@ -356,6 +366,7 @@ CRITICAL: There is no interactive mode. You must:
 
 Working Directory: {{workingDir}}
 Branch: {{branchName}}
+Protected Branch: {{protectedBranch}}
 
 === ENVIRONMENT ===
 You are running in a Docker container with:
@@ -364,27 +375,31 @@ You are running in a Docker container with:
 
 {{proxiedToolsSection}}
 
+=== WORKFLOW ===
+For non-trivial tasks (more than a simple fix or small change):
+1. Enter plan mode to explore the codebase and design your approach
+   - Investigate existing patterns, utilities, and code structure
+   - Design your implementation approach
+   - Auto-accept the plan and proceed to implementation
+2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
+
+For trivial tasks (typo fixes, single-line changes, simple renames), skip planning and just do the work directly.
+
 === YOUR TASK ===
 {{userPrompt}}
-{{completionCriteria}}{{guidance}}
+{{guidance}}
 === COMPLETION REQUIREMENTS ===
-When you complete your work:
+{{completionCriteria}}When you complete your work:
 
-1. Commit your changes using multiple -m flags (avoids shell escaping issues with HEREDOCs):
+1. Commit your changes:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Detail 2" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 2. Push your branch:
    git push -u origin {{branchName}}
 
-3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
-   echo '{"head":"{{branchName}}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
-
-   IMPORTANT for PR body:
-   - Keep body simple, single line, no markdown formatting
-   - Escape quotes with backslash: \\"quoted\\"
-   - Use \\n for newlines if absolutely needed
-   - If gh api hangs for >30s, cancel and retry with simpler body
+3. Create a PR:
+   gh pr create --base {{protectedBranch}} --title "Your PR Title" --body "Summary of changes"
 
 4. Report the PR URL in your final message`,
 
@@ -392,6 +407,7 @@ When you complete your work:
 
 Working Directory: {{workingDir}}
 Branch: {{branchName}}
+Protected Branch: {{protectedBranch}}
 
 === ENVIRONMENT ===
 You are running in a Docker container with:
@@ -400,26 +416,31 @@ You are running in a Docker container with:
 
 {{proxiedToolsSection}}
 
+=== WORKFLOW ===
+For non-trivial follow-up work:
+1. Review the previous commits, then enter plan mode to design your approach
+2. Use TaskCreate to break down work into trackable steps if the follow-up involves multiple distinct steps
+
+For simple follow-ups, skip planning and just do the work directly.
+
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
 
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
-{{completionCriteria}}{{guidance}}
+{{guidance}}
 === COMPLETION REQUIREMENTS ===
-1. Review the previous commits above to understand what was done
+{{completionCriteria}}1. Review the previous commits above to understand what was done
 
-2. Make your changes and commit using multiple -m flags (avoids shell escaping issues):
+2. Make your changes and commit:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 3. Push your changes:
    git push origin {{branchName}}
 
-4. Update the existing PR if needed using echo piped JSON:
-   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
-
-   IMPORTANT: Keep body simple, single line, escape quotes with backslash
+4. Update the existing PR if needed:
+   gh pr edit --title "New Title" --body "Updated summary"
 
 5. Report the PR URL in your final message`,
 
@@ -638,9 +659,9 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'task':
       return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':
-      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria', 'guidance', 'proxiedToolsSection']
+      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
+      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'ralph_loop_discussion':
@@ -714,7 +735,7 @@ export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boole
 
   if (enabledTools.gh) {
     sections.push(`${num}. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
+   - gh pr create, gh pr view, gh pr edit
    - All standard gh commands work`)
     num++
   }

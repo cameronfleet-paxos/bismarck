@@ -39,6 +39,7 @@ import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
+import { ElapsedTime } from '@/renderer/components/ElapsedTime'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -197,6 +198,8 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+  // Track tabs currently being closed (show spinner)
+  const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set())
   const [deleteConfirmPlanInfo, setDeleteConfirmPlanInfo] = useState<{
     hasPlan: boolean
     planTitle?: string
@@ -586,6 +589,12 @@ function App() {
       window.electronAPI?.acknowledgeWaiting?.(focusedAgentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== focusedAgentId))
     }
+    // Switch to the tab containing this agent
+    const tab = tabs.find((t) => t.workspaceIds.includes(agentId))
+    if (tab && tab.id !== activeTabId) {
+      window.electronAPI?.setActiveTab?.(tab.id)
+      setActiveTabId(tab.id)
+    }
     setFocusedAgentId(agentId)
     window.electronAPI?.setFocusedWorkspace?.(agentId)
     // Acknowledge if this agent was waiting
@@ -593,7 +602,7 @@ function App() {
       window.electronAPI?.acknowledgeWaiting?.(agentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== agentId))
     }
-  }, [focusedAgentId, waitingQueue])
+  }, [focusedAgentId, waitingQueue, tabs, activeTabId])
 
   // Close diff overlay and restore agent expansion state
   const closeDiffAndRestore = useCallback((tabId: string) => {
@@ -1809,24 +1818,35 @@ function App() {
   }
 
   const handleTabDelete = async (tabId: string) => {
-    const result = await window.electronAPI?.deleteTab?.(tabId)
-    if (result?.success) {
-      // Stop all agents in the deleted tab
-      for (const workspaceId of result.workspaceIds) {
-        const terminal = activeTerminals.find(
-          (t) => t.workspaceId === workspaceId
-        )
-        if (terminal) {
-          await window.electronAPI.closeTerminal(terminal.terminalId)
-          setActiveTerminals((prev) =>
-            prev.filter((t) => t.workspaceId !== workspaceId)
+    // Mark the tab as closing to show spinner
+    setClosingTabIds((prev) => new Set(prev).add(tabId))
+    try {
+      const result = await window.electronAPI?.deleteTab?.(tabId)
+      if (result?.success) {
+        // Stop all agents in the deleted tab
+        for (const workspaceId of result.workspaceIds) {
+          const terminal = activeTerminals.find(
+            (t) => t.workspaceId === workspaceId
           )
+          if (terminal) {
+            await window.electronAPI.closeTerminal(terminal.terminalId)
+            setActiveTerminals((prev) =>
+              prev.filter((t) => t.workspaceId !== workspaceId)
+            )
+          }
         }
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
       }
-      // Refresh tabs
-      const state = await window.electronAPI.getState()
-      setTabs(state.tabs || [])
-      setActiveTabId(state.activeTabId)
+    } finally {
+      // Remove from closing state (in case of failure or success)
+      setClosingTabIds((prev) => {
+        const next = new Set(prev)
+        next.delete(tabId)
+        return next
+      })
     }
   }
 
@@ -2420,6 +2440,7 @@ function App() {
         onTabDragLeave={() => setDropTargetTabId(null)}
         onTabDrop={handleDropOnTab}
         onTabReorder={handleTabReorder}
+        closingTabIds={closingTabIds}
       />
 
       {/* Main content */}
@@ -2949,6 +2970,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -3067,6 +3091,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -3209,6 +3236,9 @@ function App() {
                                 iteration.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{iteration.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={iteration.startedAt} completedAt={iteration.completedAt} />
+                              )}
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
                               {loopState.config.prompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, planId: loopState.id, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt, worktreePath: loopState.worktreeInfo.path, startedAt: iteration.startedAt })} className="h-6 w-6 p-0" title="View prompt">
@@ -3530,6 +3560,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />

@@ -21,6 +21,9 @@ interface AppSettings {
       enabled: boolean
       path: string
     }
+    sharedBuildCache?: {
+      enabled: boolean
+    }
   }
 }
 
@@ -238,6 +241,17 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update Docker socket settings:', error)
+    }
+  }
+
+  const handleSharedBuildCacheToggle = async (enabled: boolean) => {
+    try {
+      await window.electronAPI.updateDockerSharedBuildCacheSettings({ enabled })
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update shared build cache settings:', error)
     }
   }
 
@@ -529,6 +543,35 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             </p>
           </div>
         )}
+      </div>
+
+      {/* Shared Build Cache */}
+      <div className="bg-card border rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-2">Shared Build Cache</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Share Go build and module caches across agents working on the same repository. Reduces compilation time and avoids re-downloading modules for parallel agents.
+        </p>
+
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <Label htmlFor="shared-build-cache-enabled">Enable Shared Build Cache</Label>
+            <p className="text-xs text-muted-foreground">
+              Agents on the same repo share Go build and module caches instead of each building from scratch
+            </p>
+          </div>
+          <Switch
+            id="shared-build-cache-enabled"
+            checked={settings.docker.sharedBuildCache?.enabled ?? true}
+            onCheckedChange={handleSharedBuildCacheToggle}
+          />
+        </div>
+
+        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+          <p className="text-xs text-blue-600 dark:text-blue-400">
+            Caches are stored per-repo at <code className="bg-muted px-1 rounded">~/.bismarck/repos/&lt;repo&gt;/.gocache/</code> and <code className="bg-muted px-1 rounded">.gomodcache/</code>.
+            Go's caches are safe for concurrent access using OS file locks.
+          </p>
+        </div>
       </div>
     </div>
   )

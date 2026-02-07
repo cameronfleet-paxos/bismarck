@@ -145,6 +145,7 @@ export interface AppPreferences {
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
   showDiffView?: boolean
+  showAgentTimer?: boolean
 }
 
 // ============================================

@@ -24,6 +24,8 @@ import {
   saveHeadlessAgentInfo,
   withPlanLock,
   withGitPushLock,
+  getRepoCacheDir,
+  getRepoModCacheDir,
 } from './config'
 import { bdCreate, bdList, bdUpdate, bdClose, bdAddDependency, bdGetDependents, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
 import { injectTextToTerminal, injectPromptToTerminal, getTerminalForWorkspace, waitForTerminalOutput, closeTerminal, getTerminalEmitter } from './terminal'
@@ -2120,6 +2122,13 @@ async function startHeadlessTaskAgent(
     addPlanActivity(planId, 'error', `Task ${task.id} container error`, error.message)
   })
 
+  // Create shared Go build cache and module cache directories for this repo
+  const repoName = repository.name
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fs.mkdir(sharedCacheDir, { recursive: true })
+  await fs.mkdir(sharedModCacheDir, { recursive: true })
+
   // Start the agent
   try {
     await agent.start({
@@ -2130,6 +2139,8 @@ async function startHeadlessTaskAgent(
       taskId: task.id,
       image: selectedImage,
       claudeFlags: ['--model', agentModel],
+      sharedCacheDir,
+      sharedModCacheDir,
     })
 
     addPlanActivity(planId, 'info', `Task ${task.id} started (headless container)`)
@@ -2350,8 +2361,8 @@ async function buildTaskPromptForHeadless(planId: string, task: BeadTask, reposi
   let completionInstructions: string
   if (plan?.branchStrategy === 'raise_prs') {
     completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR using gh api (gh pr create has issues in worktrees):
-   gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
+3. Push your branch and create a PR:
+   gh pr create --base "${baseBranch}" --title "..." --body "..."
 4. Close task with PR URL:
    bd close ${task.id} --message "PR: <url>"`
   } else {
@@ -2364,10 +2375,10 @@ async function buildTaskPromptForHeadless(planId: string, task: BeadTask, reposi
   // Build completion criteria section - only include in PR mode where each task raises its own PR
   // In feature branch mode, completion criteria should be handled by a final "raise PR" task
   const completionCriteria = (plan?.branchStrategy === 'raise_prs' && repository?.completionCriteria)
-    ? `
-=== REPOSITORY COMPLETION CRITERIA ===
-Your PR must meet these requirements before it can be merged:
+    ? `Before marking your work complete, ensure these acceptance criteria pass:
 ${repository.completionCriteria}
+Keep iterating until all criteria are satisfied.
+
 `
     : ''
 
@@ -2392,8 +2403,7 @@ ${repository.guidance}
    Do NOT use --file or -F flags - file paths don't work across the proxy.
 
 2. GitHub CLI (gh):
-   - Use gh api for PR creation (gh pr create has issues in worktrees):
-     gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
+   - gh pr create --base "${baseBranch}" --title "..." --body "..."
    - gh pr view
    - All standard gh commands work`
     : `1. Git:
