@@ -728,8 +728,8 @@ function registerIpcHandlers() {
   })
 
   // Headless discussion (Discuss: Headless Agent)
-  ipcMain.handle('start-headless-discussion', async (_event, agentId: string) => {
-    return startHeadlessDiscussion(agentId)
+  ipcMain.handle('start-headless-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startHeadlessDiscussion(agentId, initialPrompt)
   })
 
   ipcMain.handle('cancel-headless-discussion', async (_event, discussionId: string) => {
@@ -737,8 +737,8 @@ function registerIpcHandlers() {
   })
 
   // Ralph Loop discussion (Discuss: Ralph Loop)
-  ipcMain.handle('start-ralph-loop-discussion', async (_event, agentId: string) => {
-    return startRalphLoopDiscussion(agentId)
+  ipcMain.handle('start-ralph-loop-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startRalphLoopDiscussion(agentId, initialPrompt)
   })
 
   ipcMain.handle('cancel-ralph-loop-discussion', async (_event, discussionId: string) => {

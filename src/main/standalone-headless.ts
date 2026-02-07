@@ -854,6 +854,7 @@ const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map(
  */
 export async function startHeadlessDiscussion(
   referenceAgentId: string,
+  initialPrompt: string,
   maxQuestions: number = 7
 ): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
   if (!mainWindow) {
@@ -894,6 +895,7 @@ export async function startHeadlessDiscussion(
     codebasePath: referenceAgent.directory,
     maxQuestions: maxQuestions,
     discussionOutputPath: discussionOutputPath,
+    initialPrompt: initialPrompt,
   })
 
   // Create discussion workspace
@@ -1093,6 +1095,7 @@ const activeRalphLoopDiscussions: Map<string, RalphLoopDiscussionState> = new Ma
  */
 export async function startRalphLoopDiscussion(
   referenceAgentId: string,
+  initialPrompt: string,
   maxQuestions: number = 5
 ): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
   if (!mainWindow) {
@@ -1133,6 +1136,7 @@ export async function startRalphLoopDiscussion(
     codebasePath: referenceAgent.directory,
     maxQuestions: maxQuestions,
     discussionOutputPath: discussionOutputPath,
+    initialPrompt: initialPrompt,
   })
 
   // Create discussion workspace

@@ -45,8 +45,8 @@ interface CommandSearchProps {
   activeTabId: string | null
   onSelectAgent: (agentId: string) => void
   onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
-  onStartHeadlessDiscussion?: (agentId: string) => void
-  onStartRalphLoopDiscussion?: (agentId: string) => void
+  onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
+  onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
   prefillRalphLoopConfig?: {
@@ -368,14 +368,6 @@ export function CommandSearch({
         setSelectedAgent(agent)
         if (pendingCommand === 'ralph-loop') {
           setMode('ralph-loop-config')
-        } else if (pendingCommand === 'headless-discussion') {
-          // Headless discussion starts immediately after agent selection
-          onStartHeadlessDiscussion?.(agent.id)
-          onOpenChange(false)
-        } else if (pendingCommand === 'ralph-loop-discussion') {
-          // Ralph Loop discussion starts immediately after agent selection
-          onStartRalphLoopDiscussion?.(agent.id)
-          onOpenChange(false)
         } else {
           setMode('prompt-input')
         }
@@ -399,9 +391,17 @@ export function CommandSearch({
   }
 
   const handleSubmitPrompt = (model: 'opus' | 'sonnet') => {
-    if (selectedAgent && prompt.trim() && onStartHeadless) {
-      onStartHeadless(selectedAgent.id, prompt.trim(), model)
-      onOpenChange(false)
+    if (selectedAgent && prompt.trim()) {
+      if (pendingCommand === 'headless-discussion') {
+        onStartHeadlessDiscussion?.(selectedAgent.id, prompt.trim())
+        onOpenChange(false)
+      } else if (pendingCommand === 'ralph-loop-discussion') {
+        onStartRalphLoopDiscussion?.(selectedAgent.id, prompt.trim())
+        onOpenChange(false)
+      } else if (onStartHeadless) {
+        onStartHeadless(selectedAgent.id, prompt.trim(), model)
+        onOpenChange(false)
+      }
     }
   }
 
@@ -462,6 +462,8 @@ export function CommandSearch({
         if (pendingCommand === 'headless-discussion') return 'Discuss: Headless Agent'
         return 'Start: Headless Agent'
       case 'prompt-input':
+        if (pendingCommand === 'headless-discussion') return `Discuss: Headless Agent - ${selectedAgent?.name}`
+        if (pendingCommand === 'ralph-loop-discussion') return `Discuss: Ralph Loop - ${selectedAgent?.name}`
         return `Headless Agent - ${selectedAgent?.name}`
       case 'ralph-loop-config':
         return `Ralph Loop - ${selectedAgent?.name}`
@@ -500,29 +502,41 @@ export function CommandSearch({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Enter prompt for headless agent..."
+              placeholder={pendingCommand === 'headless-discussion' || pendingCommand === 'ralph-loop-discussion'
+                ? "Describe what you want to build or accomplish..."
+                : "Enter prompt for headless agent..."}
               className="w-full h-32 p-3 text-sm border rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <div className="flex items-center justify-between mt-3">
               <span className="text-xs text-muted-foreground">
                 Working directory: {selectedAgent?.directory}
               </span>
-              <div className="flex gap-1.5">
+              {pendingCommand === 'headless-discussion' || pendingCommand === 'ralph-loop-discussion' ? (
                 <button
                   onClick={() => handleSubmitPrompt('sonnet')}
                   disabled={!prompt.trim()}
-                  className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Launch Sonnet
-                </button>
-                <button
-                  onClick={() => handleSubmitPrompt('opus')}
-                  disabled={!prompt.trim()}
                   className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Launch Opus
+                  Start Discussion
                 </button>
-              </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => handleSubmitPrompt('sonnet')}
+                    disabled={!prompt.trim()}
+                    className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Launch Sonnet
+                  </button>
+                  <button
+                    onClick={() => handleSubmitPrompt('opus')}
+                    disabled={!prompt.trim()}
+                    className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Launch Opus
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ) : mode === 'ralph-loop-config' ? (

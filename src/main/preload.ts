@@ -140,14 +140,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-headless-discussion', agentId),
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt),
   cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-headless-discussion', discussionId),
 
   // Ralph Loop discussion (Discuss: Ralph Loop)
-  startRalphLoopDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-ralph-loop-discussion', agentId),
+  startRalphLoopDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-ralph-loop-discussion', agentId, initialPrompt),
   cancelRalphLoopDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-ralph-loop-discussion', discussionId),
 

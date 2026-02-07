@@ -1717,9 +1717,9 @@ function App() {
   }
 
   // Start headless discussion handler
-  const handleStartHeadlessDiscussion = async (agentId: string) => {
+  const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string) => {
     try {
-      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId)
+      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId, initialPrompt)
       if (result) {
         // Reload agents to pick up the new discussion workspace
         await loadAgents()
@@ -1730,9 +1730,9 @@ function App() {
   }
 
   // Start Ralph Loop discussion handler
-  const handleStartRalphLoopDiscussion = async (agentId: string) => {
+  const handleStartRalphLoopDiscussion = async (agentId: string, initialPrompt: string) => {
     try {
-      const result = await window.electronAPI?.startRalphLoopDiscussion?.(agentId)
+      const result = await window.electronAPI?.startRalphLoopDiscussion?.(agentId, initialPrompt)
       if (result) {
         // Reload agents to pick up the new discussion workspace
         await loadAgents()

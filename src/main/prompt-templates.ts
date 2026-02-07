@@ -59,6 +59,7 @@ export interface PromptVariables {
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+  initialPrompt?: string         // User's initial prompt/description for discussion
 
   // Proxied tools section (dynamically built based on enabled tools)
   proxiedToolsSection?: string
@@ -488,8 +489,11 @@ When you have gathered enough information (or reached the question limit):
 
 2. Output /exit to signal that discussion is complete
 
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
 === BEGIN ===
-Start by briefly greeting the user and asking your first clarifying question about their goal.`,
+Start by reviewing the user's request above. Briefly acknowledge what they want, then ask your first clarifying question to refine the requirements.`,
 
   ralph_loop_discussion: `[RALPH LOOP DISCUSSION AGENT]
 
@@ -570,8 +574,11 @@ When you have gathered enough information:
 
 2. Output /exit to signal that discussion is complete
 
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
 === BEGIN ===
-Start by briefly greeting the user and asking about what they want the Ralph Loop to accomplish.`,
+Start by reviewing the user's request above. Briefly acknowledge what they want the Ralph Loop to accomplish, then ask your first clarifying question.`,
 
   critic: `[BISMARCK CRITIC AGENT]
 Task Under Review: {{originalTaskId}}
@@ -635,9 +642,9 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'standalone_followup':
       return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
-      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'ralph_loop_discussion':
-      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'critic':
       return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
               'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
