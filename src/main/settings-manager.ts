@@ -51,6 +51,9 @@ export interface AppSettings {
       enabled: boolean     // Enable Docker socket mounting for testcontainers support
       path: string         // Socket path (default: /var/run/docker.sock)
     }
+    sharedBuildCache: {
+      enabled: boolean     // Enable shared Go build cache across agents (per-repo)
+    }
   }
   prompts: {
     orchestrator: string | null  // null = use default
@@ -88,6 +91,9 @@ export interface AppSettings {
   critic: {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
+  }
+  _internal: {
+    lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
 }
 
@@ -168,6 +174,9 @@ export function getDefaultSettings(): AppSettings {
         enabled: true,   // Enabled by default for testcontainers support
         path: '/var/run/docker.sock',
       },
+      sharedBuildCache: {
+        enabled: true,   // Share Go build cache across agents per-repo
+      },
     },
     prompts: {
       orchestrator: null,
@@ -205,6 +214,9 @@ export function getDefaultSettings(): AppSettings {
     critic: {
       enabled: true,
       maxIterations: 2,
+    },
+    _internal: {
+      lastLogPurgeVersion: null,
     },
   }
 }
@@ -248,6 +260,10 @@ export async function loadSettings(): Promise<AppSettings> {
           ...defaults.docker.dockerSocket,
           ...(loaded.docker?.dockerSocket || {}),
         },
+        sharedBuildCache: {
+          ...defaults.docker.sharedBuildCache,
+          ...(loaded.docker?.sharedBuildCache || {}),
+        },
       },
       prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
       planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
@@ -258,6 +274,7 @@ export async function loadSettings(): Promise<AppSettings> {
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
       critic: { ...defaults.critic, ...(loaded.critic || {}) },
+      _internal: { ...defaults._internal, ...(loaded._internal || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -331,6 +348,18 @@ export async function loadSettings(): Promise<AppSettings> {
       needsMigration = true
     }
 
+    // Migration: One-time purge of debug logs that may contain leaked secrets (v0.6.3)
+    // Triggers for any user upgrading from before 0.6.3, regardless of which version they land on.
+    // Uses semver-style comparison: null (never purged) or any version < '0.6.3' triggers purge.
+    const LOG_PURGE_VERSION = '0.6.3'
+    const priorPurge = merged._internal.lastLogPurgeVersion
+    if (!priorPurge || priorPurge < LOG_PURGE_VERSION) {
+      merged._internal.lastLogPurgeVersion = LOG_PURGE_VERSION
+      needsMigration = true
+      // Fire-and-forget: purge global debug logs and per-plan debug logs
+      purgeDebugLogs().catch(() => {})
+    }
+
     settingsCache = merged
 
     // Persist migrated settings to disk so old format is cleaned up
@@ -383,6 +412,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...(currentSettings.docker.dockerSocket || defaults.docker.dockerSocket),
         ...(updates.docker?.dockerSocket || {}),
       },
+      sharedBuildCache: {
+        ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+        ...(updates.docker?.sharedBuildCache || {}),
+      },
     },
     prompts: {
       ...(currentSettings.prompts || defaults.prompts),
@@ -419,6 +452,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     critic: {
       ...(currentSettings.critic || defaults.critic),
       ...(updates.critic || {}),
+    },
+    _internal: {
+      ...(currentSettings._internal || defaults._internal),
+      ...(updates._internal || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -591,6 +628,19 @@ export async function updateDockerSocketSettings(socketSettings: { enabled?: boo
   settings.docker.dockerSocket = {
     ...(settings.docker.dockerSocket || defaults.docker.dockerSocket),
     ...socketSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Update Docker shared build cache settings
+ */
+export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enabled?: boolean }): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.docker.sharedBuildCache = {
+    ...(settings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+    ...cacheSettings,
   }
   await saveSettings(settings)
 }
@@ -850,4 +900,36 @@ export async function updatePreventSleepSettings(preventSleepSettings: Partial<A
     ...preventSleepSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Purge all debug log files (global and per-plan).
+ * Called once on upgrade to clean up logs that may have contained leaked secrets.
+ */
+async function purgeDebugLogs(): Promise<void> {
+  const configDir = getConfigDir()
+
+  // Purge global debug logs (debug-YYYY-MM-DD.log)
+  try {
+    const files = await fs.readdir(configDir)
+    for (const file of files) {
+      if (file.startsWith('debug') && file.endsWith('.log')) {
+        await fs.unlink(path.join(configDir, file)).catch(() => {})
+      }
+    }
+  } catch {
+    // Config dir may not exist yet
+  }
+
+  // Purge per-plan debug logs
+  const plansDir = path.join(configDir, 'plans')
+  try {
+    const planIds = await fs.readdir(plansDir)
+    for (const planId of planIds) {
+      const logPath = path.join(plansDir, planId, 'debug.log')
+      await fs.unlink(logPath).catch(() => {})
+    }
+  } catch {
+    // Plans dir may not exist
+  }
 }

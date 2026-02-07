@@ -54,6 +54,8 @@ export interface HeadlessAgentOptions {
   claudeFlags?: string[]
   env?: Record<string, string>
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
+  sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
+  sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
 }
 
 export interface AgentResult {
@@ -155,6 +157,8 @@ export class HeadlessAgent extends EventEmitter {
           BISMARCK_TASK_ID: options.taskId || '',
         },
         useEntrypoint: options.useEntrypoint,
+        sharedCacheDir: options.sharedCacheDir,
+        sharedModCacheDir: options.sharedModCacheDir,
       }
 
       // Spawn container
