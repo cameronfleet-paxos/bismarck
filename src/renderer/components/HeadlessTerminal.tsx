@@ -23,7 +23,7 @@ import type {
   HeadlessAgentStatus,
 } from '@/shared/types'
 import { themes } from '@/shared/constants'
-import { extractPRUrl } from '@/shared/pr-utils'
+import { extractPRUrls } from '@/shared/pr-utils'
 import { TerminalSearch, SearchOptions, SearchResult } from './TerminalSearch'
 
 // URL regex pattern
@@ -289,6 +289,8 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
   const [internalSearchOpen, setInternalSearchOpen] = useState(false)
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<Range[]>([])
+  const [prDropdownOpen, setPrDropdownOpen] = useState(false)
+  const prDropdownRef = useRef<HTMLSpanElement>(null)
   const lastQueryRef = useRef<string>('')
   const themeColors = themes[theme]
 
@@ -457,8 +459,21 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
     }
   }, [events, isVisible])
 
-  // Extract PR URL from events
-  const prUrl = extractPRUrl(events)
+  // Close PR dropdown on outside click
+  useEffect(() => {
+    if (!prDropdownOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (prDropdownRef.current && !prDropdownRef.current.contains(e.target as Node)) {
+        setPrDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [prDropdownOpen])
+
+  // Extract PR URLs from events
+  const prUrls = extractPRUrls(events)
+  const prUrl = prUrls.length > 0 ? prUrls[prUrls.length - 1] : null
 
   // Toggle collapse state for a tool
   const toggleCollapse = (toolId: string) => {
@@ -930,12 +945,47 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
             </div>
             <div className="flex items-center gap-2">
               {prUrl && (
-                <button
-                  onClick={handleOpenPR}
-                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
-                >
-                  View PR
-                </button>
+                <span className="relative" ref={prDropdownRef}>
+                  <span className="flex items-center gap-0.5">
+                    <button
+                      onClick={handleOpenPR}
+                      className="px-3 py-1 text-xs font-medium rounded-l bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
+                      style={prUrls.length <= 1 ? { borderRadius: '0.25rem' } : undefined}
+                    >
+                      View PR
+                    </button>
+                    {prUrls.length > 1 && (
+                      <button
+                        onClick={() => setPrDropdownOpen(!prDropdownOpen)}
+                        className="px-1.5 py-1 text-xs font-medium rounded-r bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer border-l border-green-500/50"
+                      >
+                        <span className={`inline-block transition-transform ${prDropdownOpen ? 'rotate-180' : ''}`}>▾</span>
+                      </button>
+                    )}
+                  </span>
+                  {prUrls.length > 1 && prDropdownOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-popover border rounded-md shadow-lg py-1 z-50 min-w-[160px]">
+                      {prUrls.slice().reverse().map((url, i) => {
+                        const prNumber = url.match(/\/pull\/(\d+)$/)?.[1] || '?'
+                        const repoMatch = url.match(/github\.com\/([^/]+\/[^/]+)\//)
+                        const repo = repoMatch?.[1] || ''
+                        const isLatest = i === 0
+                        return (
+                          <a
+                            key={url}
+                            href={url}
+                            onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(url); setPrDropdownOpen(false) }}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-white/10 cursor-pointer transition-colors"
+                          >
+                            <span className="text-foreground font-medium">#{prNumber}</span>
+                            {repo && <span className="text-muted-foreground truncate">{repo}</span>}
+                            {isLatest && <span className="ml-auto text-[10px] px-1 py-0.5 rounded bg-green-500/20 text-green-400">latest</span>}
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+                </span>
               )}
               {isStandalone && onStartFollowUp && (
                 <button
