@@ -5,7 +5,7 @@ import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -294,6 +294,7 @@ export interface ElectronAPI {
   devStopMock?: () => Promise<void>
   devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
+  devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
 }
 
 declare global {
