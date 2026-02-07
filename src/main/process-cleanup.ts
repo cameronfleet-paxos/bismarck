@@ -5,6 +5,7 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { execWithPath } from './exec-utils'
+import { devLog } from './dev-log'
 
 // Use shared exec utility with extended PATH
 const execAsync = execWithPath
@@ -17,14 +18,14 @@ const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 24 hours
  * This should be called on app startup.
  */
 export async function cleanupOrphanedProcesses(): Promise<void> {
-  console.log('[Cleanup] Starting orphaned process cleanup...')
+  devLog('[Cleanup] Starting orphaned process cleanup...')
 
   await Promise.all([
     cleanupStaleSocketDirs(),
     cleanupOrphanedPtyProcesses(),
   ])
 
-  console.log('[Cleanup] Cleanup complete')
+  devLog('[Cleanup] Cleanup complete')
 }
 
 /**
@@ -50,7 +51,7 @@ async function cleanupStaleSocketDirs(): Promise<void> {
         const age = now - stats.mtimeMs
 
         if (age > STALE_THRESHOLD_MS) {
-          console.log(`[Cleanup] Removing stale socket dir: ${dirPath} (${Math.round(age / 1000 / 60 / 60)}h old)`)
+          devLog(`[Cleanup] Removing stale socket dir: ${dirPath} (${Math.round(age / 1000 / 60 / 60)}h old)`)
           await fs.rm(dirPath, { recursive: true, force: true })
         }
       } catch (error) {
@@ -97,13 +98,13 @@ async function cleanupOrphanedPtyProcesses(): Promise<void> {
     const pids = envOutput.trim().split('\n').filter(Boolean)
 
     if (pids.length > 0) {
-      console.log(`[Cleanup] Found ${pids.length} orphaned PTY processes: ${pids.join(', ')}`)
+      devLog(`[Cleanup] Found ${pids.length} orphaned PTY processes: ${pids.join(', ')}`)
 
       for (const pid of pids) {
         try {
           // Send SIGTERM first for graceful shutdown
           process.kill(parseInt(pid, 10), 'SIGTERM')
-          console.log(`[Cleanup] Killed orphaned process: ${pid}`)
+          devLog(`[Cleanup] Killed orphaned process: ${pid}`)
         } catch (error) {
           // Process may have already exited
           if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {

@@ -18,7 +18,7 @@ import { EventEmitter } from 'events'
 import { logger } from './logger'
 import { spawnWithPath, getEnvWithPath } from './exec-utils'
 import { getConfigDir } from './config'
-import { getGitHubToken } from './settings-manager'
+import { getGitHubToken, loadSettings } from './settings-manager'
 import { getGitUserConfig } from './git-utils'
 
 export interface ToolProxyConfig {
@@ -27,6 +27,7 @@ export interface ToolProxyConfig {
     gh: { enabled: boolean }
     bd: { enabled: boolean }
     git: { enabled: boolean }
+    bb: { enabled: boolean }
   }
 }
 
@@ -36,6 +37,7 @@ const DEFAULT_CONFIG: ToolProxyConfig = {
     gh: { enabled: true },
     bd: { enabled: true },
     git: { enabled: true },
+    bb: { enabled: false },
   },
 }
 
@@ -413,6 +415,53 @@ async function handleGitRequest(
 }
 
 /**
+ * Handle bb CLI proxy requests
+ */
+async function handleBbRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (!currentConfig.tools.bb.enabled) {
+    logger.warn('proxy', 'bb tool is disabled, rejecting request')
+    sendJson(res, 403, { success: false, error: 'bb tool is disabled' })
+    return
+  }
+
+  try {
+    const body = (await parseBody(req)) as ProxyRequest & { cwd?: string }
+
+    const args = body.args || []
+    const cwd = body.cwd
+
+    logger.debug('proxy', `bb request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined)
+
+    // Log the operation
+    proxyEvents.emit('bb', { args, cwd })
+
+    const result = await executeCommand('bb', args, body.stdin, { cwd })
+
+    logger.proxyRequest('bb', args, result.exitCode === 0, undefined, {
+      exitCode: result.exitCode,
+      stderrPreview: result.stderr?.substring(0, 100),
+    })
+
+    sendJson(res, 200, {
+      success: result.exitCode === 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    })
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+    logger.error('proxy', `bb request failed: ${errorMsg}`)
+    sendJson(res, 400, {
+      success: false,
+      error: errorMsg,
+    })
+  }
+}
+
+/**
  * Handle health check requests
  */
 function handleHealthCheck(res: http.ServerResponse): void {
@@ -451,6 +500,8 @@ async function handleRequest(
     await handleBdRequest(req, res)
   } else if (url.startsWith('/git') && method === 'POST') {
     await handleGitRequest(req, res)
+  } else if (url.startsWith('/bb') && method === 'POST') {
+    await handleBbRequest(req, res)
   } else {
     sendJson(res, 404, { success: false, error: 'Not found' })
   }
@@ -465,9 +516,19 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     return
   }
 
+  // Read enabled state from settings for each tool
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const toolsConfig = {
+    gh: { enabled: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true },
+    bd: { enabled: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true },
+    git: { enabled: proxiedTools.find(t => t.name === 'git')?.enabled ?? true },
+    bb: { enabled: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false },
+  }
+
   // Find available port if not explicitly specified
   const port = config.port ?? (await findAvailablePort())
-  currentConfig = { ...DEFAULT_CONFIG, ...config, port }
+  currentConfig = { ...DEFAULT_CONFIG, ...config, port, tools: { ...toolsConfig, ...config.tools } }
 
   return new Promise((resolve, reject) => {
     server = http.createServer((req, res) => {
@@ -493,6 +554,7 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
         ghEnabled: currentConfig.tools.gh.enabled,
         bdEnabled: currentConfig.tools.bd.enabled,
         gitEnabled: currentConfig.tools.git.enabled,
+        bbEnabled: currentConfig.tools.bb.enabled,
       })
       proxyEvents.emit('started', { port: currentConfig.port })
       resolve()

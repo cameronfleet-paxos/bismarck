@@ -22,11 +22,27 @@ const { spawn, execSync } = require('child_process');
 const http = require('http');
 const net = require('net');
 const path = require('path');
+const fs = require('fs');
+
+// Load .env.development.local if it exists (for port overrides per worktree)
+const envFile = path.resolve(__dirname, '../../.env.development.local');
+if (fs.existsSync(envFile)) {
+  const lines = fs.readFileSync(envFile, 'utf-8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...rest] = trimmed.split('=');
+      if (key && rest.length > 0 && !process.env[key]) {
+        process.env[key] = rest.join('=');
+      }
+    }
+  }
+}
 
 const PORTS = {
-  VITE: 5173,
-  CDP: 9222,
-  CDP_SERVER: 9333
+  VITE: parseInt(process.env.VITE_PORT || '5173', 10),
+  CDP: parseInt(process.env.CDP_PORT || '9222', 10),
+  CDP_SERVER: parseInt(process.env.CDP_SERVER_PORT || '9333', 10)
 };
 
 const PROJECT_DIR = path.resolve(__dirname, '../..');
@@ -148,15 +164,9 @@ async function cleanup() {
   killProcessOnPort(PORTS.CDP);
   killProcessOnPort(PORTS.VITE);
 
-  // Kill ONLY dev Electron processes (not the installed Bismarck.app)
-  // The dev version runs from node_modules/electron, installed runs from /Applications or ~/Applications
-  try {
-    // Kill dev Electron processes by matching the dev path
-    execSync('pkill -9 -f "node_modules/electron.*Electron" 2>/dev/null || true', { encoding: 'utf-8' });
-    execSync('pkill -9 -f "node_modules/.bin/electron" 2>/dev/null || true', { encoding: 'utf-8' });
-    // Kill npm/node processes that launched electron in dev
-    execSync('pkill -9 -f "npm exec electron" 2>/dev/null || true', { encoding: 'utf-8' });
-  } catch {}
+  // Kill ONLY dev Electron processes from THIS worktree (not other worktrees or installed Bismarck.app)
+  // Use lsof on the CDP port — that uniquely identifies this instance's Electron
+  // The port-based kills above already handle this, so no broad pkill needed
 
   // Wait for ports to be free
   await new Promise(r => setTimeout(r, 1500));
@@ -173,7 +183,7 @@ function startVite() {
     const vite = spawn('npm', ['run', 'dev'], {
       cwd: PROJECT_DIR,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env }
+      env: { ...process.env, VITE_PORT: String(PORTS.VITE) }
     });
 
     children.push(vite);
@@ -286,7 +296,7 @@ function startElectron() {
     const electron = spawn('npx', ['electron', `--remote-debugging-port=${PORTS.CDP}`, '.'], {
       cwd: PROJECT_DIR,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, NODE_ENV: 'development' }
+      env: { ...process.env, NODE_ENV: 'development', VITE_PORT: String(PORTS.VITE) }
     });
 
     children.push(electron);
@@ -328,7 +338,7 @@ function startCdpServer() {
     const server = spawn('node', ['scripts/test/cdp-server.js'], {
       cwd: PROJECT_DIR,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env }
+      env: { ...process.env, CDP_SERVER_PORT: String(PORTS.CDP_SERVER), CDP_PORT: String(PORTS.CDP) }
     });
 
     children.push(server);
