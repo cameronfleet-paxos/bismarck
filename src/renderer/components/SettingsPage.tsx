@@ -699,9 +699,17 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                       className="border rounded-lg overflow-hidden"
                     >
                       {/* Header - always visible */}
-                      <button
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setExpandedRepoId(isExpanded ? null : repo.id)}
-                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setExpandedRepoId(isExpanded ? null : repo.id)
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
                           {isExpanded ? (
@@ -746,7 +754,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
-                      </button>
+                      </div>
 
                       {/* Expanded content */}
                       {isExpanded && (
