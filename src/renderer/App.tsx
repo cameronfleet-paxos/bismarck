@@ -585,6 +585,12 @@ function App() {
       window.electronAPI?.acknowledgeWaiting?.(focusedAgentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== focusedAgentId))
     }
+    // Switch to the tab containing this agent
+    const tab = tabs.find((t) => t.workspaceIds.includes(agentId))
+    if (tab && tab.id !== activeTabId) {
+      window.electronAPI?.setActiveTab?.(tab.id)
+      setActiveTabId(tab.id)
+    }
     setFocusedAgentId(agentId)
     window.electronAPI?.setFocusedWorkspace?.(agentId)
     // Acknowledge if this agent was waiting
@@ -592,7 +598,7 @@ function App() {
       window.electronAPI?.acknowledgeWaiting?.(agentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== agentId))
     }
-  }, [focusedAgentId, waitingQueue])
+  }, [focusedAgentId, waitingQueue, tabs, activeTabId])
 
   // Close diff overlay and restore agent expansion state
   const closeDiffAndRestore = useCallback((tabId: string) => {

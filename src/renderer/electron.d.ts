@@ -188,6 +188,7 @@ export interface ElectronAPI {
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>
   clearGitHubToken: () => Promise<boolean>
+  checkGitHubTokenScopes: () => Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }>
 
   // Settings management
   getSettings: () => Promise<AppSettings>

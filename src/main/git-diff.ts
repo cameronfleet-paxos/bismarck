@@ -31,54 +31,11 @@ function getGitPath(): string {
 
 /**
  * Detect language from file extension
- * Returns a simple language identifier for syntax highlighting
+ * Returns the filepath itself so CodeMirror's LanguageDescription.matchFilename()
+ * can do proper language detection from the file extension
  */
 function detectLanguage(filepath: string): string {
-  const ext = path.extname(filepath).toLowerCase();
-
-  const languageMap: Record<string, string> = {
-    '.ts': 'typescript',
-    '.tsx': 'tsx',
-    '.js': 'javascript',
-    '.jsx': 'jsx',
-    '.py': 'python',
-    '.rb': 'ruby',
-    '.go': 'go',
-    '.rs': 'rust',
-    '.java': 'java',
-    '.c': 'c',
-    '.cpp': 'cpp',
-    '.cc': 'cpp',
-    '.cxx': 'cpp',
-    '.h': 'c',
-    '.hpp': 'cpp',
-    '.cs': 'csharp',
-    '.php': 'php',
-    '.swift': 'swift',
-    '.kt': 'kotlin',
-    '.scala': 'scala',
-    '.sh': 'bash',
-    '.bash': 'bash',
-    '.zsh': 'bash',
-    '.fish': 'fish',
-    '.md': 'markdown',
-    '.json': 'json',
-    '.xml': 'xml',
-    '.html': 'html',
-    '.css': 'css',
-    '.scss': 'scss',
-    '.sass': 'sass',
-    '.less': 'less',
-    '.yaml': 'yaml',
-    '.yml': 'yaml',
-    '.toml': 'toml',
-    '.sql': 'sql',
-    '.graphql': 'graphql',
-    '.vue': 'vue',
-    '.svelte': 'svelte',
-  };
-
-  return languageMap[ext] || 'plaintext';
+  return filepath;
 }
 
 /**

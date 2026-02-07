@@ -751,6 +751,129 @@ export async function hasGitHubToken(): Promise<boolean> {
 }
 
 /**
+ * Check GitHub token scopes by calling the GitHub API
+ * Returns the scopes the token has and flags any missing required ones
+ */
+export interface GitHubTokenScopeResult {
+  valid: boolean
+  scopes: string[]
+  missingScopes: string[]
+  ssoConfigured: boolean | null  // null = couldn't determine
+  error?: string
+}
+
+const REQUIRED_SCOPES = ['repo']
+const RECOMMENDED_SCOPES = ['read:packages']
+
+export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> {
+  // Check the configured token first (what the user set in settings),
+  // falling back to env var. This ensures we verify what the user just saved,
+  // not an env var that may hold a different token.
+  const settings = await loadSettings()
+  const configuredToken = settings.tools?.githubToken
+  const token = (configuredToken && configuredToken.length > 0) ? configuredToken : await getGitHubToken()
+  if (!token) {
+    return {
+      valid: false,
+      scopes: [],
+      missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+      ssoConfigured: null,
+      error: 'No GitHub token configured',
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.github.com/', {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Bismarck-App',
+      },
+    })
+
+    if (response.status === 401) {
+      return {
+        valid: false,
+        scopes: [],
+        missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+        ssoConfigured: null,
+        error: 'Token is invalid or expired',
+      }
+    }
+
+    const scopeHeader = response.headers.get('x-oauth-scopes') || ''
+    const scopes = scopeHeader
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+
+    // GitHub scope hierarchy: broader scopes imply narrower ones
+    const scopeImplies: Record<string, string[]> = {
+      'repo': ['repo:status', 'repo_deployment', 'public_repo', 'repo:invite', 'security_events'],
+      'write:packages': ['read:packages'],
+      'admin:org': ['write:org', 'read:org'],
+      'admin:repo_hook': ['write:repo_hook', 'read:repo_hook'],
+      'admin:org_hook': [],
+      'admin:public_key': ['write:public_key', 'read:public_key'],
+      'admin:gpg_key': ['write:gpg_key', 'read:gpg_key'],
+    }
+
+    // Check if a scope is satisfied by the token's scopes (including implied scopes)
+    const hasScope = (required: string): boolean => {
+      if (scopes.includes(required)) return true
+      // Check if any granted scope implies the required one
+      for (const granted of scopes) {
+        const implied = scopeImplies[granted]
+        if (implied && implied.includes(required)) return true
+      }
+      return false
+    }
+
+    const allRequired = [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES]
+    const missingScopes = allRequired.filter(required => !hasScope(required))
+
+    // Try to detect SSO authorization by checking if we can list orgs
+    // A 403 with SSO message indicates token lacks SSO authorization
+    let ssoConfigured: boolean | null = null
+    try {
+      const orgsResponse = await fetch('https://api.github.com/user/orgs', {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Bismarck-App',
+        },
+      })
+      if (orgsResponse.ok) {
+        // If we can list orgs, SSO is either not required or is configured
+        ssoConfigured = true
+      } else if (orgsResponse.status === 403) {
+        const body = await orgsResponse.text()
+        if (body.includes('SSO') || body.includes('SAML')) {
+          ssoConfigured = false
+        }
+      }
+    } catch {
+      // Ignore SSO check failures
+    }
+
+    return {
+      valid: response.ok,
+      scopes,
+      missingScopes,
+      ssoConfigured,
+    }
+  } catch (err) {
+    return {
+      valid: false,
+      scopes: [],
+      missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+      ssoConfigured: null,
+      error: `Failed to verify token: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+/**
  * Check if a GitHub token is saved in settings.json (ignores env vars)
  * Used by the setup wizard to determine if a detected token needs to be persisted
  */
