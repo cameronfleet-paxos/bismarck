@@ -7,6 +7,9 @@
 
 FROM node:20-bookworm
 
+ARG BISMARCK_VERSION=dev
+LABEL org.opencontainers.image.version="${BISMARCK_VERSION}"
+
 # Install non-sensitive dev tools
 RUN apt-get update && apt-get install -y \
     curl \

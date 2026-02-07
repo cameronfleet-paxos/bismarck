@@ -6,6 +6,7 @@ import { Logo } from '@/renderer/components/Logo'
 import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 import { SetupTerminal } from './SetupTerminal'
+import { devLog } from '../utils/dev-log'
 
 // German/Bismarck-related fun facts for the loading screen
 const BISMARCK_FACTS = [
@@ -78,6 +79,10 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [fixTerminalId, setFixTerminalId] = useState<string | null>(null)
   const [isSettingUpOAuth, setIsSettingUpOAuth] = useState(false)
   const [oauthSetupResult, setOAuthSetupResult] = useState<{ success: boolean; error?: string } | null>(null)
+  // Docker image pull state
+  const [isPullingImage, setIsPullingImage] = useState(false)
+  const [pullProgress, setPullProgress] = useState<string | null>(null)
+  const [pullResult, setPullResult] = useState<{ success: boolean; error?: string } | null>(null)
   // Ref to prevent double-clicks during async operations
   const isCreatingRef = useRef(false)
 
@@ -375,9 +380,15 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     try {
       // Save plan mode preference
-      console.log('[SetupWizard] Saving plan mode preference:', planModeEnabled)
+      devLog('[SetupWizard] Saving plan mode preference:', planModeEnabled)
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
-      console.log('[SetupWizard] Plan mode preference saved')
+      devLog('[SetupWizard] Plan mode preference saved')
+
+      // Auto-save detected GitHub token if not already configured in settings
+      if (planModeEnabled && dependencies?.githubToken.detected && !dependencies?.githubToken.configured) {
+        console.log('[SetupWizard] Auto-saving detected GitHub token...')
+        await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+      }
 
       // Build repos with all details
       const reposToCreate = discoveredRepos
@@ -388,11 +399,11 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
           completionCriteria: repoCompletionCriteria.get(r.path) || '',
           protectedBranches: repoProtectedBranches.get(r.path) || [],
         }))
-      console.log('[SetupWizard] Creating', reposToCreate.length, 'agents...')
+      devLog('[SetupWizard] Creating', reposToCreate.length, 'agents...')
       const agents = await window.electronAPI.setupWizardBulkCreateAgents(reposToCreate)
-      console.log('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
+      devLog('[SetupWizard] Agents created:', agents.length, '- calling onComplete...')
       await onComplete(agents)
-      console.log('[SetupWizard] onComplete finished successfully')
+      devLog('[SetupWizard] onComplete finished successfully')
     } catch (err) {
       console.error('[SetupWizard] Failed to create agents:', err)
       const errorMessage = err instanceof Error ? err.message : String(err)
@@ -494,6 +505,33 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setOAuthSetupResult({ success: false, error: err instanceof Error ? err.message : 'Unknown error' })
     } finally {
       setIsSettingUpOAuth(false)
+    }
+  }
+
+  // Pull Docker image
+  const handlePullDockerImage = async () => {
+    setIsPullingImage(true)
+    setPullProgress(null)
+    setPullResult(null)
+    try {
+      window.electronAPI.onDockerPullProgress((message: string) => {
+        setPullProgress(message)
+      })
+      const result = await window.electronAPI.setupWizardPullDockerImage()
+      if (result.success) {
+        setPullResult({ success: true })
+        // Refresh dependencies to update image status
+        const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+        setDependencies(deps)
+      } else {
+        setPullResult({ success: false, error: result.output.substring(0, 200) })
+      }
+    } catch (err) {
+      console.error('Failed to pull Docker image:', err)
+      setPullResult({ success: false, error: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setIsPullingImage(false)
+      window.electronAPI.removeDockerPullProgressListener()
     }
   }
 
@@ -1133,6 +1171,70 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   />
                 </button>
               </div>
+
+              {/* Docker Image Section */}
+              {planModeEnabled && dependencies && dependencies.docker.installed && (
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {dependencies.dockerImage.available ? (
+                          <Check className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">Docker Image</span>
+                        </div>
+                        {dependencies.dockerImage.available ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {dependencies.dockerImage.imageName} available locally
+                          </p>
+                        ) : (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              The agent image needs to be pulled from Docker Hub.
+                            </p>
+                            {isPullingImage && pullProgress && (
+                              <p className="text-xs text-muted-foreground mt-1 font-mono truncate" title={pullProgress}>
+                                {pullProgress}
+                              </p>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={handlePullDockerImage}
+                              disabled={isPullingImage}
+                            >
+                              {isPullingImage ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Pulling...
+                                </>
+                              ) : (
+                                'Pull Image'
+                              )}
+                            </Button>
+                            {pullResult?.success && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                Image pulled successfully
+                              </p>
+                            )}
+                            {pullResult && !pullResult.success && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                Failed to pull: {pullResult.error}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* GitHub Token Section */}
               {planModeEnabled && dependencies && (

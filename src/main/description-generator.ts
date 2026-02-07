@@ -11,6 +11,7 @@ import * as path from 'path'
 import type { DiscoveredRepo, DescriptionProgressEvent } from '../shared/types'
 import { getDefaultBranch } from './git-utils'
 import { spawnWithPath, findBinary } from './exec-utils'
+import { devLog } from './dev-log'
 
 export interface DescriptionResult {
   repoPath: string
@@ -115,7 +116,7 @@ export async function generateDescriptions(
   // Check if claude CLI is available
   const claudePath = findBinary('claude')
   if (!claudePath) {
-    console.log('[DescriptionGenerator] Claude CLI not found, returning empty descriptions')
+    devLog('[DescriptionGenerator] Claude CLI not found, returning empty descriptions')
     // Still detect protected branches even without claude CLI
     const results = await Promise.all(
       repos.map(async (repo) => {
@@ -248,7 +249,7 @@ COMPLETION_CRITERIA:
 - <criterion 3>`
 
   // Use claude CLI with -p flag for headless prompt
-  const result = await runClaudePrompt(prompt)
+  const result = await runClaudePrompt(prompt, repo.path)
 
   // Parse the response
   const purposeMatch = result.match(/PURPOSE:\s*(.+?)(?=\nCOMPLETION_CRITERIA:|$)/s)
@@ -270,7 +271,7 @@ COMPLETION_CRITERIA:
 /**
  * Run a prompt using claude CLI and return the result
  */
-async function runClaudePrompt(prompt: string): Promise<string> {
+async function runClaudePrompt(prompt: string, cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = [
       '-p', prompt,
@@ -280,6 +281,7 @@ async function runClaudePrompt(prompt: string): Promise<string> {
 
     const process = spawnWithPath('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: cwd || undefined,
     })
 
     let stdout = ''

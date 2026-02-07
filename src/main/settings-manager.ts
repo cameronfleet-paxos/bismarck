@@ -118,8 +118,8 @@ export function getDefaultSettings(): AppSettings {
       git: null,
     },
     docker: {
-      images: ['bismarck-agent:latest'],
-      selectedImage: 'bismarck-agent:latest',
+      images: ['bismarckapp/bismarck-agent:latest'],
+      selectedImage: 'bismarckapp/bismarck-agent:latest',
       resourceLimits: {
         cpu: '2',
         memory: '4g',
@@ -259,6 +259,18 @@ export async function loadSettings(): Promise<AppSettings> {
       // No old flags and no new personaMode - use default
       merged.playbox.personaMode = 'none'
       merged.playbox.customPersonaPrompt = null
+      needsMigration = true
+    }
+
+    // Migration: Rename old Docker image from local name to Docker Hub name
+    const OLD_IMAGE_NAME = 'bismarck-agent:latest'
+    const NEW_IMAGE_NAME = 'bismarckapp/bismarck-agent:latest'
+    if (merged.docker.images.includes(OLD_IMAGE_NAME)) {
+      merged.docker.images = merged.docker.images.map(img => img === OLD_IMAGE_NAME ? NEW_IMAGE_NAME : img)
+      needsMigration = true
+    }
+    if (merged.docker.selectedImage === OLD_IMAGE_NAME) {
+      merged.docker.selectedImage = NEW_IMAGE_NAME
       needsMigration = true
     }
 
@@ -474,7 +486,7 @@ export async function setSelectedDockerImage(image: string): Promise<void> {
  */
 export async function getSelectedDockerImage(): Promise<string> {
   const settings = await loadSettings()
-  return settings.docker.selectedImage || 'bismarck-agent:latest'
+  return settings.docker.selectedImage || 'bismarckapp/bismarck-agent:latest'
 }
 
 /**
@@ -624,11 +636,21 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 }
 
 /**
- * Check if a GitHub token is configured (without returning the actual token)
+ * Check if a GitHub token is available from any source (env vars or settings)
  */
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Check if a GitHub token is saved in settings.json (ignores env vars)
+ * Used by the setup wizard to determine if a detected token needs to be persisted
+ */
+export async function hasConfiguredGitHubToken(): Promise<boolean> {
+  const settings = await loadSettings()
+  const token = settings.tools?.githubToken
+  return token !== null && token !== undefined && token.length > 0
 }
 
 /**
