@@ -537,8 +537,8 @@ function App() {
       }
     }, 30000)
 
-    // Also listen for push updates (for manual checks from Settings)
-    window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
+    // Also listen for push updates (for periodic checks and manual checks from Settings)
+    const unsubscribe = window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
       devLog('[App] Received update status push:', status.state)
       if (status.state === 'available') {
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
@@ -558,7 +558,9 @@ function App() {
         clearInterval(pollInterval)
       }
       clearTimeout(maxPollTimeout)
-      window.electronAPI?.removeUpdateStatusListener?.()
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
     }
   }, [])
 
