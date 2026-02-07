@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   initBenchmark,
   startTimer,
@@ -183,7 +184,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE, checkDockerAvailable, getImageInfo } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -204,7 +205,9 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig } from '../shared/types'
+import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { isGitRepo } from './git-utils'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -334,7 +337,7 @@ function registerIpcHandlers() {
       const repo = await getRepositoryById(workspace.repositoryId)
       // Only generate if the repository exists but lacks purpose/completionCriteria
       if (repo && !repo.purpose && !repo.completionCriteria) {
-        console.log('[Main] Auto-generating description for new agent:', workspace.name)
+        devLog('[Main] Auto-generating description for new agent:', workspace.name)
         // Run generation in background (don't await)
         generateDescriptions([
           {
@@ -351,7 +354,7 @@ function registerIpcHandlers() {
                 completionCriteria: results[0].completionCriteria,
                 protectedBranches: results[0].protectedBranches,
               })
-              console.log('[Main] Auto-generated description for:', repo.name)
+              devLog('[Main] Auto-generated description for:', repo.name)
             }
           })
           .catch((err) => {
@@ -394,11 +397,11 @@ function registerIpcHandlers() {
 
   // Terminal management
   ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
-    console.log('[Main] create-terminal called for workspace:', workspaceId)
+    devLog('[Main] create-terminal called for workspace:', workspaceId)
     try {
       // Use the queue for terminal creation with full setup
       const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
-      console.log('[Main] create-terminal succeeded:', terminalId)
+      devLog('[Main] create-terminal succeeded:', terminalId)
       return terminalId
     } catch (err) {
       console.error('[Main] create-terminal FAILED for workspace', workspaceId, ':', err)
@@ -474,6 +477,20 @@ function registerIpcHandlers() {
         }
       }
 
+      // Check if this is a plan tab with an in-progress plan
+      const plans = getPlans()
+      const planForTab = plans.find((p) => p.orchestratorTabId === tabId)
+      if (planForTab && (planForTab.status === 'delegating' || planForTab.status === 'in_progress' || planForTab.status === 'discussing')) {
+        try {
+          // Cancel the plan properly - this stops all agents and cleans up worktrees
+          await cancelPlan(planForTab.id)
+          // cancelPlan already deletes the tab, so return success
+          return { success: true, workspaceIds: [] }
+        } catch (error) {
+          console.error('[main] Failed to cancel plan on tab delete:', error)
+        }
+      }
+
       // Return workspace IDs that need to be stopped
       const workspaceIds = [...tab.workspaceIds]
       const success = deleteTab(tabId)
@@ -484,6 +501,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('set-active-tab', (_event, tabId: string) => {
     setActiveTab(tabId)
+  })
+
+  // Check if a tab has an in-progress plan (for confirmation dialog)
+  ipcMain.handle('get-tab-plan-status', (_event, tabId: string) => {
+    const plans = getPlans()
+    const planForTab = plans.find((p) => p.orchestratorTabId === tabId)
+    if (planForTab) {
+      return {
+        hasPlan: true,
+        planId: planForTab.id,
+        planTitle: planForTab.title,
+        planStatus: planForTab.status,
+        isInProgress: planForTab.status === 'delegating' || planForTab.status === 'in_progress' || planForTab.status === 'discussing',
+      }
+    }
+    return { hasPlan: false, isInProgress: false }
   })
 
   ipcMain.handle('get-tabs', () => {
@@ -570,9 +603,9 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('execute-plan', async (_event, planId: string, referenceAgentId: string) => {
-    console.log('[Main] execute-plan IPC received:', { planId, referenceAgentId })
+    devLog('[Main] execute-plan IPC received:', { planId, referenceAgentId })
     const result = await executePlan(planId, referenceAgentId)
-    console.log('[Main] execute-plan result:', result?.status)
+    devLog('[Main] execute-plan result:', result?.status)
     return result
   })
 
@@ -799,6 +832,31 @@ function registerIpcHandlers() {
     return removeRepository(id)
   })
 
+  // Git diff operations
+  ipcMain.handle('get-changed-files', async (_event, directory: string) => {
+    return getChangedFiles(directory)
+  })
+
+  ipcMain.handle('get-file-diff', async (_event, directory: string, filepath: string, force?: boolean) => {
+    return getFileDiff(directory, filepath, force)
+  })
+
+  ipcMain.handle('is-git-repo', async (_event, directory: string) => {
+    return isGitRepo(directory)
+  })
+
+  ipcMain.handle('revert-file', async (_event, directory: string, filepath: string) => {
+    return revertFile(directory, filepath)
+  })
+
+  ipcMain.handle('write-file-content', async (_event, directory: string, filepath: string, content: string) => {
+    return writeFileContent(directory, filepath, content)
+  })
+
+  ipcMain.handle('revert-all-files', async (_event, directory: string) => {
+    return revertAllFiles(directory)
+  })
+
   // Setup wizard
   ipcMain.handle('setup-wizard:show-folder-picker', async () => {
     return showFolderPicker()
@@ -813,10 +871,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:bulk-create-agents', async (_event, repos: DiscoveredRepo[]) => {
-    console.log('[Main] setup-wizard:bulk-create-agents called with', repos.length, 'repos')
+    devLog('[Main] setup-wizard:bulk-create-agents called with', repos.length, 'repos')
     try {
       const result = await bulkCreateAgents(repos)
-      console.log('[Main] setup-wizard:bulk-create-agents succeeded, created', result.length, 'agents')
+      devLog('[Main] setup-wizard:bulk-create-agents succeeded, created', result.length, 'agents')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:bulk-create-agents FAILED:', err)
@@ -843,10 +901,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:enable-plan-mode', async (_event, enabled: boolean) => {
-    console.log('[Main] setup-wizard:enable-plan-mode called with', enabled)
+    devLog('[Main] setup-wizard:enable-plan-mode called with', enabled)
     try {
       const result = await enablePlanMode(enabled)
-      console.log('[Main] setup-wizard:enable-plan-mode succeeded')
+      devLog('[Main] setup-wizard:enable-plan-mode succeeded')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:enable-plan-mode FAILED:', err)
@@ -859,10 +917,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:group-agents-into-tabs', async (_event, agents: Workspace[]) => {
-    console.log('[Main] setup-wizard:group-agents-into-tabs called with', agents.length, 'agents')
+    devLog('[Main] setup-wizard:group-agents-into-tabs called with', agents.length, 'agents')
     try {
       const result = await groupAgentsIntoTabs(agents)
-      console.log('[Main] setup-wizard:group-agents-into-tabs succeeded, created', result.length, 'tabs')
+      devLog('[Main] setup-wizard:group-agents-into-tabs succeeded, created', result.length, 'tabs')
       return result
     } catch (err) {
       console.error('[Main] setup-wizard:group-agents-into-tabs FAILED:', err)
@@ -888,6 +946,35 @@ function registerIpcHandlers() {
 
   ipcMain.handle('setup-wizard:close-fix-terminal', (_event, terminalId: string) => {
     closeSetupTerminal(terminalId)
+  })
+
+  ipcMain.handle('setup-wizard:pull-docker-image', async () => {
+    const result = await pullImage(DEFAULT_IMAGE, (message) => {
+      mainWindow?.webContents.send('docker-pull-progress', message)
+    })
+    return result
+  })
+
+  ipcMain.handle('check-docker-image-status', async (_event, imageName: string) => {
+    const [dockerAvailable, imageInfo] = await Promise.all([
+      checkDockerAvailable(),
+      getImageInfo(imageName),
+    ])
+    return {
+      dockerAvailable,
+      ...imageInfo,
+    }
+  })
+
+  ipcMain.handle('pull-docker-image', async (_event, imageName: string) => {
+    const result = await pullImage(imageName, (message) => {
+      mainWindow?.webContents.send('docker-pull-progress', message)
+    })
+    return {
+      success: result.success,
+      output: result.output,
+      alreadyUpToDate: result.success && result.output.includes('Image is up to date'),
+    }
   })
 
   // GitHub token management
@@ -951,11 +1038,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task', template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: PromptType, template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: 'orchestrator' | 'planner' | 'discussion' | 'task') => {
+  ipcMain.handle('get-default-prompt', (_event, type: PromptType) => {
     return getDefaultPrompt(type)
   })
 
@@ -1150,7 +1237,7 @@ app.whenReady().then(async () => {
   initializeDockerEnvironment().then((result) => {
     endTimer('main:initializeDockerEnvironment')
     if (result.success) {
-      console.log('[Main] Docker environment ready:', result.message)
+      devLog('[Main] Docker environment ready:', result.message)
       if (result.imageBuilt) {
         // Notify renderer that image was built
         mainWindow?.webContents.send('docker-image-built', result)

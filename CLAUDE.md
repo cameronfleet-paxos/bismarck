@@ -245,9 +245,21 @@ curl -s -X POST localhost:9333/mock-agent -d '{"taskId":"test-1"}'
 ### UI Interaction Tips
 
 - Use `/state` to quickly detect current view (`workspace`/`settings`) and active sections without screenshots.
-- Click header buttons by index: `document.querySelectorAll("header button")[2].click()` for settings (3rd button).
-- The `/click` endpoint with `{"text":"..."}` works for most buttons but fails on icon-only buttons or nested elements.
-- To expand plans, find the chevron button via DOM traversal: `h4.closest("div").parentElement.querySelector("svg.lucide-chevron-right")?.closest("button").click()`.
+- Use `data-testid` attributes for reliable element selection:
+  - Header: `[data-testid="app-header"]`
+  - Add agent button: `[data-testid="add-agent-button"]`
+  - Plans button: `[data-testid="plans-button"]`
+  - Settings button: `[data-testid="settings-button"]`
+  - Agent cards: `[data-testid^="agent-card-"]` (prefix selector for all cards)
+  - Agent card names: `[data-testid^="agent-card-name-"]`
+  - Tab bar: `[data-testid="tab-bar"]`
+  - Tab items: `[data-testid^="tab-item-"]`
+  - Settings sections: `[data-testid="settings-section-general"]`, `[data-testid="settings-section-docker"]`, etc.
+  - Back to workspace: `[data-testid="back-to-workspace-button"]`
+  - Dev console: `[data-testid="dev-console"]`
+  - Plan sidebar: `[data-testid="plan-sidebar"]`
+  - Tutorial tooltip: `[data-testid="tutorial-tooltip"]`
+- The `/click` endpoint with `{"text":"..."}` works for most buttons but fails on icon-only buttons or nested elements. Prefer using `{"selector":"[data-testid='...']"}` for reliability.
 
 ### Dev Console (Development Only)
 

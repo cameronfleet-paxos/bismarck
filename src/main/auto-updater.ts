@@ -9,6 +9,7 @@
 import { app, ipcMain, BrowserWindow, clipboard } from 'electron'
 import { loadSettings, updateSettings } from './settings-manager'
 import * as https from 'https'
+import { devLog } from './dev-log'
 
 // GitHub repository info
 const GITHUB_OWNER = 'cameronfleet-paxos'
@@ -44,12 +45,12 @@ export function setAutoUpdaterWindow(window: BrowserWindow | null): void {
  */
 function sendStatusToRenderer(status: UpdateStatus): void {
   currentStatus = status
-  console.log('[AutoUpdater] sendStatusToRenderer:', status.state, 'mainWindow:', !!mainWindow)
+  devLog('[AutoUpdater] sendStatusToRenderer:', status.state, 'mainWindow:', !!mainWindow)
   if (mainWindow && !mainWindow.isDestroyed()) {
-    console.log('[AutoUpdater] Sending update-status IPC to renderer')
+    devLog('[AutoUpdater] Sending update-status IPC to renderer')
     mainWindow.webContents.send('update-status', status)
   } else {
-    console.log('[AutoUpdater] WARNING: mainWindow not available, cannot send status')
+    devLog('[AutoUpdater] WARNING: mainWindow not available, cannot send status')
   }
 }
 
@@ -110,7 +111,7 @@ function isSignificantlyOutdated(currentVersion: string, latestVersion: string):
  * Fetch the latest release from GitHub API
  */
 async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: string } | null> {
-  console.log('[AutoUpdater] fetchLatestRelease: starting request to GitHub API')
+  devLog('[AutoUpdater] fetchLatestRelease: starting request to GitHub API')
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
@@ -122,10 +123,10 @@ async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: stri
       }
     }
 
-    console.log('[AutoUpdater] fetchLatestRelease: request options:', JSON.stringify(options))
+    devLog('[AutoUpdater] fetchLatestRelease: request options:', JSON.stringify(options))
 
     const req = https.request(options, (res) => {
-      console.log('[AutoUpdater] fetchLatestRelease: response status:', res.statusCode)
+      devLog('[AutoUpdater] fetchLatestRelease: response status:', res.statusCode)
       let data = ''
 
       res.on('data', (chunk) => {
@@ -133,41 +134,41 @@ async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: stri
       })
 
       res.on('end', () => {
-        console.log('[AutoUpdater] fetchLatestRelease: response complete, length:', data.length)
+        devLog('[AutoUpdater] fetchLatestRelease: response complete, length:', data.length)
         if (res.statusCode === 404) {
           // No releases yet
-          console.log('[AutoUpdater] fetchLatestRelease: 404 - no releases found')
+          devLog('[AutoUpdater] fetchLatestRelease: 404 - no releases found')
           resolve(null)
           return
         }
 
         if (res.statusCode !== 200) {
-          console.log('[AutoUpdater] fetchLatestRelease: non-200 status, body:', data.substring(0, 200))
+          devLog('[AutoUpdater] fetchLatestRelease: non-200 status, body:', data.substring(0, 200))
           reject(new Error(`GitHub API returned status ${res.statusCode}`))
           return
         }
 
         try {
           const release = JSON.parse(data)
-          console.log('[AutoUpdater] fetchLatestRelease: parsed release tag_name:', release.tag_name)
+          devLog('[AutoUpdater] fetchLatestRelease: parsed release tag_name:', release.tag_name)
           resolve({
             version: release.tag_name,
             releaseUrl: release.html_url
           })
         } catch (e) {
-          console.log('[AutoUpdater] fetchLatestRelease: failed to parse JSON:', data.substring(0, 200))
+          devLog('[AutoUpdater] fetchLatestRelease: failed to parse JSON:', data.substring(0, 200))
           reject(new Error('Failed to parse GitHub response'))
         }
       })
     })
 
     req.on('error', (e) => {
-      console.log('[AutoUpdater] fetchLatestRelease: request error:', e.message)
+      devLog('[AutoUpdater] fetchLatestRelease: request error:', e.message)
       reject(e)
     })
 
     req.setTimeout(10000, () => {
-      console.log('[AutoUpdater] fetchLatestRelease: request timed out')
+      devLog('[AutoUpdater] fetchLatestRelease: request timed out')
       req.destroy()
       reject(new Error('Request timed out'))
     })
@@ -180,14 +181,14 @@ async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: stri
  * Check for updates
  */
 async function checkForUpdates(): Promise<UpdateStatus> {
-  console.log('[AutoUpdater] Checking for updates...')
+  devLog('[AutoUpdater] Checking for updates...')
   sendStatusToRenderer({ state: 'checking' })
 
   try {
     const latestRelease = await fetchLatestRelease()
 
     if (!latestRelease) {
-      console.log('[AutoUpdater] No releases found')
+      devLog('[AutoUpdater] No releases found')
       const status: UpdateStatus = { state: 'up-to-date' }
       sendStatusToRenderer(status)
       return status
@@ -196,11 +197,11 @@ async function checkForUpdates(): Promise<UpdateStatus> {
     const currentVersion = getAppVersion()
     const latestVersion = latestRelease.version.replace(/^v/, '')
 
-    console.log(`[AutoUpdater] Current: v${currentVersion}, Latest: v${latestVersion}`)
+    devLog(`[AutoUpdater] Current: v${currentVersion}, Latest: v${latestVersion}`)
 
     if (compareVersions(latestVersion, currentVersion) > 0) {
       const significantlyOutdated = isSignificantlyOutdated(currentVersion, latestVersion)
-      console.log('[AutoUpdater] Update available:', latestVersion, significantlyOutdated ? '(significantly outdated)' : '')
+      devLog('[AutoUpdater] Update available:', latestVersion, significantlyOutdated ? '(significantly outdated)' : '')
       const status: UpdateStatus = {
         state: 'available',
         version: latestVersion,
@@ -211,7 +212,7 @@ async function checkForUpdates(): Promise<UpdateStatus> {
       sendStatusToRenderer(status)
       return status
     } else {
-      console.log('[AutoUpdater] Already up to date')
+      devLog('[AutoUpdater] Already up to date')
       const status: UpdateStatus = { state: 'up-to-date' }
       sendStatusToRenderer(status)
       return status
@@ -234,10 +235,10 @@ export function initAutoUpdater(): void {
   registerIpcHandlers()
 
   if (isDevelopment()) {
-    console.log('[AutoUpdater] Running in development mode')
+    devLog('[AutoUpdater] Running in development mode')
   }
 
-  console.log('[AutoUpdater] Initialized')
+  devLog('[AutoUpdater] Initialized')
 }
 
 /**
@@ -247,12 +248,12 @@ function registerIpcHandlers(): void {
   // Handle renderer-ready signal to re-send current status
   // This fixes the race condition where the renderer mounts after the launch check completes
   ipcMain.on('renderer-ready', () => {
-    console.log('[AutoUpdater] Received renderer-ready signal, currentStatus:', currentStatus.state)
+    devLog('[AutoUpdater] Received renderer-ready signal, currentStatus:', currentStatus.state)
     if (currentStatus.state !== 'idle') {
-      console.log('[AutoUpdater] Re-sending current status to renderer')
+      devLog('[AutoUpdater] Re-sending current status to renderer')
       sendStatusToRenderer(currentStatus)
     } else {
-      console.log('[AutoUpdater] Status is idle, not re-sending')
+      devLog('[AutoUpdater] Status is idle, not re-sending')
     }
   })
 
@@ -306,21 +307,21 @@ function registerIpcHandlers(): void {
  * Only checks if auto-check is enabled in settings
  */
 export async function checkForUpdatesOnLaunch(): Promise<void> {
-  console.log('[AutoUpdater] checkForUpdatesOnLaunch called')
+  devLog('[AutoUpdater] checkForUpdatesOnLaunch called')
   const settings = await loadSettings()
-  console.log('[AutoUpdater] settings.updates.autoCheck:', settings.updates.autoCheck)
+  devLog('[AutoUpdater] settings.updates.autoCheck:', settings.updates.autoCheck)
   if (!settings.updates.autoCheck) {
-    console.log('[AutoUpdater] Auto-check disabled, skipping launch check')
+    devLog('[AutoUpdater] Auto-check disabled, skipping launch check')
     return
   }
 
-  console.log(`[AutoUpdater] Scheduling launch check in ${LAUNCH_CHECK_DELAY_MS}ms`)
+  devLog(`[AutoUpdater] Scheduling launch check in ${LAUNCH_CHECK_DELAY_MS}ms`)
   // Wait before checking
   setTimeout(async () => {
     try {
-      console.log('[AutoUpdater] Performing launch check...')
+      devLog('[AutoUpdater] Performing launch check...')
       await checkForUpdates()
-      console.log('[AutoUpdater] Launch check completed, currentStatus:', currentStatus.state)
+      devLog('[AutoUpdater] Launch check completed, currentStatus:', currentStatus.state)
     } catch (error) {
       console.error('[AutoUpdater] Launch check failed:', error)
     }
@@ -344,14 +345,14 @@ export function startPeriodicChecks(): void {
     }
 
     try {
-      console.log('[AutoUpdater] Performing periodic check...')
+      devLog('[AutoUpdater] Performing periodic check...')
       await checkForUpdates()
     } catch (error) {
       console.error('[AutoUpdater] Periodic check failed:', error)
     }
   }, CHECK_INTERVAL_MS)
 
-  console.log('[AutoUpdater] Periodic checks started')
+  devLog('[AutoUpdater] Periodic checks started')
 }
 
 /**
@@ -361,6 +362,6 @@ export function stopPeriodicChecks(): void {
   if (periodicCheckInterval) {
     clearInterval(periodicCheckInterval)
     periodicCheckInterval = null
-    console.log('[AutoUpdater] Periodic checks stopped')
+    devLog('[AutoUpdater] Periodic checks stopped')
   }
 }
