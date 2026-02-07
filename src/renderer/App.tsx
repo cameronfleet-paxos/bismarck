@@ -230,8 +230,8 @@ function App() {
   const [startingFollowUpIds, setStartingFollowUpIds] = useState<Set<string>>(new Set())
   const [restartingIds, setRestartingIds] = useState<Set<string>>(new Set())
 
-  // Discussion completing spinner state
-  const [discussionCompletingMessage, setDiscussionCompletingMessage] = useState<string | null>(null)
+  // Discussion completing spinner state (overlays the discussion workspace)
+  const [discussionCompletingWorkspaceId, setDiscussionCompletingWorkspaceId] = useState<string | null>(null)
 
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
@@ -1138,17 +1138,17 @@ function App() {
       loadAgents()
     })
 
-    // Discussion completing spinner
+    // Discussion completing spinner (overlay on the discussion terminal)
     window.electronAPI?.onDiscussionCompleting?.((data) => {
       devLog('[Renderer] Received discussion-completing', data)
-      setDiscussionCompletingMessage(data.message)
+      setDiscussionCompletingWorkspaceId(data.workspaceId)
     })
 
     // Headless agent events
     window.electronAPI?.onHeadlessAgentStarted?.((data) => {
       devLog('[Renderer] Received headless-agent-started', data)
       // Clear discussion completing spinner - the handoff agent has started
-      setDiscussionCompletingMessage(null)
+      setDiscussionCompletingWorkspaceId(null)
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
         devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
@@ -1190,8 +1190,6 @@ function App() {
     // Ralph Loop event listeners
     window.electronAPI?.onRalphLoopUpdate?.((state: RalphLoopState) => {
       devLog('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
-      // Clear discussion completing spinner - the ralph loop has started
-      setDiscussionCompletingMessage(null)
       setRalphLoops((prev) => {
         const newMap = new Map(prev)
         newMap.set(state.id, state)
@@ -3440,6 +3438,13 @@ function App() {
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
+                            {/* Discussion completing overlay */}
+                            {discussionCompletingWorkspaceId === workspaceId && (
+                              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/90">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Starting headless agent...</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -3839,16 +3844,6 @@ function App() {
         simulateNewUser={simulateNewUser}
         onToggleSimulateNewUser={() => setSimulateNewUser(!simulateNewUser)}
       />
-
-      {/* Discussion completing spinner overlay */}
-      {discussionCompletingMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">{discussionCompletingMessage}</p>
-          </div>
-        </div>
-      )}
 
       {/* Command Search (CMD-K) */}
       <CommandSearch

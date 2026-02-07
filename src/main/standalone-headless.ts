@@ -1247,16 +1247,6 @@ async function completeRalphLoopDiscussion(discussionId: string): Promise<void> 
     const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
     console.log(`[RalphLoopDiscussion] Read discussion output (${discussionOutput.length} chars)`)
 
-    // Notify renderer that discussion is completing (show spinner)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('discussion-completing', {
-        discussionId,
-        workspaceId: discussionState.workspaceId,
-        tabId: discussionState.tabId,
-        message: 'Preparing Ralph Loop config...',
-      })
-    }
-
     // Parse the discussion output to extract Ralph Loop config
     const config = parseRalphLoopDiscussionOutput(discussionOutput)
 
