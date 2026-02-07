@@ -459,6 +459,31 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
     }
   }, [events, isVisible])
 
+  // CMD-A: Select only the agent output content, not the entire page
+  useEffect(() => {
+    if (!isVisible) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        if (!containerRef.current) return
+        // Only handle if focus is within this component or no specific input is focused
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return
+
+        e.preventDefault()
+        const selection = window.getSelection()
+        if (!selection) return
+        const range = document.createRange()
+        range.selectNodeContents(containerRef.current)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isVisible])
+
   // Close PR dropdown on outside click
   useEffect(() => {
     if (!prDropdownOpen) return

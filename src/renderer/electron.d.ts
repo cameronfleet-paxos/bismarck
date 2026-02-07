@@ -141,7 +141,7 @@ export interface ElectronAPI {
   // Git repository management
   detectGitRepository: (directory: string) => Promise<Repository | null>
   getRepositories: () => Promise<Repository[]>
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
 
@@ -188,6 +188,7 @@ export interface ElectronAPI {
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>
   clearGitHubToken: () => Promise<boolean>
+  checkGitHubTokenScopes: () => Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }>
 
   // Settings management
   getSettings: () => Promise<AppSettings>
@@ -205,6 +206,7 @@ export interface ElectronAPI {
   removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
@@ -234,7 +236,7 @@ export interface ElectronAPI {
   getUpdateSettings: () => Promise<{ autoCheck: boolean }>
   setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
   getAppVersion: () => Promise<string>
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void | (() => void)
   removeUpdateStatusListener: () => void
   signalRendererReady?: () => void
 
@@ -316,6 +318,7 @@ export interface ElectronAPI {
   devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
+  devResetSettings?: () => Promise<void>
   devStartDebugLogTail?: (numInitialLines?: number) => Promise<{ logPath: string; initialContent: string }>
   devStopDebugLogTail?: () => Promise<void>
   onDebugLogLines?: (callback: (lines: string) => void) => void
