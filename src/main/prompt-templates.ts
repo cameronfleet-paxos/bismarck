@@ -377,14 +377,8 @@ When you complete your work:
 2. Push your branch:
    git push -u origin {{branchName}}
 
-3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
-   echo '{"head":"{{branchName}}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
-
-   IMPORTANT for PR body:
-   - Keep body simple, single line, no markdown formatting
-   - Escape quotes with backslash: \\"quoted\\"
-   - Use \\n for newlines if absolutely needed
-   - If gh api hangs for >30s, cancel and retry with simpler body
+3. Create a PR:
+   gh pr create --title "Your PR Title" --body "Summary of changes"
 
 4. Report the PR URL in your final message`,
 
@@ -416,10 +410,8 @@ You are running in a Docker container with:
 3. Push your changes:
    git push origin {{branchName}}
 
-4. Update the existing PR if needed using echo piped JSON:
-   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
-
-   IMPORTANT: Keep body simple, single line, escape quotes with backslash
+4. Update the existing PR if needed:
+   gh pr edit --title "New Title" --body "Updated summary"
 
 5. Report the PR URL in your final message`,
 

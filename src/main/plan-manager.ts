@@ -2350,8 +2350,9 @@ async function buildTaskPromptForHeadless(planId: string, task: BeadTask, reposi
   let completionInstructions: string
   if (plan?.branchStrategy === 'raise_prs') {
     completionInstructions = `2. Commit your changes with a clear message
-3. Push your branch and create a PR using gh api (gh pr create has issues in worktrees):
-   gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
+3. Push your branch and create a PR:
+   git push origin HEAD
+   gh pr create --title "..." --body "..." --base "${baseBranch}"
 4. Close task with PR URL:
    bd close ${task.id} --message "PR: <url>"`
   } else {
@@ -2392,8 +2393,7 @@ ${repository.guidance}
    Do NOT use --file or -F flags - file paths don't work across the proxy.
 
 2. GitHub CLI (gh):
-   - Use gh api for PR creation (gh pr create has issues in worktrees):
-     gh api repos/OWNER/REPO/pulls -f head="BRANCH" -f base="${baseBranch}" -f title="..." -f body="..."
+   - gh pr create --title "..." --body "..." --base "${baseBranch}"
    - gh pr view
    - All standard gh commands work`
     : `1. Git:
