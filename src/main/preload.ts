@@ -299,7 +299,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
   addRepository: (path: string): Promise<Repository | null> =>
     ipcRenderer.invoke('add-repository', path),
@@ -430,6 +430,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
     ipcRenderer.invoke('update-docker-socket-settings', settings),
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 

@@ -3,6 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { attachMacKeyHandler } from '@/renderer/utils/terminal-keys'
 
 interface SetupTerminalProps {
   terminalId: string
@@ -44,20 +45,7 @@ export function SetupTerminal({ terminalId }: SetupTerminalProps) {
     })
     xterm.loadAddon(webLinksAddon)
 
-    // Allow OS-level navigation keys to pass through
-    xterm.attachCustomKeyEventHandler((event) => {
-      // Allow Cmd+arrows and Option+arrows for text navigation
-      if ((event.metaKey || event.altKey) &&
-          (event.key === 'ArrowLeft' || event.key === 'ArrowRight' ||
-           event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-        return false // false means "don't handle in xterm, pass to app"
-      }
-      // Allow Cmd+Backspace for delete line
-      if (event.metaKey && event.key === 'Backspace') {
-        return false
-      }
-      return true // true means "let xterm handle this key"
-    })
+    attachMacKeyHandler(xterm)
 
     xterm.open(terminalRef.current)
     fitAddon.fit()
