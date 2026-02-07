@@ -1280,14 +1280,12 @@ function App() {
     // Stop terminal if running
     const activeTerminal = activeTerminals.find((t) => t.workspaceId === id)
     if (activeTerminal) {
-      await window.electronAPI.closeTerminal(activeTerminal.terminalId)
-      await window.electronAPI.stopWorkspace(id)
       setActiveTerminals((prev) => prev.filter((t) => t.workspaceId !== id))
       // Clear the terminal buffer to free memory
       terminalBuffer.clear(activeTerminal.terminalId)
     }
-    await window.electronAPI.deleteWorkspace(id)
-    await loadAgents()
+
+    // Update UI state immediately so the interface stays responsive
     setWaitingQueue((prev) => prev.filter((wid) => wid !== id))
     // Clear maximize if this agent was maximized in any tab
     setMaximizedAgentIdByTab(prev => {
@@ -1301,6 +1299,18 @@ function App() {
       }
       return changed ? updated : prev
     })
+
+    // Fire off the heavy cleanup (terminal close, container stop, worktree removal)
+    // in the background so the UI doesn't block
+    if (activeTerminal) {
+      window.electronAPI.closeTerminal(activeTerminal.terminalId).catch(() => {})
+      window.electronAPI.stopWorkspace(id).catch(() => {})
+    }
+    window.electronAPI.deleteWorkspace(id).catch((err: unknown) => {
+      console.error('Failed to delete workspace:', err)
+    })
+
+    await loadAgents()
     // Refresh tabs
     const state = await window.electronAPI.getState()
     setTabs(state.tabs || [])
