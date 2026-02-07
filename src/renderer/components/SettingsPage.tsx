@@ -144,9 +144,10 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
   // Tool paths local state
   const [bdPath, setBdPath] = useState('')
+  const [bbPath, setBbPath] = useState('')
   const [ghPath, setGhPath] = useState('')
   const [gitPath, setGitPath] = useState('')
-  const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; gh: string | null; git: string | null } | null>(null)
+  const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; bb: string | null; gh: string | null; git: string | null } | null>(null)
 
   // Tool auth status
   const [toolAuthStatuses, setToolAuthStatuses] = useState<ToolAuthStatus[]>([])
@@ -187,6 +188,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
       // Initialize local state from loaded settings
       setBdPath(loaded.paths.bd || '')
+      setBbPath(loaded.paths.bb || '')
       setGhPath(loaded.paths.gh || '')
       setGitPath(loaded.paths.git || '')
 
@@ -202,6 +204,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     try {
       await window.electronAPI.updateToolPaths({
         bd: bdPath || null,
+        bb: bbPath || null,
         gh: ghPath || null,
         git: gitPath || null,
       })
@@ -323,6 +326,38 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                       <span className="text-amber-600 dark:text-amber-400">Using custom path</span>
                     ) : autoDetectedPaths?.bd ? (
                       <span className="text-green-600 dark:text-green-400">Auto-detected: {autoDetectedPaths.bd}</span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400">Not found - specify path manually</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* bb path */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="bb-path">bb (BuildBuddy CLI)</Label>
+                    {bbPath && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setBbPath(''); handleSavePaths() }}
+                        className="h-6 text-xs text-muted-foreground"
+                      >
+                        Reset to auto-detected
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id="bb-path"
+                    placeholder={autoDetectedPaths?.bb || 'Not found on system'}
+                    value={bbPath}
+                    onChange={(e) => setBbPath(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {bbPath ? (
+                      <span className="text-amber-600 dark:text-amber-400">Using custom path</span>
+                    ) : autoDetectedPaths?.bb ? (
+                      <span className="text-green-600 dark:text-green-400">Auto-detected: {autoDetectedPaths.bb}</span>
                     ) : (
                       <span className="text-red-600 dark:text-red-400">Not found - specify path manually</span>
                     )}
