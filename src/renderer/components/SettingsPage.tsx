@@ -14,6 +14,7 @@ import { PlayboxSettings } from '@/renderer/components/settings/sections/Playbox
 import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sections/KeyboardShortcutsSettings'
 import { UpdatesSettings } from '@/renderer/components/settings/sections/UpdatesSettings'
 import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
+import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
 import type { Repository } from '@/shared/types'
 
 // Convert git remote URL to GitHub web URL
@@ -124,6 +125,19 @@ interface ProxiedTool {
   name: string
   hostPath: string
   description?: string
+  enabled: boolean
+  authCheck?: {
+    command: string[]
+    reauthHint: string
+  }
+}
+
+interface ToolAuthStatus {
+  toolId: string
+  toolName: string
+  state: 'valid' | 'needs-reauth' | 'error'
+  reauthHint?: string
+  message?: string
 }
 
 interface SettingsPageProps {
@@ -141,21 +155,15 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [saving, setSaving] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
 
-  // Docker settings local state
-  const [newImage, setNewImage] = useState('')
-  const [cpuLimit, setCpuLimit] = useState('')
-  const [memoryLimit, setMemoryLimit] = useState('')
-
   // Tool paths local state
   const [bdPath, setBdPath] = useState('')
   const [ghPath, setGhPath] = useState('')
   const [gitPath, setGitPath] = useState('')
   const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; gh: string | null; git: string | null } | null>(null)
 
-  // Proxied tools local state
-  const [newToolName, setNewToolName] = useState('')
-  const [newToolPath, setNewToolPath] = useState('')
-  const [newToolDescription, setNewToolDescription] = useState('')
+  // Tool auth status
+  const [toolAuthStatuses, setToolAuthStatuses] = useState<ToolAuthStatus[]>([])
+  const [checkingAuth, setCheckingAuth] = useState(false)
 
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -164,12 +172,21 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [editPurpose, setEditPurpose] = useState('')
   const [editCompletionCriteria, setEditCompletionCriteria] = useState('')
   const [editProtectedBranches, setEditProtectedBranches] = useState('')
+  const [editGuidance, setEditGuidance] = useState('')
   const [newRepoPath, setNewRepoPath] = useState('')
   const [addingRepo, setAddingRepo] = useState(false)
   const [addRepoError, setAddRepoError] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
+
+    // Listen for tool auth status push updates
+    window.electronAPI?.onToolAuthStatus?.((statuses) => {
+      setToolAuthStatuses(statuses)
+    })
+    return () => {
+      window.electronAPI?.removeToolAuthStatusListener?.()
+    }
   }, [])
 
   // Handle navigation from external sources (e.g., header notification)
@@ -183,16 +200,16 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [loaded, detectedPaths] = await Promise.all([
+      const [loaded, detectedPaths, authStatuses] = await Promise.all([
         window.electronAPI.getSettings(),
         window.electronAPI.detectToolPaths(),
+        window.electronAPI.getToolAuthStatuses?.() ?? Promise.resolve([]),
       ])
       setSettings(loaded)
       setAutoDetectedPaths(detectedPaths)
+      setToolAuthStatuses(authStatuses)
 
       // Initialize local state from loaded settings
-      setCpuLimit(loaded.docker.resourceLimits.cpu)
-      setMemoryLimit(loaded.docker.resourceLimits.memory)
       setBdPath(loaded.paths.bd || '')
       setGhPath(loaded.paths.gh || '')
       setGitPath(loaded.paths.git || '')
@@ -204,78 +221,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       console.error('Failed to load settings:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAddImage = async () => {
-    if (!newImage.trim()) return
-
-    try {
-      await window.electronAPI.addDockerImage(newImage.trim())
-      setNewImage('')
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to add image:', error)
-    }
-  }
-
-  const handleRemoveImage = async (image: string) => {
-    try {
-      await window.electronAPI.removeDockerImage(image)
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to remove image:', error)
-    }
-  }
-
-  const handleSelectImage = async (image: string) => {
-    try {
-      await window.electronAPI.setSelectedDockerImage(image)
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to select image:', error)
-    }
-  }
-
-  const handleSaveResourceLimits = async () => {
-    setSaving(true)
-    try {
-      await window.electronAPI.updateDockerResourceLimits({
-        cpu: cpuLimit,
-        memory: memoryLimit,
-      })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to save resource limits:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSshAgentToggle = async (enabled: boolean) => {
-    try {
-      await window.electronAPI.updateDockerSshSettings({ enabled })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to update SSH agent settings:', error)
-    }
-  }
-
-  const handleDockerSocketToggle = async (enabled: boolean) => {
-    try {
-      await window.electronAPI.updateDockerSocketSettings({ enabled })
-      await loadSettings()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to update Docker socket settings:', error)
     }
   }
 
@@ -298,30 +243,24 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     }
   }
 
-  const handleAddProxiedTool = async () => {
-    if (!newToolName.trim() || !newToolPath.trim()) return
-
+  const handleCheckAuth = async () => {
+    setCheckingAuth(true)
     try {
-      await window.electronAPI.addProxiedTool({
-        name: newToolName.trim(),
-        hostPath: newToolPath.trim(),
-        description: newToolDescription.trim() || undefined,
-      })
-      setNewToolName('')
-      setNewToolPath('')
-      setNewToolDescription('')
-      await loadSettings()
+      const statuses = await window.electronAPI.checkToolAuth?.() ?? []
+      setToolAuthStatuses(statuses)
     } catch (error) {
-      console.error('Failed to add proxied tool:', error)
+      console.error('Failed to check tool auth:', error)
+    } finally {
+      setCheckingAuth(false)
     }
   }
 
-  const handleRemoveProxiedTool = async (id: string) => {
+  const handleToggleProxiedTool = async (id: string, enabled: boolean) => {
     try {
-      await window.electronAPI.removeProxiedTool(id)
+      await window.electronAPI.toggleProxiedTool(id, enabled)
       await loadSettings()
     } catch (error) {
-      console.error('Failed to remove proxied tool:', error)
+      console.error('Failed to toggle proxied tool:', error)
     }
   }
 
@@ -330,6 +269,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     setEditPurpose(repo.purpose || '')
     setEditCompletionCriteria(repo.completionCriteria || '')
     setEditProtectedBranches(repo.protectedBranches?.join(', ') || '')
+    setEditGuidance(repo.guidance || '')
   }
 
   const cancelEditingRepo = () => {
@@ -337,6 +277,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     setEditPurpose('')
     setEditCompletionCriteria('')
     setEditProtectedBranches('')
+    setEditGuidance('')
   }
 
   const handleSaveRepo = async (repoId: string) => {
@@ -351,6 +292,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
         purpose: editPurpose || undefined,
         completionCriteria: editCompletionCriteria || undefined,
         protectedBranches: protectedBranches.length > 0 ? protectedBranches : undefined,
+        guidance: editGuidance || undefined,
       })
       await loadSettings()
       cancelEditingRepo()
@@ -444,180 +386,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
         )
 
       case 'docker':
-        return (
-          <div className="space-y-6">
-            {/* Docker Images */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Container Images</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Docker images used for headless task agents. Select which image to use.
-              </p>
-
-              <div className="space-y-3">
-                {settings.docker.images.map((image) => (
-                  <div
-                    key={image}
-                    className="flex items-center justify-between p-3 bg-muted/50 rounded-md"
-                  >
-                    <label className="flex items-center gap-3 flex-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="selectedImage"
-                        value={image}
-                        checked={settings.docker.selectedImage === image}
-                        onChange={() => handleSelectImage(image)}
-                        className="h-4 w-4"
-                      />
-                      <span className="font-mono text-sm">{image}</span>
-                    </label>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleRemoveImage(image)}
-                      disabled={settings.docker.images.length === 1}
-                      className="h-7 w-7 p-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <Input
-                  placeholder="e.g., bismarck-agent:latest"
-                  value={newImage}
-                  onChange={(e) => setNewImage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddImage()
-                    }
-                  }}
-                />
-                <Button onClick={handleAddImage} disabled={!newImage.trim()}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-            </div>
-
-            {/* Resource Limits */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Resource Limits</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Default CPU and memory limits for Docker containers
-              </p>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cpu-limit">CPU Cores</Label>
-                  <Input
-                    id="cpu-limit"
-                    placeholder="e.g., 2"
-                    value={cpuLimit}
-                    onChange={(e) => setCpuLimit(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of CPU cores allocated to each container
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="memory-limit">Memory</Label>
-                  <Input
-                    id="memory-limit"
-                    placeholder="e.g., 4g"
-                    value={memoryLimit}
-                    onChange={(e) => setMemoryLimit(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Memory limit per container (e.g., 4g, 8g, 512m)
-                  </p>
-                </div>
-
-                <Button
-                  onClick={handleSaveResourceLimits}
-                  disabled={saving || !cpuLimit || !memoryLimit}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Resource Limits'}
-                </Button>
-              </div>
-            </div>
-
-            {/* SSH Agent Forwarding */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">SSH Agent Forwarding</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Forward your SSH agent to containers for private repository access (Bazel, Go modules, npm)
-              </p>
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <Label htmlFor="ssh-agent-enabled">Enable SSH Agent Forwarding</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Allows containers to authenticate with GitHub using your SSH keys
-                  </p>
-                </div>
-                <Switch
-                  id="ssh-agent-enabled"
-                  checked={settings.docker.sshAgent?.enabled ?? true}
-                  onCheckedChange={handleSshAgentToggle}
-                />
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  <strong>Security note:</strong> When enabled, processes inside containers can use your SSH keys
-                  to authenticate with remote services. Only enable this if you trust the code running in your
-                  containers. Your keys remain on your host machine and are never copied into containers.
-                </p>
-              </div>
-            </div>
-
-            {/* Docker Socket Access */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-2">Docker Socket Access</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Mount the Docker socket into containers for testcontainers and integration tests
-              </p>
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <Label htmlFor="docker-socket-enabled">Enable Docker Socket Access</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Allows containers to spawn sibling containers (required for testcontainers)
-                  </p>
-                </div>
-                <Switch
-                  id="docker-socket-enabled"
-                  checked={settings.docker.dockerSocket?.enabled ?? false}
-                  onCheckedChange={handleDockerSocketToggle}
-                />
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  <strong>Security note:</strong> When enabled, containers can control Docker on your host machine,
-                  including spawning and managing other containers. This is required for integration tests that use
-                  testcontainers-go or similar frameworks. Only enable if you need to run integration tests that
-                  require Docker access.
-                </p>
-              </div>
-
-              {settings.docker.dockerSocket?.enabled && (
-                <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                    <strong>How it works:</strong> The Docker socket (<code className="bg-muted px-1 rounded">/var/run/docker.sock</code>)
-                    is mounted into containers, allowing them to communicate with your host's Docker daemon.
-                    On macOS, the <code className="bg-muted px-1 rounded">TESTCONTAINERS_HOST_OVERRIDE</code> environment
-                    variable is automatically set to enable proper networking with spawned containers.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )
+        return <DockerSettings settings={settings} onSettingsChange={loadSettings} />
 
       case 'tools':
         return (
@@ -756,84 +525,68 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             <div className="bg-card border rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-2">Configured Tools</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                These tools are available to headless agents running in Docker containers.
+                Enable or disable tools available to headless agents running in Docker containers.
+                Disabled tools will not appear in agent prompts and the proxy will reject requests for them.
               </p>
 
-              <div className="space-y-3 mb-4">
-              {settings.docker.proxiedTools.map((tool) => (
-                <div
-                  key={tool.id}
-                  className="flex items-start justify-between p-4 bg-muted/50 rounded-md"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium">{tool.name}</div>
-                    <div className="font-mono text-xs text-muted-foreground mt-1">
-                      {tool.hostPath}
+              <div className="space-y-3">
+              {settings.docker.proxiedTools.map((tool) => {
+                const authStatus = toolAuthStatuses.find(s => s.toolId === tool.id)
+                return (
+                  <div
+                    key={tool.id}
+                    className={`p-4 bg-muted/50 rounded-md ${!tool.enabled ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{tool.name}</span>
+                          {tool.authCheck && tool.enabled && authStatus && (
+                            <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded-full ${
+                              authStatus.state === 'valid'
+                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                : authStatus.state === 'needs-reauth'
+                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                                : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {authStatus.state === 'valid' ? 'Authenticated' : authStatus.state === 'needs-reauth' ? 'Re-auth needed' : 'Auth error'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-mono text-xs text-muted-foreground mt-1">
+                          {tool.hostPath}
+                        </div>
+                        {tool.description && (
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {tool.description}
+                          </div>
+                        )}
+                      </div>
+                      <Switch
+                        checked={tool.enabled}
+                        onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
+                      />
                     </div>
-                    {tool.description && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {tool.description}
+                    {tool.authCheck && tool.enabled && authStatus?.state === 'needs-reauth' && authStatus.reauthHint && (
+                      <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          {authStatus.reauthHint}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 text-xs"
+                          onClick={handleCheckAuth}
+                          disabled={checkingAuth}
+                        >
+                          {checkingAuth ? 'Checking...' : 'Check Now'}
+                        </Button>
                       </div>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRemoveProxiedTool(tool.id)}
-                    className="h-7 w-7 p-0 ml-2"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                )
+              })}
             </div>
-            </div>
-
-            {/* Add Proxied Tool Form */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Add Proxied Tool</h3>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-name">Tool Name</Label>
-                <Input
-                  id="tool-name"
-                  placeholder="e.g., npm"
-                  value={newToolName}
-                  onChange={(e) => setNewToolName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-path">Host Path</Label>
-                <Input
-                  id="tool-path"
-                  placeholder="e.g., /usr/local/bin/npm"
-                  value={newToolPath}
-                  onChange={(e) => setNewToolPath(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-description">Description (optional)</Label>
-                <Input
-                  id="tool-description"
-                  placeholder="e.g., Node package manager"
-                  value={newToolDescription}
-                  onChange={(e) => setNewToolDescription(e.target.value)}
-                />
-              </div>
-
-              <Button
-                onClick={handleAddProxiedTool}
-                disabled={!newToolName.trim() || !newToolPath.trim()}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Tool
-              </Button>
-
-              <p className="text-xs text-muted-foreground mt-4">
-                <strong>Tip:</strong> Find tool paths using <code className="bg-muted px-1 rounded">which tool-name</code> in your terminal (e.g., <code className="bg-muted px-1 rounded">which npm</code>).
-              </p>
             </div>
           </div>
         )
@@ -1018,6 +771,20 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                                   Branches that agents should not modify directly
                                 </p>
                               </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`guidance-${repo.id}`}>Headless Agent Guidance</Label>
+                                <Textarea
+                                  id={`guidance-${repo.id}`}
+                                  placeholder="Custom guidance for headless agents working on this repo (e.g., 'always run tests with --coverage', 'use feat/ branch prefix')"
+                                  value={editGuidance}
+                                  onChange={(e) => setEditGuidance(e.target.value)}
+                                  rows={4}
+                                  className="min-h-[100px]"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Repo-specific instructions applied to all headless agents
+                                </p>
+                              </div>
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
@@ -1061,6 +828,14 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                                     ? repo.protectedBranches.join(', ')
                                     : <span className="text-muted-foreground italic">None</span>}
                                 </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Headless Agent Guidance</Label>
+                                {repo.guidance ? (
+                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.guidance}</pre>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground italic">Not set</div>
+                                )}
                               </div>
                               <Button
                                 size="sm"
@@ -1112,7 +887,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             </div>
           )}
         </div>
-        <Button size="sm" variant="ghost" onClick={onBack}>
+        <Button size="sm" variant="ghost" onClick={onBack} data-testid="back-to-workspace-button">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Workspace
         </Button>
@@ -1126,6 +901,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
+                data-testid={`settings-section-${item.id}`}
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                   activeSection === item.id

@@ -27,6 +27,8 @@ interface PromptStatus {
   task: boolean
   standalone_headless: boolean
   standalone_followup: boolean
+  headless_discussion: boolean
+  critic: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -36,6 +38,8 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   task: 'Task Agent',
   standalone_headless: 'Standalone Headless',
   standalone_followup: 'Standalone Follow-up',
+  headless_discussion: 'Headless Discussion',
+  critic: 'Critic',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
@@ -45,6 +49,8 @@ const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   task: 'Executes plan tasks in Docker containers',
   standalone_headless: 'One-off headless agents started via CMD-K',
   standalone_followup: 'Follow-up agents on existing worktrees',
+  headless_discussion: 'Headless discussion with agents',
+  critic: 'Reviews completed task work and creates fix-up tasks',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -58,7 +64,11 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     task: false,
     standalone_headless: false,
     standalone_followup: false,
+    headless_discussion: false,
+    critic: false,
   })
+  const [criticEnabled, setCriticEnabled] = useState(true)
+  const [maxCriticIterations, setMaxCriticIterations] = useState(2)
   const [editingPrompt, setEditingPrompt] = useState<PromptType | null>(null)
 
   // Load preferences on mount
@@ -78,7 +88,14 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           task: !!customPrompts.task,
           standalone_headless: !!customPrompts.standalone_headless,
           standalone_followup: !!customPrompts.standalone_followup,
+          headless_discussion: false,
+          critic: !!customPrompts.critic,
         })
+
+        // Load critic settings
+        const settings = await window.electronAPI.getSettings()
+        setCriticEnabled(settings.critic?.enabled ?? true)
+        setMaxCriticIterations(settings.critic?.maxIterations ?? 2)
       } catch (error) {
         console.error('Failed to load preferences:', error)
       }
@@ -135,6 +152,35 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     }
   }
 
+  const handleCriticEnabledChange = async (enabled: boolean) => {
+    setCriticEnabled(enabled)
+    try {
+      const settings = await window.electronAPI.getSettings()
+      await window.electronAPI.setRawSettings({
+        ...settings,
+        critic: { ...settings.critic, enabled },
+      })
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to save critic settings:', error)
+    }
+  }
+
+  const handleMaxIterationsChange = async (value: number) => {
+    if (isNaN(value) || value < 1 || value > 5) return
+    setMaxCriticIterations(value)
+    try {
+      const settings = await window.electronAPI.getSettings()
+      await window.electronAPI.setRawSettings({
+        ...settings,
+        critic: { ...settings.critic, maxIterations: value },
+      })
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to save critic settings:', error)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Saved indicator */}
@@ -186,6 +232,40 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Critic Review Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div className="space-y-0.5">
+              <Label className="text-base font-medium">Critic Review</Label>
+              <p className="text-sm text-muted-foreground">
+                Review task work before approval
+              </p>
+            </div>
+            <Switch
+              checked={criticEnabled}
+              onCheckedChange={handleCriticEnabledChange}
+            />
+          </div>
+
+          {/* Max Critic Iterations */}
+          {criticEnabled && (
+            <div className="flex items-center justify-between py-2">
+              <div className="space-y-0.5">
+                <Label className="text-base font-medium">Max Review Iterations</Label>
+                <p className="text-sm text-muted-foreground">
+                  Maximum critic review cycles per task
+                </p>
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={5}
+                value={maxCriticIterations}
+                onChange={(e) => handleMaxIterationsChange(parseInt(e.target.value, 10))}
+                className="w-[70px] text-sm border rounded px-2 py-1.5 bg-background text-center"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -200,7 +280,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
         </p>
 
         <div className="space-y-3">
-          {(['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup'] as PromptType[]).map((type) => (
+          {(['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup', 'critic'] as PromptType[]).map((type) => (
             <div
               key={type}
               className="flex items-center justify-between py-2 px-3 rounded-lg border bg-muted/20"

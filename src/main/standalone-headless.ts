@@ -9,6 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneHeadlessAgentInfoPath,
@@ -22,7 +23,7 @@ import {
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab } from './state-manager'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -36,7 +37,7 @@ import {
 import { startToolProxy, isProxyRunning } from './tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
-import { buildPrompt, type PromptVariables } from './prompt-templates'
+import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
 import { queueTerminalCreation } from './terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
 import * as fsPromises from 'fs/promises'
@@ -157,7 +158,7 @@ function emitStateUpdate(): void {
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
+async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string, guidance?: string): Promise<string> {
   // Format completion criteria section if provided
   const completionCriteriaSection = completionCriteria
     ? `
@@ -169,11 +170,32 @@ Keep iterating until all criteria are satisfied.
 `
     : ''
 
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
+`
+    : ''
+
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
+  })
+
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_headless', variables)
@@ -185,12 +207,13 @@ Keep iterating until all criteria are satisfied.
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildFollowUpPrompt(
+async function buildFollowUpPrompt(
   userPrompt: string,
   workingDir: string,
   branchName: string,
   recentCommits: Array<{ shortSha: string; message: string }>,
-  completionCriteria?: string
+  completionCriteria?: string,
+  guidance?: string
 ): Promise<string> {
   // Format commit history
   const commitHistory = recentCommits.length > 0
@@ -208,12 +231,33 @@ Keep iterating until all criteria are satisfied.
 `
     : ''
 
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
+`
+    : ''
+
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
+  })
+
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
     commitHistory,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_followup', variables)
@@ -266,15 +310,15 @@ export async function startStandaloneHeadlessAgent(
   // Ensure tool proxy is running for Docker container communication
   // This is critical - without it, git commands from containers will fail
   const proxyWasRunning = isProxyRunning()
-  console.log(`[StandaloneHeadless] Tool proxy status before start: running=${proxyWasRunning}`)
+  devLog(`[StandaloneHeadless] Tool proxy status before start: running=${proxyWasRunning}`)
   if (!proxyWasRunning) {
-    console.log('[StandaloneHeadless] Starting tool proxy for container communication')
+    devLog('[StandaloneHeadless] Starting tool proxy for container communication')
     await startToolProxy()
-    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
+    devLog(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
   }
 
   // Create the worktree
-  console.log(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
+  devLog(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
 
   // Store worktree info for cleanup
@@ -373,12 +417,12 @@ export async function startStandaloneHeadlessAgent(
 
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   // Try repositoryId first, fallback to path-based lookup for legacy workspaces
   const repository = referenceAgent.repositoryId
     ? await getRepositoryById(referenceAgent.repositoryId)
     : await getRepositoryByPath(referenceAgent.directory)
-  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
+  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria, repository?.guidance)
 
   // Update stored prompt to the full resolved version (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -393,7 +437,7 @@ export async function startStandaloneHeadlessAgent(
     claudeFlags: ['--model', model],
   }
 
-  console.log(`[StandaloneHeadless] Starting agent with config:`, {
+  devLog(`[StandaloneHeadless] Starting agent with config:`, {
     headlessId,
     worktreePath,
     branchName,
@@ -480,7 +524,7 @@ export function initStandaloneHeadless(): void {
   if (modified) {
     saveStandaloneHeadlessAgentInfo()
   }
-  console.log(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
+  devLog(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
 }
 
 /**
@@ -490,18 +534,18 @@ export function initStandaloneHeadless(): void {
 export async function cleanupStandaloneWorktree(headlessId: string): Promise<void> {
   const agentInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!agentInfo?.worktreeInfo) {
-    console.log(`[StandaloneHeadless] No worktree info for agent ${headlessId}`)
+    devLog(`[StandaloneHeadless] No worktree info for agent ${headlessId}`)
     return
   }
 
   const { path: worktreePath, branch, repoPath } = agentInfo.worktreeInfo
 
-  console.log(`[StandaloneHeadless] Cleaning up worktree for agent ${headlessId}`)
+  devLog(`[StandaloneHeadless] Cleaning up worktree for agent ${headlessId}`)
 
   // Remove the worktree
   try {
     await removeWorktree(repoPath, worktreePath, true)
-    console.log(`[StandaloneHeadless] Removed worktree at ${worktreePath}`)
+    devLog(`[StandaloneHeadless] Removed worktree at ${worktreePath}`)
   } catch (error) {
     console.error(`[StandaloneHeadless] Failed to remove worktree:`, error)
   }
@@ -509,17 +553,17 @@ export async function cleanupStandaloneWorktree(headlessId: string): Promise<voi
   // Delete the local branch
   try {
     await deleteLocalBranch(repoPath, branch)
-    console.log(`[StandaloneHeadless] Deleted local branch ${branch}`)
+    devLog(`[StandaloneHeadless] Deleted local branch ${branch}`)
   } catch (error) {
     // Branch may not exist if worktree removal already deleted it
-    console.log(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
+    devLog(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
   }
 
   // Delete the remote branch if it exists
   try {
     if (await remoteBranchExists(repoPath, branch)) {
       await deleteRemoteBranch(repoPath, branch)
-      console.log(`[StandaloneHeadless] Deleted remote branch ${branch}`)
+      devLog(`[StandaloneHeadless] Deleted remote branch ${branch}`)
     }
   } catch (error) {
     console.error(`[StandaloneHeadless] Failed to delete remote branch:`, error)
@@ -534,7 +578,7 @@ export async function cleanupStandaloneWorktree(headlessId: string): Promise<voi
  * Confirm that a standalone agent is done - cleans up worktree and removes workspace
  */
 export async function confirmStandaloneAgentDone(headlessId: string): Promise<void> {
-  console.log(`[StandaloneHeadless] Confirming done for agent ${headlessId}`)
+  devLog(`[StandaloneHeadless] Confirming done for agent ${headlessId}`)
 
   // Find the workspace associated with this headless agent
   const workspaces = getWorkspaces()
@@ -549,7 +593,7 @@ export async function confirmStandaloneAgentDone(headlessId: string): Promise<vo
     removeActiveWorkspace(workspace.id)
     removeWorkspaceFromTab(workspace.id)
     deleteWorkspace(workspace.id)
-    console.log(`[StandaloneHeadless] Deleted workspace ${workspace.id} and released slot`)
+    devLog(`[StandaloneHeadless] Deleted workspace ${workspace.id} and released slot`)
   }
 
   // Emit state update
@@ -588,7 +632,7 @@ export async function restartStandaloneHeadlessAgent(
     throw new Error(`No reference workspace for repo: ${repoPath}`)
   }
 
-  console.log(`[StandaloneHeadless] Restarting agent ${headlessId} with original prompt`)
+  devLog(`[StandaloneHeadless] Restarting agent ${headlessId} with original prompt`)
 
   // Store original prompt before cleanup
   const originalPrompt = existingInfo.originalPrompt
@@ -609,7 +653,8 @@ export async function restartStandaloneHeadlessAgent(
  */
 export async function startFollowUpAgent(
   headlessId: string,
-  prompt: string
+  prompt: string,
+  model?: 'opus' | 'sonnet'
 ): Promise<{ headlessId: string; workspaceId: string }> {
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
@@ -618,11 +663,11 @@ export async function startFollowUpAgent(
 
   // Ensure tool proxy is running for Docker container communication
   const proxyWasRunning = isProxyRunning()
-  console.log(`[StandaloneHeadless] Tool proxy status before follow-up: running=${proxyWasRunning}`)
+  devLog(`[StandaloneHeadless] Tool proxy status before follow-up: running=${proxyWasRunning}`)
   if (!proxyWasRunning) {
-    console.log('[StandaloneHeadless] Starting tool proxy for follow-up agent')
+    devLog('[StandaloneHeadless] Starting tool proxy for follow-up agent')
     await startToolProxy()
-    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
+    devLog(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
   }
 
   // Find the existing workspace
@@ -743,11 +788,11 @@ export async function startFollowUpAgent(
   const allCommits = await getCommitsBetween(worktreePath, `origin/${defaultBranch}`, 'HEAD')
   // Take last 5 commits (most recent)
   const recentCommits = allCommits.slice(-5)
-  console.log(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
+  devLog(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
 
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   const repository = await getRepositoryByPath(repoPath)
-  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria)
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
   // Store the full resolved prompt (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -759,6 +804,12 @@ export async function startFollowUpAgent(
     planId: repoPath, // Use repo path for bd proxy (where .beads/ directory lives)
     taskId: newHeadlessId,
     image: selectedImage,
+    claudeFlags: model ? ['--model', model] : undefined,
+  }
+
+  // Store model in agent info
+  if (model) {
+    agentInfo.model = model
   }
 
   try {
@@ -872,14 +923,14 @@ export async function startHeadlessDiscussion(
 
   try {
     // Create terminal for discussion
-    console.log(`[HeadlessDiscussion] Creating terminal for discussion ${discussionId}`)
+    devLog(`[HeadlessDiscussion] Creating terminal for discussion ${discussionId}`)
     const claudeFlags = `--add-dir "${referenceAgent.directory}"`
     const terminalId = await queueTerminalCreation(workspaceId, mainWindow, {
       initialPrompt: discussionPrompt,
       claudeFlags,
     })
     discussionState.terminalId = terminalId
-    console.log(`[HeadlessDiscussion] Created discussion terminal: ${terminalId}`)
+    devLog(`[HeadlessDiscussion] Created discussion terminal: ${terminalId}`)
 
     // Set up workspace in tab
     addActiveWorkspace(workspaceId)
@@ -911,7 +962,7 @@ export async function startHeadlessDiscussion(
             await fsPromises.access(discussionOutputPath)
             completionTriggered = true
             discussionEmitter.removeListener('data', dataHandler)
-            console.log(`[HeadlessDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
+            devLog(`[HeadlessDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
             await completeHeadlessDiscussion(discussionId)
           } catch {
             // File not created yet, keep waiting
@@ -945,7 +996,7 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
   try {
     // Read the discussion output
     const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
-    console.log(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+    devLog(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
 
     // Close the discussion terminal
     if (discussionState.terminalId) {
@@ -968,7 +1019,7 @@ ${discussionOutput}
 Please implement the above requirements, following the approach and file modifications outlined.`
 
     // Start the headless agent with the discussion context
-    console.log(`[HeadlessDiscussion] Starting headless agent with discussion context`)
+    devLog(`[HeadlessDiscussion] Starting headless agent with discussion context`)
     const result = await startStandaloneHeadlessAgent(
       discussionState.referenceAgentId,
       headlessPrompt,
@@ -976,7 +1027,7 @@ Please implement the above requirements, following the approach and file modific
       discussionState.tabId // Reuse the same tab
     )
 
-    console.log(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
+    devLog(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
 
     // Clean up discussion state
     activeHeadlessDiscussions.delete(discussionId)

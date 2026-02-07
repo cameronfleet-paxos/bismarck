@@ -47,12 +47,14 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{completionInstructions}}', description: 'Instructions for task completion' },
     { name: '{{gitCommands}}', description: 'Git commands section (branch-strategy dependent)' },
     { name: '{{completionCriteria}}', description: 'Repository completion criteria (PR mode only)' },
+    { name: '{{guidance}}', description: 'Repository-specific guidance for agents' },
   ],
   standalone_headless: [
     { name: '{{userPrompt}}', description: 'The user\'s task description' },
     { name: '{{workingDir}}', description: 'Worktree path' },
     { name: '{{branchName}}', description: 'Git branch name' },
     { name: '{{completionCriteria}}', description: 'Repository completion criteria (optional)' },
+    { name: '{{guidance}}', description: 'Repository-specific guidance for agents' },
     { name: '{{bismarckPrefix}}', description: 'Optional Bismarck Mode satirical prefix' },
     { name: '{{ottoPrefix}}', description: 'Optional Otto Mode prefix' },
   ],
@@ -62,8 +64,28 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{branchName}}', description: 'Git branch name' },
     { name: '{{commitHistory}}', description: 'Recent commits for context' },
     { name: '{{completionCriteria}}', description: 'Repository completion criteria (optional)' },
+    { name: '{{guidance}}', description: 'Repository-specific guidance for agents' },
     { name: '{{bismarckPrefix}}', description: 'Optional Bismarck Mode satirical prefix' },
     { name: '{{ottoPrefix}}', description: 'Optional Otto Mode prefix' },
+  ],
+  headless_discussion: [
+    { name: '{{referenceRepoName}}', description: 'Name of the reference repository' },
+    { name: '{{codebasePath}}', description: 'Path to the codebase' },
+    { name: '{{maxQuestions}}', description: 'Maximum questions to ask' },
+    { name: '{{discussionOutputPath}}', description: 'Path to write discussion output' },
+  ],
+  critic: [
+    { name: '{{taskId}}', description: 'Critic task ID' },
+    { name: '{{originalTaskId}}', description: 'ID of the task being reviewed' },
+    { name: '{{originalTaskTitle}}', description: 'Title of the task being reviewed' },
+    { name: '{{criticCriteria}}', description: 'Review criteria from discussion' },
+    { name: '{{criticIteration}}', description: 'Current review iteration number' },
+    { name: '{{maxCriticIterations}}', description: 'Maximum allowed iterations' },
+    { name: '{{baseBranch}}', description: 'Base branch for diff comparison' },
+    { name: '{{epicId}}', description: 'Epic ID for creating fix-up tasks' },
+    { name: '{{repoName}}', description: 'Repository name' },
+    { name: '{{worktreeName}}', description: 'Worktree name' },
+    { name: '{{lastIterationWarning}}', description: 'Warning text on final iteration' },
   ],
 }
 
@@ -74,6 +96,8 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   task: 'Task Agent',
   standalone_headless: 'Standalone Headless Agent',
   standalone_followup: 'Standalone Follow-up Agent',
+  headless_discussion: 'Headless Discussion',
+  critic: 'Critic Agent',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {

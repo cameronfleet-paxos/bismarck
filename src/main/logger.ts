@@ -2,17 +2,19 @@
  * Centralized Logger for Bismarck
  *
  * Provides structured logging with:
- * - Global debug log: ~/.bismarck/debug.log (configurable in settings)
+ * - Global debug log: ~/.bismarck/debug-YYYY-MM-DD.log (date-based rolling)
  * - Plan-specific logs: ~/.bismarck/plans/{planId}/debug.log
  * - Categories for filtering (plan, task, worktree, agent, git, bd, docker, proxy)
  * - Timing utilities for performance tracking
  * - Context (planId, taskId, agentId) for correlation
  * - Settings-based enable/disable control
+ * - Automatic cleanup of log files older than 7 days
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
 import { getConfigDir } from './config'
+import { devLog } from './dev-log'
 
 // Log categories for filtering
 export type LogCategory =
@@ -21,6 +23,7 @@ export type LogCategory =
   | 'worktree'
   | 'agent'
   | 'git'
+  | 'git-diff'
   | 'bd'
   | 'docker'
   | 'proxy'
@@ -37,6 +40,9 @@ export interface LogContext {
   worktreePath?: string
   branch?: string
   repo?: string
+  directory?: string
+  filepath?: string
+  size?: number
 }
 
 // Debug settings cache
@@ -95,14 +101,74 @@ export function clearDebugSettingsCache(): void {
   debugSettingsCacheTime = 0
 }
 
-// Get global debug log path from settings
+// Get today's date in YYYY-MM-DD format for log file naming
+function getLogDateSuffix(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Get global debug log path from settings with date-based rolling
 function getGlobalLogPath(): string {
-  return getDebugSettingsSync().logPath
+  const basePath = getDebugSettingsSync().logPath
+  // Convert debug.log to debug-YYYY-MM-DD.log
+  const dir = path.dirname(basePath)
+  const ext = path.extname(basePath)
+  const base = path.basename(basePath, ext)
+  return path.join(dir, `${base}-${getLogDateSuffix()}${ext}`)
 }
 
 // Check if debug logging is enabled
 function isDebugEnabled(): boolean {
   return getDebugSettingsSync().enabled
+}
+
+// Number of days to keep old log files
+const LOG_RETENTION_DAYS = 7
+
+// Track if cleanup has run this session
+let cleanupRan = false
+
+/**
+ * Clean up old debug log files, keeping only the last LOG_RETENTION_DAYS days
+ * Runs once per session when the first log is written
+ */
+function cleanupOldLogFiles(): void {
+  if (cleanupRan) return
+  cleanupRan = true
+
+  try {
+    const basePath = getDebugSettingsSync().logPath
+    const dir = path.dirname(basePath)
+    const ext = path.extname(basePath)
+    const base = path.basename(basePath, ext)
+
+    if (!fs.existsSync(dir)) return
+
+    const files = fs.readdirSync(dir)
+    const logFilePattern = new RegExp(`^${base}-(\\d{4}-\\d{2}-\\d{2})${ext.replace('.', '\\.')}$`)
+
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - LOG_RETENTION_DAYS)
+
+    for (const file of files) {
+      const match = file.match(logFilePattern)
+      if (match) {
+        const fileDate = new Date(match[1])
+        if (fileDate < cutoffDate) {
+          try {
+            fs.unlinkSync(path.join(dir, file))
+          } catch {
+            // Ignore delete errors
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore cleanup errors - logging should not fail due to cleanup issues
+  }
 }
 
 // Ensure log directory exists
@@ -169,6 +235,9 @@ function writeLog(
   // Write to global log (only if enabled)
   if (debugEnabled) {
     try {
+      // Cleanup old log files once per session
+      cleanupOldLogFiles()
+
       const globalLogPath = getGlobalLogPath()
       ensureLogDir(globalLogPath)
       fs.appendFileSync(globalLogPath, line)
@@ -194,7 +263,7 @@ function writeLog(
   } else if (level === 'WARN') {
     console.warn(`[${category}] ${message}${contextStr}`)
   } else if (debugEnabled) {
-    console.log(`[${category}] ${message}${contextStr}`)
+    devLog(`[${category}] ${message}${contextStr}`)
   }
 }
 
@@ -413,7 +482,7 @@ export const logger = {
    * Log proxy requests
    */
   proxyRequest(
-    tool: 'gh' | 'bd' | 'git',
+    tool: 'gh' | 'bd' | 'git' | 'bb',
     args: string[],
     success: boolean,
     context?: LogContext,

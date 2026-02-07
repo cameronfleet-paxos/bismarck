@@ -49,6 +49,7 @@ export interface PromptVariables {
   // Headless task agent variables
   gitCommands?: string           // Branch-strategy-dependent git instructions
   completionCriteria?: string    // Repository completion criteria (PR mode only)
+  guidance?: string              // Repository-specific guidance for headless agents
 
   // Standalone headless agent variables
   userPrompt?: string            // The user's task description
@@ -58,6 +59,20 @@ export interface PromptVariables {
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+
+  // Proxied tools section (dynamically built based on enabled tools)
+  proxiedToolsSection?: string
+
+  // Critic agent variables
+  originalTaskId?: string
+  originalTaskTitle?: string
+  criticCriteria?: string
+  criticIteration?: number
+  maxCriticIterations?: number
+  epicId?: string
+  repoName?: string
+  worktreeName?: string
+  lastIterationWarning?: string
 }
 
 /**
@@ -104,6 +119,7 @@ Make sure to discuss these areas (in order):
 - **Testing**: What test types do we need? What edge cases must we cover?
 - **Monitoring**: What metrics should we track? What logging is needed?
 - **Edge cases**: What failure modes exist? How do we handle errors?
+- **Critic Criteria**: What standards should a code reviewer enforce? What acceptance criteria apply? What tests must pass? What patterns must be followed?
 
 === KEY PRINCIPLES ===
 - Ask ONE question at a time using AskUserQuestion tool
@@ -140,6 +156,12 @@ When you have covered all the key areas and the user is satisfied:
    - Task 2: [description]
      - Dependencies: Task 1
    - [etc.]
+
+   ## Critic Criteria
+   - [Coding standards to enforce]
+   - [Test requirements - what must pass]
+   - [Architecture patterns to follow]
+   - [Performance/security requirements]
    \`\`\`
 
 2. Type /exit to signal that discussion is complete
@@ -295,7 +317,7 @@ Title: {{taskTitle}}
 === FIRST STEP ===
 Read your task details to understand what you need to do:
   bd show {{taskId}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
@@ -337,27 +359,13 @@ Branch: {{branchName}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+{{proxiedToolsSection}}
 
 === YOUR TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 When you complete your work:
 
@@ -387,30 +395,16 @@ Branch: {{branchName}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+{{proxiedToolsSection}}
 
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
 
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 1. Review the previous commits above to understand what was done
 
@@ -496,6 +490,49 @@ When you have gathered enough information (or reached the question limit):
 
 === BEGIN ===
 Start by briefly greeting the user and asking your first clarifying question about their goal.`,
+
+  critic: `[BISMARCK CRITIC AGENT]
+Task Under Review: {{originalTaskId}}
+Title: {{originalTaskTitle}}
+Review Iteration: {{criticIteration}} of {{maxCriticIterations}}
+
+=== YOUR ROLE ===
+You are a Critic Agent reviewing completed work. Review the code changes
+and either approve or raise fix-up tasks for issues found.
+
+=== FIRST STEP ===
+Read the original task to understand what was supposed to be done:
+  bd show {{originalTaskId}}
+
+=== REVIEW CRITERIA ===
+{{criticCriteria}}
+
+=== REVIEW PROCESS ===
+1. Review git diff: git diff {{baseBranch}}...HEAD
+2. Read modified files for quality issues
+3. Run existing tests if applicable
+4. Verify task requirements are met
+
+=== DECISION ===
+
+**If ACCEPTABLE:**
+  bd close {{taskId}} --message "APPROVED: <brief reason>"
+
+**If FIXES NEEDED (iterations remaining):**
+1. Create fix-up tasks:
+   bd --sandbox create --parent {{epicId}} "Fix: <specific issue>"
+2. Label them for dispatch:
+   bd --sandbox update <fix-id> --add-label "repo:{{repoName}}" --add-label "worktree:{{worktreeName}}" --add-label bismarck-ready --add-label critic-fixup --add-label "fixup-for:{{originalTaskId}}"
+3. Close critic task:
+   bd close {{taskId}} --message "REJECTED: <issues found>"
+
+{{lastIterationWarning}}
+
+=== ENVIRONMENT ===
+Docker container with /workspace (same worktree as task agent) and /plan.
+Commands: git, gh, bd proxied to host.
+
+CRITICAL: Close your task with bd close to signal completion.`,
 }
 
 /**
@@ -510,13 +547,17 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
     case 'task':
-      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria']
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':
-      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+    case 'critic':
+      return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
+              'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
+              'repoName', 'worktreeName', 'lastIterationWarning']
     default:
       return []
   }
@@ -552,6 +593,51 @@ export function applyVariables(template: string, variables: PromptVariables): st
 export async function getPromptTemplate(type: PromptType): Promise<string> {
   const customPrompt = await getCustomPrompt(type)
   return customPrompt || DEFAULT_PROMPTS[type]
+}
+
+/**
+ * Build the PROXIED COMMANDS section based on which tools are enabled
+ */
+export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
+  const sections: string[] = []
+  let num = 1
+
+  if (enabledTools.git) {
+    sections.push(`${num}. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.`)
+    num++
+  }
+
+  if (enabledTools.gh) {
+    sections.push(`${num}. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work`)
+    num++
+  }
+
+  if (enabledTools.bd) {
+    sections.push(`${num}. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically`)
+    num++
+  }
+
+  if (enabledTools.bb) {
+    sections.push(`${num}. BuildBuddy CLI (bb):
+   - bb view, bb run, bb test, bb remote
+   - All standard bb commands work`)
+  }
+
+  if (sections.length === 0) {
+    return ''
+  }
+
+  return `=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+${sections.join('\n\n')}`
 }
 
 /**
