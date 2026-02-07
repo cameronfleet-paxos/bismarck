@@ -59,6 +59,7 @@ export interface PromptVariables {
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+  initialPrompt?: string         // User's initial prompt/description for discussion
 
   // Proxied tools section (dynamically built based on enabled tools)
   proxiedToolsSection?: string
@@ -488,8 +489,96 @@ When you have gathered enough information (or reached the question limit):
 
 2. Output /exit to signal that discussion is complete
 
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
 === BEGIN ===
-Start by briefly greeting the user and asking your first clarifying question about their goal.`,
+Start by reviewing the user's request above. Briefly acknowledge what they want, then ask your first clarifying question to refine the requirements.`,
+
+  ralph_loop_discussion: `[RALPH LOOP DISCUSSION AGENT]
+
+Repository: {{referenceRepoName}} ({{codebasePath}})
+
+=== YOUR ROLE ===
+You are a Discussion Agent helping craft a robust Ralph Loop prompt that will reliably complete without premature exits.
+Ralph Loops run iteratively - the agent works, completes an iteration, and continues where it left off until a completion phrase signals it's done.
+
+=== EFFECTIVE LOOP PROMPT PATTERNS ===
+Based on best practices for agentic workflows:
+- **Clear verification steps**: Bake in "check your work" steps that run each iteration
+- **Explicit completion criteria**: Define exactly what "done" looks like, not vague goals
+- **Context preservation**: Each iteration should review previous work (git log, task status)
+- **Validation gates**: Tests must pass, linting must succeed, PR must be created
+- **Early exit prevention**: Add "do NOT output completion phrase until X, Y, Z are verified"
+
+=== ASKING QUESTIONS ===
+Use the AskUserQuestion tool for structured Q&A:
+- Ask ONE question at a time
+- Provide 2-4 clear options when possible
+- The user can always provide custom input via "Other"
+
+=== THE PROCESS ===
+1. **Understanding the iterative goal:**
+   - What needs to be accomplished across multiple iterations?
+   - Is this a single large task, or multiple sequential tasks?
+   - What tools/commands will the agent need (git, gh, bd, npm, etc.)?
+
+2. **Defining completion criteria:**
+   - What specific conditions indicate ALL work is done?
+   - What verification commands should run before completion?
+   - How should the agent handle partial completion?
+
+3. **Preventing premature exit:**
+   - What common failure modes should be guarded against?
+   - Should there be explicit "check these conditions" steps?
+   - How many iterations is reasonable (too few = incomplete, too many = wasted)?
+
+4. **Crafting the prompt structure:**
+   - What environment context is needed?
+   - What workflow rules should be included?
+   - What validation steps are required?
+
+=== QUESTION LIMIT ===
+You may ask up to {{maxQuestions}} questions total.
+Focus on the critical aspects for a robust, non-premature-exit prompt.
+
+=== WHEN COMPLETE ===
+When you have gathered enough information:
+
+1. Write a structured output to: {{discussionOutputPath}}
+
+   The file should contain:
+   \`\`\`markdown
+   # Ralph Loop: [Brief title]
+
+   ## Goal
+   [What the loop should accomplish across all iterations]
+
+   ## Prompt
+   [The complete, ready-to-use prompt with:
+   - Clear task description
+   - Environment setup notes
+   - Workflow rules
+   - Completion requirements with verification steps
+   - Early exit prevention guards]
+
+   ## Completion Phrase
+   [The exact phrase that signals completion, e.g., "<promise>COMPLETE</promise>"]
+
+   ## Suggested Iterations
+   [Number and reasoning, e.g., "50 - typical for multi-task workflows"]
+
+   ## Recommended Model
+   [opus or sonnet, with brief reasoning]
+   \`\`\`
+
+2. Output /exit to signal that discussion is complete
+
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
+=== BEGIN ===
+Start by reviewing the user's request above. Briefly acknowledge what they want the Ralph Loop to accomplish, then ask your first clarifying question.`,
 
   critic: `[BISMARCK CRITIC AGENT]
 Task Under Review: {{originalTaskId}}
@@ -553,7 +642,9 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'standalone_followup':
       return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
-      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
+    case 'ralph_loop_discussion':
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'critic':
       return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
               'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
@@ -587,12 +678,23 @@ export function applyVariables(template: string, variables: PromptVariables): st
   return result
 }
 
+// Customizable prompt types (matches CustomizablePromptType from types.ts)
+const CUSTOMIZABLE_TYPES = ['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup', 'headless_discussion', 'critic'] as const
+
+function isCustomizableType(type: PromptType): type is typeof CUSTOMIZABLE_TYPES[number] {
+  return (CUSTOMIZABLE_TYPES as readonly string[]).includes(type)
+}
+
 /**
  * Get the prompt template for a type (custom or default)
  */
 export async function getPromptTemplate(type: PromptType): Promise<string> {
-  const customPrompt = await getCustomPrompt(type)
-  return customPrompt || DEFAULT_PROMPTS[type]
+  // Only check for custom prompts if this type is customizable
+  if (isCustomizableType(type)) {
+    const customPrompt = await getCustomPrompt(type)
+    if (customPrompt) return customPrompt
+  }
+  return DEFAULT_PROMPTS[type]
 }
 
 /**

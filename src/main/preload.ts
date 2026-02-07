@@ -140,10 +140,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-headless-discussion', agentId),
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt),
   cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-headless-discussion', discussionId),
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  startRalphLoopDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-ralph-loop-discussion', agentId, initialPrompt),
+  cancelRalphLoopDiscussion: (discussionId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-ralph-loop-discussion', discussionId),
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
@@ -251,6 +257,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void): void => {
     ipcRenderer.on('ralph-loop-event', (_event, data) => callback(data))
+  },
+  onRalphLoopDiscussionComplete: (callback: (data: {
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  }) => void): void => {
+    ipcRenderer.on('ralph-loop-discussion-complete', (_event, data) => callback(data))
+  },
+  onDiscussionCompleting: (callback: (data: {
+    discussionId: string
+    workspaceId: string
+    tabId: string
+    message: string
+  }) => void): void => {
+    ipcRenderer.on('discussion-completing', (_event, data) => callback(data))
   },
 
   // Description generation progress events

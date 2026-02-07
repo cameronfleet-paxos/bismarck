@@ -1,7 +1,10 @@
 import type { AgentIconName } from './constants'
 
-// Prompt type for custom prompt configuration
-export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+// Customizable prompt types (available in settings)
+export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+
+// All prompt types (including internal/non-customizable prompts)
+export type PromptType = CustomizablePromptType | 'ralph_loop_discussion'
 
 // Persona mode for interactive Claude sessions (injected via hooks)
 export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'

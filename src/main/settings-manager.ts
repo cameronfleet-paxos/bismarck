@@ -8,6 +8,7 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic } from './config'
+import type { CustomizablePromptType } from '../shared/types'
 
 /**
  * Tool configuration for proxying host commands into Docker containers
@@ -585,7 +586,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'): Promise<string | null> {
+export async function getCustomPrompt(type: CustomizablePromptType): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -595,7 +596,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: CustomizablePromptType, template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {

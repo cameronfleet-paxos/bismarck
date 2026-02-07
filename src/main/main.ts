@@ -168,6 +168,8 @@ import {
   restartStandaloneHeadlessAgent,
   startHeadlessDiscussion,
   cancelHeadlessDiscussion,
+  startRalphLoopDiscussion,
+  cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
 } from './standalone-headless'
 import {
@@ -213,7 +215,7 @@ import {
   checkAllToolAuth,
 } from './tool-auth-checker'
 import { isGitRepo } from './git-utils'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -726,12 +728,21 @@ function registerIpcHandlers() {
   })
 
   // Headless discussion (Discuss: Headless Agent)
-  ipcMain.handle('start-headless-discussion', async (_event, agentId: string) => {
-    return startHeadlessDiscussion(agentId)
+  ipcMain.handle('start-headless-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startHeadlessDiscussion(agentId, initialPrompt)
   })
 
   ipcMain.handle('cancel-headless-discussion', async (_event, discussionId: string) => {
     return cancelHeadlessDiscussion(discussionId)
+  })
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  ipcMain.handle('start-ralph-loop-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startRalphLoopDiscussion(agentId, initialPrompt)
+  })
+
+  ipcMain.handle('cancel-ralph-loop-discussion', async (_event, discussionId: string) => {
+    return cancelRalphLoopDiscussion(discussionId)
   })
 
   // Ralph Loop management
@@ -1055,11 +1066,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: PromptType, template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: CustomizablePromptType, template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: PromptType) => {
+  ipcMain.handle('get-default-prompt', (_event, type: CustomizablePromptType) => {
     return getDefaultPrompt(type)
   })
 
