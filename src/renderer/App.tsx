@@ -1287,6 +1287,18 @@ function App() {
     await window.electronAPI.deleteWorkspace(id)
     await loadAgents()
     setWaitingQueue((prev) => prev.filter((wid) => wid !== id))
+    // Clear maximize if this agent was maximized in any tab
+    setMaximizedAgentIdByTab(prev => {
+      const updated = { ...prev }
+      let changed = false
+      for (const tabId of Object.keys(updated)) {
+        if (updated[tabId] === id) {
+          updated[tabId] = null
+          changed = true
+        }
+      }
+      return changed ? updated : prev
+    })
     // Refresh tabs
     const state = await window.electronAPI.getState()
     setTabs(state.tabs || [])
