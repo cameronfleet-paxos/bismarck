@@ -7,6 +7,7 @@
  */
 
 import { powerSaveBlocker } from 'electron'
+import { devLog } from './dev-log'
 
 let enabled = true
 let blockerId: number | null = null
@@ -17,7 +18,7 @@ const activeReasons = new Set<string>()
  */
 export function initPowerSave(settingEnabled: boolean): void {
   enabled = settingEnabled
-  console.log(`[PowerSave] Initialized (enabled: ${enabled})`)
+  devLog(`[PowerSave] Initialized (enabled: ${enabled})`)
 }
 
 /**
@@ -26,7 +27,7 @@ export function initPowerSave(settingEnabled: boolean): void {
  */
 export function acquirePowerSave(reason: string): void {
   activeReasons.add(reason)
-  console.log(`[PowerSave] Acquired: ${reason} (${activeReasons.size} active)`)
+  devLog(`[PowerSave] Acquired: ${reason} (${activeReasons.size} active)`)
   startBlockerIfNeeded()
 }
 
@@ -36,7 +37,7 @@ export function acquirePowerSave(reason: string): void {
  */
 export function releasePowerSave(reason: string): void {
   activeReasons.delete(reason)
-  console.log(`[PowerSave] Released: ${reason} (${activeReasons.size} active)`)
+  devLog(`[PowerSave] Released: ${reason} (${activeReasons.size} active)`)
   stopBlockerIfNeeded()
 }
 
@@ -45,7 +46,7 @@ export function releasePowerSave(reason: string): void {
  */
 export function setPreventSleepEnabled(newEnabled: boolean): void {
   enabled = newEnabled
-  console.log(`[PowerSave] Setting changed (enabled: ${enabled})`)
+  devLog(`[PowerSave] Setting changed (enabled: ${enabled})`)
   if (enabled) {
     startBlockerIfNeeded()
   } else {
@@ -75,7 +76,7 @@ export function cleanupPowerSave(): void {
 function startBlockerIfNeeded(): void {
   if (!enabled || activeReasons.size === 0 || blockerId !== null) return
   blockerId = powerSaveBlocker.start('prevent-app-suspension')
-  console.log(`[PowerSave] Blocker started (id: ${blockerId})`)
+  devLog(`[PowerSave] Blocker started (id: ${blockerId})`)
 }
 
 function stopBlockerIfNeeded(): void {
@@ -88,6 +89,6 @@ function stopBlocker(): void {
   if (powerSaveBlocker.isStarted(blockerId)) {
     powerSaveBlocker.stop(blockerId)
   }
-  console.log(`[PowerSave] Blocker stopped (id: ${blockerId})`)
+  devLog(`[PowerSave] Blocker stopped (id: ${blockerId})`)
   blockerId = null
 }

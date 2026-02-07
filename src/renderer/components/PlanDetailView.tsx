@@ -6,6 +6,7 @@ import { DependencyProgressBar } from '@/renderer/components/DependencyProgressB
 import { DependencyGraphModal } from '@/renderer/components/DependencyGraphModal'
 import { buildDependencyGraph, calculateGraphStats } from '@/renderer/utils/build-dependency-graph'
 import type { Plan, TaskAssignment, Agent, PlanActivity, DependencyGraph, GraphStats, BeadTask, PlanWorktree } from '@/shared/types'
+import { devLog } from '../utils/dev-log'
 
 interface PlanDetailViewProps {
   plan: Plan
@@ -193,8 +194,8 @@ export function PlanDetailView({
           window.electronAPI.getBeadTasks(plan.id),
           window.electronAPI.getTaskAssignments(plan.id)
         ])
-        console.log('[PlanDetailView] Fetched bead tasks:', tasks.length, tasks.map(t => ({ id: t.id, blockedBy: t.blockedBy })))
-        console.log('[PlanDetailView] Fetched assignments:', assignments?.length ?? 0)
+        devLog('[PlanDetailView] Fetched bead tasks:', tasks.length, tasks.map(t => ({ id: t.id, blockedBy: t.blockedBy })))
+        devLog('[PlanDetailView] Fetched assignments:', assignments?.length ?? 0)
         setBeadTasks(tasks)
         setLocalAssignments(assignments || [])
       } catch (err) {
@@ -212,13 +213,13 @@ export function PlanDetailView({
   useEffect(() => {
     const handleBeadTasksUpdated = async (planId: string) => {
       if (planId === plan.id) {
-        console.log('[PlanDetailView] Received bead-tasks-updated event, refreshing tasks')
+        devLog('[PlanDetailView] Received bead-tasks-updated event, refreshing tasks')
         try {
           const [tasks, assignments] = await Promise.all([
             window.electronAPI.getBeadTasks(plan.id),
             window.electronAPI.getTaskAssignments(plan.id)
           ])
-          console.log('[PlanDetailView] Refreshed bead tasks:', tasks.length)
+          devLog('[PlanDetailView] Refreshed bead tasks:', tasks.length)
           setBeadTasks(tasks)
           setLocalAssignments(assignments || [])
         } catch (err) {
@@ -393,7 +394,7 @@ export function PlanDetailView({
               onClick={async () => {
                 if (selectedReference && !isExecuting) {
                   setIsExecuting(true)
-                  console.log('[PlanDetailView] Execute clicked, calling onExecute with:', selectedReference)
+                  devLog('[PlanDetailView] Execute clicked, calling onExecute with:', selectedReference)
                   try {
                     await onExecute(selectedReference)
                   } catch (err) {
