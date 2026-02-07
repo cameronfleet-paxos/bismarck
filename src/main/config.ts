@@ -204,6 +204,7 @@ export function getDefaultPreferences(): AppPreferences {
     gridSize: '2x2',
     keyboardShortcuts: getDefaultKeyboardShortcuts(),
     showDiffView: true,
+    showAgentTimer: true,
   }
 }
 
