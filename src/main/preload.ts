@@ -547,6 +547,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
     ipcRenderer.removeAllListeners('tool-auth-status')
+    ipcRenderer.removeAllListeners('debug-log-lines')
   },
 
   // Dev test harness (development mode only)
@@ -562,4 +563,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dev-get-mock-flow-options'),
   devSetVersionOverride: (version: string | null): Promise<{ version: string }> =>
     ipcRenderer.invoke('dev-set-version-override', version),
+  devStartDebugLogTail: (numInitialLines?: number): Promise<{ logPath: string; initialContent: string }> =>
+    ipcRenderer.invoke('dev-start-debug-log-tail', numInitialLines),
+  devStopDebugLogTail: (): Promise<void> =>
+    ipcRenderer.invoke('dev-stop-debug-log-tail'),
+  onDebugLogLines: (callback: (lines: string) => void) => {
+    ipcRenderer.on('debug-log-lines', (_event, lines: string) => callback(lines))
+  },
 })

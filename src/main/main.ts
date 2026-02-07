@@ -152,7 +152,7 @@ import {
   getPreventSleepSettings,
   updatePreventSleepSettings,
 } from './settings-manager'
-import { clearDebugSettingsCache } from './logger'
+import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
 import { writeCrashLog } from './crash-logger'
 import { getDefaultPrompt } from './prompt-templates'
 import { bdList } from './bd-client'
@@ -1187,6 +1187,63 @@ function registerIpcHandlers() {
 
     ipcMain.handle('dev-get-mock-flow-options', () => {
       return getMockFlowOptions()
+    })
+
+    // Debug log tail - streams new lines from the global debug log
+    let debugLogWatcher: ReturnType<typeof fs.watchFile> | null = null
+    let debugLogOffset = 0
+
+    ipcMain.handle('dev-start-debug-log-tail', async (_event, numInitialLines?: number) => {
+      const logPath = getGlobalLogPath()
+
+      // Stop existing watcher if any
+      if (debugLogWatcher !== null) {
+        fs.unwatchFile(logPath)
+        debugLogWatcher = null
+      }
+
+      // Read initial lines (tail of file)
+      let initialContent = ''
+      try {
+        const content = fs.readFileSync(logPath, 'utf-8')
+        const lines = content.split('\n').filter(l => l.trim())
+        const tailLines = lines.slice(-(numInitialLines || 100))
+        initialContent = tailLines.join('\n')
+        debugLogOffset = content.length
+      } catch {
+        debugLogOffset = 0
+      }
+
+      // Watch for changes
+      fs.watchFile(logPath, { interval: 500 }, (curr) => {
+        if (curr.size <= debugLogOffset) return
+        try {
+          const fd = fs.openSync(logPath, 'r')
+          const buffer = Buffer.alloc(curr.size - debugLogOffset)
+          fs.readSync(fd, buffer, 0, buffer.length, debugLogOffset)
+          fs.closeSync(fd)
+          debugLogOffset = curr.size
+          const newContent = buffer.toString('utf-8')
+          const win = BrowserWindow.getAllWindows()[0]
+          if (win) {
+            win.webContents.send('debug-log-lines', newContent)
+          }
+        } catch {
+          // Ignore read errors
+        }
+      })
+      debugLogWatcher = {} as ReturnType<typeof fs.watchFile>
+
+      return { logPath, initialContent }
+    })
+
+    ipcMain.handle('dev-stop-debug-log-tail', async () => {
+      if (debugLogWatcher !== null) {
+        const logPath = getGlobalLogPath()
+        fs.unwatchFile(logPath)
+        debugLogWatcher = null
+        debugLogOffset = 0
+      }
     })
   }
 
