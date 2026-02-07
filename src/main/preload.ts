@@ -562,4 +562,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dev-get-mock-flow-options'),
   devSetVersionOverride: (version: string | null): Promise<{ version: string }> =>
     ipcRenderer.invoke('dev-set-version-override', version),
+  devResetSettings: (): Promise<void> =>
+    ipcRenderer.invoke('dev-reset-settings'),
 })

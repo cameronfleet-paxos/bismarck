@@ -128,7 +128,9 @@ import { generateDescriptions } from './description-generator'
 import { groupAgentsIntoTabs } from './repo-grouper'
 import {
   getSettings,
+  getDefaultSettings,
   saveSettings,
+  clearSettingsCache,
   updateDockerResourceLimits,
   addDockerImage,
   removeDockerImage,
@@ -1078,6 +1080,13 @@ function registerIpcHandlers() {
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {
     return saveSettings(settings as AppSettings)
+  })
+
+  ipcMain.handle('dev-reset-settings', async () => {
+    const defaults = getDefaultSettings()
+    await saveSettings(defaults)
+    clearSettingsCache()
+    return defaults
   })
 
   // Prompt management
