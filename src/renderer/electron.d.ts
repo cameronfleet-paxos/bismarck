@@ -1,6 +1,15 @@
 import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
+// Tool auth status from the auth checker
+export interface ToolAuthStatus {
+  toolId: string
+  toolName: string
+  state: 'valid' | 'needs-reauth' | 'error'
+  reauthHint?: string
+  message?: string
+}
+
 // Update status types
 export type UpdateStatus =
   | { state: 'idle' }
@@ -185,6 +194,10 @@ export interface ElectronAPI {
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
+  getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
+  checkToolAuth: () => Promise<ToolAuthStatus[]>
+  onToolAuthStatus: (callback: (statuses: ToolAuthStatus[]) => void) => void
+  removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>

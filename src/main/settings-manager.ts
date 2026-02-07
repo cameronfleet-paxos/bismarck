@@ -18,6 +18,10 @@ export interface ProxiedTool {
   hostPath: string       // Host command path, e.g., "/usr/local/bin/npm"
   description?: string
   enabled: boolean       // Whether the tool is available to agents
+  authCheck?: {
+    command: string[]        // e.g. ['bb', 'login', '--check'] — exit 0=valid, 1=needs reauth
+    reauthHint: string       // e.g. 'Run `bb login --browser` in your terminal'
+  }
 }
 
 /**
@@ -147,6 +151,17 @@ export function getDefaultSettings(): AppSettings {
           description: 'Beads task manager',
           enabled: true,
         },
+        {
+          id: 'bb',
+          name: 'bb',
+          hostPath: '/usr/local/bin/bb',
+          description: 'BuildBuddy CLI',
+          enabled: false,
+          authCheck: {
+            command: ['bb', 'login', '--check'],
+            reauthHint: 'Run `bb login --browser` in your terminal',
+          },
+        },
       ],
       sshAgent: {
         enabled: true,
@@ -260,6 +275,14 @@ export async function loadSettings(): Promise<AppSettings> {
         enabled: t.enabled ?? true,
       }))
       needsMigration = true
+    }
+
+    // Migration: Inject missing default tools (e.g., bb) into existing settings
+    for (const defaultTool of defaults.docker.proxiedTools) {
+      if (!merged.docker.proxiedTools.some(t => t.name === defaultTool.name)) {
+        merged.docker.proxiedTools.push({ ...defaultTool })
+        needsMigration = true
+      }
     }
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'

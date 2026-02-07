@@ -388,6 +388,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-tool-paths'),
   toggleProxiedTool: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  getToolAuthStatuses: () =>
+    ipcRenderer.invoke('get-tool-auth-statuses'),
+  checkToolAuth: () =>
+    ipcRenderer.invoke('check-tool-auth'),
+  onToolAuthStatus: (callback: (statuses: Array<{ toolId: string; toolName: string; state: string; reauthHint?: string; message?: string }>) => void): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+    ipcRenderer.on('tool-auth-status', (_event, statuses) => callback(statuses))
+  },
+  removeToolAuthStatusListener: (): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+  },
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
@@ -510,6 +521,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.removeAllListeners('tool-auth-status')
   },
 
   // Dev test harness (development mode only)

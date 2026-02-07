@@ -597,7 +597,7 @@ export async function getPromptTemplate(type: PromptType): Promise<string> {
 /**
  * Build the PROXIED COMMANDS section based on which tools are enabled
  */
-export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean }): string {
+export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
   const sections: string[] = []
   let num = 1
 
@@ -620,6 +620,13 @@ export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boole
     sections.push(`${num}. Beads Task Management (bd):
    - bd list, bd ready, bd show, bd close, bd update
    - The --sandbox flag is added automatically`)
+    num++
+  }
+
+  if (enabledTools.bb) {
+    sections.push(`${num}. BuildBuddy CLI (bb):
+   - bb view, bb run, bb test, bb remote
+   - All standard bb commands work`)
   }
 
   if (sections.length === 0) {

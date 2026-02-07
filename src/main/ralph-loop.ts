@@ -231,7 +231,7 @@ function buildRalphLoopPrompt(
   iterationNumber: number,
   maxIterations: number,
   completionPhrase: string,
-  enabledTools: { git: boolean; gh: boolean; bd: boolean }
+  enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }
 ): string {
   const proxiedToolsSection = buildProxiedToolsSection(enabledTools)
 
@@ -521,6 +521,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
       gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
       bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+      bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
     }
     const enhancedPrompt = buildRalphLoopPrompt(
       state.config.prompt,
