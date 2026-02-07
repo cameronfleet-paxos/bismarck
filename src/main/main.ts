@@ -829,7 +829,7 @@ function registerIpcHandlers() {
     return getAllRepositories()
   })
 
-  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => {
+  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>) => {
     return updateRepository(id, updates)
   })
 

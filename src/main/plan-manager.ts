@@ -2371,6 +2371,15 @@ ${repository.completionCriteria}
 `
     : ''
 
+  // Build guidance section - always include if available (applies regardless of branch strategy)
+  const guidance = repository?.guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${repository.guidance}
+`
+    : ''
+
   // Build git commands section based on branch strategy
   const gitCommands = plan?.branchStrategy === 'raise_prs'
     ? `1. Git:
@@ -2411,6 +2420,7 @@ ${repository.completionCriteria}
     completionInstructions,
     gitCommands,
     completionCriteria,
+    guidance,
     // Note: bismarckPrefix/ottoPrefix are NOT included for plan task agents
     // Persona prompts are only injected via hooks for interactive Claude Code sessions
   }

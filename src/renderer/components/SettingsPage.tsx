@@ -172,6 +172,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [editPurpose, setEditPurpose] = useState('')
   const [editCompletionCriteria, setEditCompletionCriteria] = useState('')
   const [editProtectedBranches, setEditProtectedBranches] = useState('')
+  const [editGuidance, setEditGuidance] = useState('')
   const [newRepoPath, setNewRepoPath] = useState('')
   const [addingRepo, setAddingRepo] = useState(false)
   const [addRepoError, setAddRepoError] = useState<string | null>(null)
@@ -268,6 +269,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     setEditPurpose(repo.purpose || '')
     setEditCompletionCriteria(repo.completionCriteria || '')
     setEditProtectedBranches(repo.protectedBranches?.join(', ') || '')
+    setEditGuidance(repo.guidance || '')
   }
 
   const cancelEditingRepo = () => {
@@ -275,6 +277,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     setEditPurpose('')
     setEditCompletionCriteria('')
     setEditProtectedBranches('')
+    setEditGuidance('')
   }
 
   const handleSaveRepo = async (repoId: string) => {
@@ -289,6 +292,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
         purpose: editPurpose || undefined,
         completionCriteria: editCompletionCriteria || undefined,
         protectedBranches: protectedBranches.length > 0 ? protectedBranches : undefined,
+        guidance: editGuidance || undefined,
       })
       await loadSettings()
       cancelEditingRepo()
@@ -767,6 +771,20 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                                   Branches that agents should not modify directly
                                 </p>
                               </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`guidance-${repo.id}`}>Headless Agent Guidance</Label>
+                                <Textarea
+                                  id={`guidance-${repo.id}`}
+                                  placeholder="Custom guidance for headless agents working on this repo (e.g., 'always run tests with --coverage', 'use feat/ branch prefix')"
+                                  value={editGuidance}
+                                  onChange={(e) => setEditGuidance(e.target.value)}
+                                  rows={4}
+                                  className="min-h-[100px]"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Repo-specific instructions applied to all headless agents
+                                </p>
+                              </div>
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
@@ -810,6 +828,14 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                                     ? repo.protectedBranches.join(', ')
                                     : <span className="text-muted-foreground italic">None</span>}
                                 </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Headless Agent Guidance</Label>
+                                {repo.guidance ? (
+                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.guidance}</pre>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground italic">Not set</div>
+                                )}
                               </div>
                               <Button
                                 size="sm"

@@ -158,7 +158,7 @@ function emitStateUpdate(): void {
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
+async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string, guidance?: string): Promise<string> {
   // Format completion criteria section if provided
   const completionCriteriaSection = completionCriteria
     ? `
@@ -167,6 +167,15 @@ Before marking your work complete, ensure these pass:
 ${completionCriteria}
 
 Keep iterating until all criteria are satisfied.
+`
+    : ''
+
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
 `
     : ''
 
@@ -185,6 +194,7 @@ Keep iterating until all criteria are satisfied.
     workingDir,
     branchName,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
     proxiedToolsSection,
   }
 
@@ -202,7 +212,8 @@ async function buildFollowUpPrompt(
   workingDir: string,
   branchName: string,
   recentCommits: Array<{ shortSha: string; message: string }>,
-  completionCriteria?: string
+  completionCriteria?: string,
+  guidance?: string
 ): Promise<string> {
   // Format commit history
   const commitHistory = recentCommits.length > 0
@@ -217,6 +228,15 @@ Before marking your work complete, ensure these pass:
 ${completionCriteria}
 
 Keep iterating until all criteria are satisfied.
+`
+    : ''
+
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
 `
     : ''
 
@@ -236,6 +256,7 @@ Keep iterating until all criteria are satisfied.
     branchName,
     commitHistory,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
     proxiedToolsSection,
   }
 
@@ -396,12 +417,12 @@ export async function startStandaloneHeadlessAgent(
 
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   // Try repositoryId first, fallback to path-based lookup for legacy workspaces
   const repository = referenceAgent.repositoryId
     ? await getRepositoryById(referenceAgent.repositoryId)
     : await getRepositoryByPath(referenceAgent.directory)
-  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
+  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria, repository?.guidance)
 
   // Update stored prompt to the full resolved version (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -769,9 +790,9 @@ export async function startFollowUpAgent(
   const recentCommits = allCommits.slice(-5)
   devLog(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
 
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   const repository = await getRepositoryByPath(repoPath)
-  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria)
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
   // Store the full resolved prompt (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
