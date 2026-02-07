@@ -405,7 +405,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('remove-docker-image', image),
   setSelectedDockerImage: (image: string) =>
     ipcRenderer.invoke('set-selected-docker-image', image),
-  updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) =>
+  updateToolPaths: (paths: { bd?: string | null; bb?: string | null; gh?: string | null; git?: string | null }) =>
     ipcRenderer.invoke('update-tool-paths', paths),
   detectToolPaths: () =>
     ipcRenderer.invoke('detect-tool-paths'),

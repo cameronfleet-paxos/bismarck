@@ -32,6 +32,7 @@ export interface ProxiedTool {
 export interface AppSettings {
   paths: {
     bd: string | null      // null = use auto-detected
+    bb: string | null
     gh: string | null
     git: string | null
     defaultReposPath?: string  // Default path for scanning repositories in setup wizard
@@ -121,6 +122,7 @@ export function getDefaultSettings(): AppSettings {
   return {
     paths: {
       bd: null,
+      bb: null,
       gh: null,
       git: null,
     },
