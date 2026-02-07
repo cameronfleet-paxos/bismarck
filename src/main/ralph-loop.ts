@@ -26,6 +26,8 @@ import {
   writeConfigAtomic,
   getRandomUniqueIcon,
   getWorkspaces,
+  getRepoCacheDir,
+  getRepoModCacheDir,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
@@ -54,6 +56,7 @@ import type {
   RalphLoopGitSummary,
 } from '../shared/types'
 import { execWithPath } from './exec-utils'
+import * as fsPromises from 'fs/promises'
 
 // Word lists for fun random names (same as standalone-headless)
 const ADJECTIVES = [
@@ -270,9 +273,9 @@ IMPORTANT:
 - Each commit provides context for subsequent iterations
 
 === GIT WORKFLOW ===
-1. Commit your changes using multiple -m flags:
+1. Commit your changes:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 2. Push your branch periodically:
    git push -u origin ${branchName}
@@ -343,6 +346,12 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
   // Create the worktree (shared by ALL iterations)
   devLog(`[RalphLoop] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
+
+  // Create shared Go build cache and module cache directories for this repo
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fsPromises.mkdir(sharedCacheDir, { recursive: true })
+  await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
   // Store worktree info
   const worktreeInfo: StandaloneWorktreeInfo = {
@@ -533,6 +542,11 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       enabledTools
     )
 
+    // Derive shared cache dirs from repo path
+    const iterRepoName = path.basename(state.worktreeInfo.repoPath)
+    const sharedCacheDir = getRepoCacheDir(iterRepoName)
+    const sharedModCacheDir = getRepoModCacheDir(iterRepoName)
+
     const options: HeadlessAgentOptions = {
       prompt: enhancedPrompt,
       worktreePath: state.worktreeInfo.path,
@@ -541,6 +555,8 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       taskId: `${state.id}-iter-${iterationNumber}`,
       image: selectedImage,
       claudeFlags: ['--model', state.config.model],
+      sharedCacheDir,
+      sharedModCacheDir,
     }
 
     devLog(`[RalphLoop] Starting iteration ${iterationNumber} agent`)

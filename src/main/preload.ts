@@ -299,7 +299,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
   addRepository: (path: string): Promise<Repository | null> =>
     ipcRenderer.invoke('add-repository', path),
@@ -394,6 +394,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-github-token', token),
   clearGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('clear-github-token'),
+  checkGitHubTokenScopes: (): Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }> =>
+    ipcRenderer.invoke('check-github-token-scopes'),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -428,6 +430,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
     ipcRenderer.invoke('update-docker-socket-settings', settings),
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 
@@ -480,9 +484,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setUpdateSettings: (settings: { autoCheck?: boolean }) =>
     ipcRenderer.invoke('set-update-settings', settings),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): void => {
-    ipcRenderer.removeAllListeners('update-status')
-    ipcRenderer.on('update-status', (_event, status) => callback(status))
+  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: { state: string; version?: string; releaseUrl?: string; message?: string }) => callback(status)
+    ipcRenderer.on('update-status', handler)
+    // Return an unsubscribe function for this specific listener
+    return () => {
+      ipcRenderer.removeListener('update-status', handler)
+    }
   },
   removeUpdateStatusListener: (): void => {
     ipcRenderer.removeAllListeners('update-status')

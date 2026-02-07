@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react'
-import { Check, X, RefreshCw, Trash2, Info, Save } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Check, X, RefreshCw, Trash2, Info, Save, AlertTriangle, Shield } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Label } from '@/renderer/components/ui/label'
 import { Input } from '@/renderer/components/ui/input'
+
+interface TokenScopeResult {
+  valid: boolean
+  scopes: string[]
+  missingScopes: string[]
+  ssoConfigured: boolean | null
+  error?: string
+}
 
 export function AuthenticationSettings() {
   // Claude OAuth state
@@ -19,10 +27,35 @@ export function AuthenticationSettings() {
   const [detectingGitHubToken, setDetectingGitHubToken] = useState(false)
   const [gitHubTokenDetectResult, setGitHubTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
 
+  // Token scope checking state
+  const [scopeResult, setScopeResult] = useState<TokenScopeResult | null>(null)
+  const [checkingScopes, setCheckingScopes] = useState(false)
+
+  const checkScopes = useCallback(async () => {
+    setCheckingScopes(true)
+    try {
+      const result = await window.electronAPI.checkGitHubTokenScopes()
+      setScopeResult(result)
+    } catch (err) {
+      console.error('Failed to check token scopes:', err)
+    } finally {
+      setCheckingScopes(false)
+    }
+  }, [])
+
   // Load token status on mount
   useEffect(() => {
     checkTokenStatus()
   }, [])
+
+  // Auto-check scopes when GitHub token is present
+  useEffect(() => {
+    if (hasGitHubToken) {
+      checkScopes()
+    } else {
+      setScopeResult(null)
+    }
+  }, [hasGitHubToken, checkScopes])
 
   const checkTokenStatus = async () => {
     try {
@@ -80,6 +113,8 @@ export function AuthenticationSettings() {
       setGitHubTokenDetectResult(null)
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
+      // Always re-check scopes after saving (hasGitHubToken may already be true)
+      checkScopes()
     } catch (error) {
       console.error('Failed to save GitHub token:', error)
     } finally {
@@ -91,6 +126,7 @@ export function AuthenticationSettings() {
     try {
       await window.electronAPI.clearGitHubToken()
       setHasGitHubToken(false)
+      setScopeResult(null)
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
@@ -108,6 +144,8 @@ export function AuthenticationSettings() {
         setHasGitHubToken(true)
         setShowSaved(true)
         setTimeout(() => setShowSaved(false), 2000)
+        // Always re-check scopes after detect (hasGitHubToken may already be true)
+        checkScopes()
       }
     } catch (error) {
       console.error('Failed to detect GitHub token:', error)
@@ -116,6 +154,9 @@ export function AuthenticationSettings() {
       setDetectingGitHubToken(false)
     }
   }
+
+  const hasWarnings = scopeResult && (scopeResult.missingScopes.length > 0 || scopeResult.ssoConfigured === false || scopeResult.error)
+  const hasErrors = scopeResult && (scopeResult.error || !scopeResult.valid)
 
   return (
     <div className="space-y-6">
@@ -226,10 +267,27 @@ export function AuthenticationSettings() {
           </div>
           <div className="flex items-center gap-2">
             {hasGitHubToken ? (
-              <>
-                <Check className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 dark:text-green-400 font-medium">Configured</span>
-              </>
+              hasErrors ? (
+                <>
+                  <X className="h-4 w-4 text-red-500" />
+                  <span className="text-sm text-red-600 dark:text-red-400 font-medium">Invalid</span>
+                </>
+              ) : hasWarnings ? (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">Missing scopes</span>
+                </>
+              ) : scopeResult ? (
+                <>
+                  <Check className="h-4 w-4 text-green-500" />
+                  <span className="text-sm text-green-600 dark:text-green-400 font-medium">Configured</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 text-green-500" />
+                  <span className="text-sm text-green-600 dark:text-green-400 font-medium">Configured</span>
+                </>
+              )
             ) : (
               <>
                 <X className="h-4 w-4 text-muted-foreground" />
@@ -238,6 +296,105 @@ export function AuthenticationSettings() {
             )}
           </div>
         </div>
+
+        {/* Token scope warnings */}
+        {hasGitHubToken && scopeResult && (
+          <>
+            {scopeResult.error ? (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-md">
+                <div className="flex gap-2">
+                  <X className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium">{scopeResult.error}</p>
+                    {scopeResult.error.includes('expired') && (
+                      <p className="text-xs mt-1 text-muted-foreground">
+                        Generate a new token at{' '}
+                        <button
+                          onClick={() => window.electronAPI.openExternal('https://github.com/settings/tokens')}
+                          className="text-blue-500 hover:underline cursor-pointer"
+                        >
+                          github.com/settings/tokens
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : scopeResult.missingScopes.length > 0 ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-600 dark:text-amber-400">
+                    <p className="font-medium">Token is missing required scopes</p>
+                    <div className="mt-2 space-y-1">
+                      {scopeResult.missingScopes.map(scope => (
+                        <div key={scope} className="flex items-center gap-1.5 text-xs">
+                          <X className="h-3 w-3" />
+                          <code className="bg-muted px-1 rounded">{scope}</code>
+                          {scope === 'repo' && <span className="text-muted-foreground">— required for creating PRs</span>}
+                          {scope === 'read:packages' && <span className="text-muted-foreground">— recommended for accessing organization packages</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs mt-2 text-muted-foreground">
+                      Headless agents may fail to create PRs or access private packages without these scopes.{' '}
+                      <button
+                        onClick={() => window.electronAPI.openExternal('https://github.com/settings/tokens')}
+                        className="text-blue-500 hover:underline cursor-pointer"
+                      >
+                        Update token scopes
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                <div className="flex gap-2">
+                  <Shield className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-green-600 dark:text-green-400">
+                    <p>
+                      <strong>Token verified</strong> — has required scopes: {scopeResult.scopes.join(', ')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {scopeResult.ssoConfigured === false && !scopeResult.error && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-600 dark:text-amber-400">
+                    <p className="font-medium">SSO authorization may be required</p>
+                    <p className="text-xs mt-1 text-muted-foreground">
+                      Your token may not be authorized for SAML SSO organizations. Authorize it at{' '}
+                      <button
+                        onClick={() => window.electronAPI.openExternal('https://github.com/settings/tokens')}
+                        className="text-blue-500 hover:underline cursor-pointer"
+                      >
+                        github.com/settings/tokens
+                      </button>
+                      {' '}by clicking "Configure SSO" next to the token.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Re-check button */}
+            <Button
+              onClick={checkScopes}
+              variant="outline"
+              size="sm"
+              disabled={checkingScopes}
+              data-testid="recheck-scopes-button"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${checkingScopes ? 'animate-spin' : ''}`} />
+              {checkingScopes ? 'Checking...' : 'Re-check token'}
+            </Button>
+          </>
+        )}
 
         {/* Auto-detect button */}
         <div className="space-y-4">
@@ -344,7 +501,7 @@ export function AuthenticationSettings() {
               >
                 github.com/settings/tokens
               </button>
-              {' '}with <code className="bg-muted px-1 rounded">repo</code> scope.
+              {' '}with <code className="bg-muted px-1 rounded">repo</code> and <code className="bg-muted px-1 rounded">read:packages</code> scopes.
             </p>
           </div>
 
