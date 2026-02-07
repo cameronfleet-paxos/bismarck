@@ -1344,6 +1344,37 @@ function App() {
   }
 
   const handleStopAgent = async (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId)
+
+    // Standalone terminals: fully close and delete
+    if (agent?.isStandaloneTerminal) {
+      const activeTerminal = activeTerminals.find((t) => t.workspaceId === agentId)
+      if (activeTerminal) {
+        await window.electronAPI.closeTerminal(activeTerminal.terminalId)
+      }
+      await window.electronAPI.closeStandaloneTerminal(agentId)
+      setActiveTerminals((prev) => prev.filter((t) => t.workspaceId !== agentId))
+      if (focusedAgentId === agentId) {
+        setFocusedAgentId(null)
+        window.electronAPI?.setFocusedWorkspace?.(undefined)
+      }
+      setMaximizedAgentIdByTab(prev => {
+        const updated = { ...prev }
+        let changed = false
+        for (const tabId of Object.keys(updated)) {
+          if (updated[tabId] === agentId) {
+            updated[tabId] = null
+            changed = true
+          }
+        }
+        return changed ? updated : prev
+      })
+      await loadAgents()
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+      return
+    }
+
     const activeTerminal = activeTerminals.find(
       (t) => t.workspaceId === agentId
     )
@@ -1678,6 +1709,27 @@ function App() {
     const isActive = activeTerminals.some(t => t.workspaceId === agentId)
     if (!isActive) {
       handleLaunchAgent(agentId)
+    }
+  }
+
+  // Add standalone terminal handler
+  const handleAddTerminal = async () => {
+    try {
+      const tabId = activeTabId || tabs[0]?.id
+      const result = await window.electronAPI.createStandaloneTerminal(tabId || undefined)
+      if (result) {
+        // Reload agents to pick up the new workspace
+        await loadAgents()
+        // The terminal-created event will add it to activeTerminals
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+        setFocusedAgentId(result.workspaceId)
+        window.electronAPI?.setFocusedWorkspace?.(result.workspaceId)
+      }
+    } catch (error) {
+      console.error('Failed to create standalone terminal:', error)
     }
   }
 
@@ -3730,9 +3782,13 @@ function App() {
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Stop Agent</DialogTitle>
+            <DialogTitle>
+              {agents.find(a => a.id === stopConfirmAgentId)?.isStandaloneTerminal ? 'Close Terminal' : 'Stop Agent'}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to stop this agent? Any unsaved progress will be lost.
+              {agents.find(a => a.id === stopConfirmAgentId)?.isStandaloneTerminal
+                ? 'Are you sure you want to close this terminal?'
+                : 'Are you sure you want to stop this agent? Any unsaved progress will be lost.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -3751,7 +3807,7 @@ function App() {
                 }
               }}
             >
-              Stop Agent
+              {agents.find(a => a.id === stopConfirmAgentId)?.isStandaloneTerminal ? 'Close Terminal' : 'Stop Agent'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3896,6 +3952,7 @@ function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
+        onAddTerminal={handleAddTerminal}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}

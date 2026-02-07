@@ -304,6 +304,65 @@ export function createTerminal(
   return terminalId
 }
 
+/**
+ * Create a plain shell terminal (no Claude) for standalone terminals.
+ * Spawns the user's shell in the given directory.
+ */
+export function createPlainTerminal(
+  workspaceId: string,
+  mainWindow: BrowserWindow | null,
+  cwd: string
+): string {
+  const terminalId = `terminal-${workspaceId}-${Date.now()}`
+  const shell = process.env.SHELL || '/bin/zsh'
+
+  // Validate directory exists, fall back to home if not
+  if (!fs.existsSync(cwd)) {
+    console.warn(`Directory ${cwd} does not exist, using home directory`)
+    cwd = os.homedir()
+  }
+
+  const ptyProcess = pty.spawn(shell, ['-l'], {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      BISMARCK_WORKSPACE_ID: workspaceId,
+      BISMARCK_INSTANCE_ID: getInstanceId(),
+    },
+  })
+
+  const emitter = new EventEmitter()
+
+  terminals.set(terminalId, {
+    pty: ptyProcess,
+    workspaceId,
+    emitter,
+  })
+
+  // Forward data to renderer
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', terminalId, data)
+    }
+  })
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
+    }
+    terminals.delete(terminalId)
+  })
+
+  return terminalId
+}
+
 export function writeTerminal(terminalId: string, data: string): void {
   const terminal = terminals.get(terminalId)
   if (terminal) {
