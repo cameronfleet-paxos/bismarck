@@ -480,9 +480,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setUpdateSettings: (settings: { autoCheck?: boolean }) =>
     ipcRenderer.invoke('set-update-settings', settings),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): void => {
-    ipcRenderer.removeAllListeners('update-status')
-    ipcRenderer.on('update-status', (_event, status) => callback(status))
+  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: { state: string; version?: string; releaseUrl?: string; message?: string }) => callback(status)
+    ipcRenderer.on('update-status', handler)
+    // Return an unsubscribe function for this specific listener
+    return () => {
+      ipcRenderer.removeListener('update-status', handler)
+    }
   },
   removeUpdateStatusListener: (): void => {
     ipcRenderer.removeAllListeners('update-status')

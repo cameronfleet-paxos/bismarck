@@ -234,7 +234,7 @@ export interface ElectronAPI {
   getUpdateSettings: () => Promise<{ autoCheck: boolean }>
   setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
   getAppVersion: () => Promise<string>
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void | (() => void)
   removeUpdateStatusListener: () => void
   signalRendererReady?: () => void
 

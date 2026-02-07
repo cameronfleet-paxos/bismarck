@@ -122,7 +122,8 @@ async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: stri
       method: 'GET',
       headers: {
         'User-Agent': `Bismarck/${getAppVersion()}`,
-        'Accept': 'application/vnd.github.v3+json'
+        'Accept': 'application/vnd.github.v3+json',
+        'Cache-Control': 'no-cache'
       }
     }
 
@@ -204,6 +205,10 @@ async function checkForUpdates(): Promise<UpdateStatus> {
 
     if (compareVersions(latestVersion, currentVersion) > 0) {
       const significantlyOutdated = isSignificantlyOutdated(currentVersion, latestVersion)
+      // Log when the detected latest version changes (e.g. v0.6.1 -> v0.6.2)
+      if (currentStatus.state === 'available' && currentStatus.version !== latestVersion) {
+        devLog(`[AutoUpdater] Latest version changed: ${currentStatus.version} -> ${latestVersion}`)
+      }
       devLog('[AutoUpdater] Update available:', latestVersion, significantlyOutdated ? '(significantly outdated)' : '')
       const status: UpdateStatus = {
         state: 'available',
@@ -326,16 +331,19 @@ export async function checkForUpdatesOnLaunch(): Promise<void> {
   }
 
   devLog(`[AutoUpdater] Scheduling launch check in ${LAUNCH_CHECK_DELAY_MS}ms`)
-  // Wait before checking
-  setTimeout(async () => {
-    try {
-      devLog('[AutoUpdater] Performing launch check...')
-      await checkForUpdates()
-      devLog('[AutoUpdater] Launch check completed, currentStatus:', currentStatus.state)
-    } catch (error) {
-      console.error('[AutoUpdater] Launch check failed:', error)
-    }
-  }, LAUNCH_CHECK_DELAY_MS)
+  // Wait before checking - await the delay so callers know when the check is done
+  await new Promise<void>((resolve) => {
+    setTimeout(async () => {
+      try {
+        devLog('[AutoUpdater] Performing launch check...')
+        await checkForUpdates()
+        devLog('[AutoUpdater] Launch check completed, currentStatus:', currentStatus.state)
+      } catch (error) {
+        console.error('[AutoUpdater] Launch check failed:', error)
+      }
+      resolve()
+    }, LAUNCH_CHECK_DELAY_MS)
+  })
 }
 
 /**
