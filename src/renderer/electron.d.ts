@@ -100,6 +100,10 @@ export interface ElectronAPI {
   stopHeadlessAgent: (taskId: string) => Promise<void>
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean) => Promise<{ success: boolean; error?: string }>
 
+  // Standalone terminal management
+  createStandaloneTerminal: (tabId?: string) => Promise<{ workspaceId: string; terminalId: string; tabId: string }>
+  closeStandaloneTerminal: (workspaceId: string) => Promise<void>
+
   // Standalone headless agent management
   startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet' | 'haiku', tabId?: string) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>

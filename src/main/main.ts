@@ -20,6 +20,7 @@ initBenchmark()
 import {
   ensureConfigDirExists,
   getWorkspaces,
+  getWorkspaceById,
   saveWorkspace,
   deleteWorkspace,
   reorderWorkspaces,
@@ -35,6 +36,7 @@ import {
   closeTerminal,
   closeAllTerminals,
   getTerminalForWorkspace,
+  createPlainTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -189,6 +191,11 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
+import {
+  createStandaloneTerminal,
+  closeStandaloneTerminal,
+  setMainWindowForStandaloneTerminal,
+} from './standalone-terminal'
 import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE, checkDockerAvailable, getImageInfo } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
@@ -294,6 +301,7 @@ function createWindow() {
   setQueueMainWindow(mainWindow)
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
+  setMainWindowForStandaloneTerminal(mainWindow)
   setAutoUpdaterWindow(mainWindow)
   setAuthCheckerWindow(mainWindow)
 
@@ -414,6 +422,14 @@ function registerIpcHandlers() {
   ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
     devLog('[Main] create-terminal called for workspace:', workspaceId)
     try {
+      // Check if this is a standalone terminal (plain shell, no Claude)
+      const workspace = getWorkspaceById(workspaceId)
+      if (workspace?.isStandaloneTerminal) {
+        addActiveWorkspace(workspaceId)
+        const terminalId = createPlainTerminal(workspaceId, mainWindow, workspace.directory)
+        devLog('[Main] create-terminal (plain shell) succeeded:', terminalId)
+        return terminalId
+      }
       // Use the queue for terminal creation with full setup
       const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
       devLog('[Main] create-terminal succeeded:', terminalId)
@@ -729,6 +745,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
     return restartStandaloneHeadlessAgent(headlessId, model)
+  })
+
+  // Standalone terminal management
+  ipcMain.handle('create-standalone-terminal', async (_event, tabId?: string) => {
+    return createStandaloneTerminal(tabId)
+  })
+
+  ipcMain.handle('close-standalone-terminal', async (_event, workspaceId: string) => {
+    closeStandaloneTerminal(workspaceId)
   })
 
   // Headless discussion (Discuss: Headless Agent)

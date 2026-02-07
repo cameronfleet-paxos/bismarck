@@ -125,6 +125,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('destroy-headless-agent', taskId, isStandalone),
 
+  // Standalone terminal management
+  createStandaloneTerminal: (tabId?: string): Promise<{ workspaceId: string; terminalId: string; tabId: string }> =>
+    ipcRenderer.invoke('create-standalone-terminal', tabId),
+  closeStandaloneTerminal: (workspaceId: string): Promise<void> =>
+    ipcRenderer.invoke('close-standalone-terminal', workspaceId),
+
   // Standalone headless agent management
   startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
     ipcRenderer.invoke('start-standalone-headless-agent', agentId, prompt, model, tabId),
