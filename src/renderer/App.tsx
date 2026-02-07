@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2 } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -39,6 +39,7 @@ import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
+import { ElapsedTime } from '@/renderer/components/ElapsedTime'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -230,12 +231,22 @@ function App() {
   const [startingFollowUpIds, setStartingFollowUpIds] = useState<Set<string>>(new Set())
   const [restartingIds, setRestartingIds] = useState<Set<string>>(new Set())
 
+  // Discussion completing spinner state (overlays the discussion workspace)
+  const [discussionCompletingWorkspaceId, setDiscussionCompletingWorkspaceId] = useState<string | null>(null)
+
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
   const [simulateNewUser, setSimulateNewUser] = useState(false)
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+  const [prefillRalphLoopConfig, setPrefillRalphLoopConfig] = useState<{
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  } | null>(null)
 
   // Terminal search state (CMD-F) - tracks which agent has search open
   const [terminalSearchAgentId, setTerminalSearchAgentId] = useState<string | null>(null)
@@ -345,6 +356,9 @@ function App() {
   const [showUpdatePopup, setShowUpdatePopup] = useState(false)
   const updatePopupShownRef = useRef(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
+
+  // Tool auth status (for tools like bb that need SSO re-auth)
+  const [toolsNeedingReauth, setToolsNeedingReauth] = useState<Array<{ toolId: string; toolName: string; state: string; reauthHint?: string }>>([])
 
   // Central registry of terminal writers - Map of terminalId -> write function
   const terminalWritersRef = useRef<Map<string, TerminalWriter>>(new Map())
@@ -543,6 +557,25 @@ function App() {
       }
       clearTimeout(maxPollTimeout)
       window.electronAPI?.removeUpdateStatusListener?.()
+    }
+  }, [])
+
+  // Listen for tool auth status updates (e.g., bb SSO expiry)
+  useEffect(() => {
+    // Get initial statuses
+    window.electronAPI?.getToolAuthStatuses?.().then((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    // Listen for push updates
+    window.electronAPI?.onToolAuthStatus?.((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    return () => {
+      window.electronAPI?.removeToolAuthStatusListener?.()
     }
   }, [])
 
@@ -1106,9 +1139,17 @@ function App() {
       loadAgents()
     })
 
+    // Discussion completing spinner (overlay on the discussion terminal)
+    window.electronAPI?.onDiscussionCompleting?.((data) => {
+      devLog('[Renderer] Received discussion-completing', data)
+      setDiscussionCompletingWorkspaceId(data.workspaceId)
+    })
+
     // Headless agent events
     window.electronAPI?.onHeadlessAgentStarted?.((data) => {
       devLog('[Renderer] Received headless-agent-started', data)
+      // Clear discussion completing spinner - the handoff agent has started
+      setDiscussionCompletingWorkspaceId(null)
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
         devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
@@ -1179,6 +1220,18 @@ function App() {
         }
         return updated
       })
+    })
+
+    // Ralph Loop discussion complete - open CMD-K with pre-populated values
+    window.electronAPI?.onRalphLoopDiscussionComplete?.((data) => {
+      setPrefillRalphLoopConfig({
+        referenceAgentId: data.referenceAgentId,
+        prompt: data.prompt,
+        completionPhrase: data.completionPhrase,
+        maxIterations: data.maxIterations,
+        model: data.model,
+      })
+      setCommandSearchOpen(true)
     })
 
     // Terminal queue status for boot progress indicator
@@ -1676,15 +1729,28 @@ function App() {
   }
 
   // Start headless discussion handler
-  const handleStartHeadlessDiscussion = async (agentId: string) => {
+  const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string) => {
     try {
-      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId)
+      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId, initialPrompt)
       if (result) {
         // Reload agents to pick up the new discussion workspace
         await loadAgents()
       }
     } catch (error) {
       console.error('Failed to start headless discussion:', error)
+    }
+  }
+
+  // Start Ralph Loop discussion handler
+  const handleStartRalphLoopDiscussion = async (agentId: string, initialPrompt: string) => {
+    try {
+      const result = await window.electronAPI?.startRalphLoopDiscussion?.(agentId, initialPrompt)
+      if (result) {
+        // Reload agents to pick up the new discussion workspace
+        await loadAgents()
+      }
+    } catch (error) {
+      console.error('Failed to start Ralph Loop discussion:', error)
     }
   }
 
@@ -2260,6 +2326,20 @@ function App() {
           {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
         </span>
         <div className="flex items-center gap-2">
+          {toolsNeedingReauth.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
+                onClick={() => {
+                  setSettingsInitialSection('tools')
+                  setCurrentView('settings')
+                }}
+                title="Click to view tool auth details"
+              >
+                {toolsNeedingReauth.map(t => t.toolName).join(', ')}: re-auth required
+              </span>
+            </div>
+          )}
           {updateAvailable && (
             <div className="flex items-center gap-1.5 text-xs">
               <span
@@ -2695,7 +2775,7 @@ function App() {
                               isFocused ? 'ring-2 ring-primary' : ''
                             } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                               !isExpanded && expandedAgentId ? 'invisible' : ''
-                            } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                            } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''}`}
                             onClick={() => {
                               if (!isExpanded) {
                                 handleFocusAgent(workspaceId)
@@ -2822,7 +2902,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -2868,6 +2948,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -2939,7 +3022,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -2986,6 +3069,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -3071,7 +3157,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -3128,6 +3214,9 @@ function App() {
                                 iteration.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{iteration.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={iteration.startedAt} completedAt={iteration.completedAt} />
+                              )}
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
                               {loopState.config.prompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, planId: loopState.id, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt, worktreePath: loopState.worktreeInfo.path, startedAt: iteration.startedAt })} className="h-6 w-6 p-0" title="View prompt">
@@ -3217,7 +3306,7 @@ function App() {
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
                             !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
@@ -3359,6 +3448,13 @@ function App() {
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
+                            {/* Discussion completing overlay */}
+                            {discussionCompletingWorkspaceId === workspaceId && (
+                              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/90">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Starting headless agent...</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -3396,7 +3492,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                         >
@@ -3442,6 +3538,9 @@ function App() {
                                 info.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{info.status}</span>
+                              {preferences.showAgentTimer !== false && (
+                                <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -3762,7 +3861,13 @@ function App() {
       {/* Command Search (CMD-K) */}
       <CommandSearch
         open={commandSearchOpen}
-        onOpenChange={setCommandSearchOpen}
+        onOpenChange={(open) => {
+          setCommandSearchOpen(open)
+          if (!open) {
+            // Clear prefill when closing
+            setPrefillRalphLoopConfig(null)
+          }
+        }}
         agents={agents}
         activeTerminals={activeTerminals}
         waitingQueue={waitingQueue}
@@ -3771,8 +3876,10 @@ function App() {
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
+        onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
+        prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 
       {/* Update Available Popup (for significantly outdated versions) */}

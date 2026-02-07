@@ -1,6 +1,15 @@
 import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
+// Tool auth status from the auth checker
+export interface ToolAuthStatus {
+  toolId: string
+  toolName: string
+  state: 'valid' | 'needs-reauth' | 'error'
+  reauthHint?: string
+  message?: string
+}
+
 // Update status types
 export type UpdateStatus =
   | { state: 'idle' }
@@ -100,8 +109,12 @@ export interface ElectronAPI {
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string) => Promise<{ discussionId: string; workspaceId: string; tabId: string }>
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string) => Promise<{ discussionId: string; workspaceId: string; tabId: string }>
   cancelHeadlessDiscussion: (discussionId: string) => Promise<void>
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  startRalphLoopDiscussion: (agentId: string, initialPrompt: string) => Promise<{ discussionId: string; workspaceId: string; tabId: string }>
+  cancelRalphLoopDiscussion: (discussionId: string) => Promise<void>
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig) => Promise<RalphLoopState>
@@ -128,7 +141,7 @@ export interface ElectronAPI {
   // Git repository management
   detectGitRepository: (directory: string) => Promise<Repository | null>
   getRepositories: () => Promise<Repository[]>
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
 
@@ -185,8 +198,14 @@ export interface ElectronAPI {
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
+  getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
+  checkToolAuth: () => Promise<ToolAuthStatus[]>
+  runToolReauth: (toolId: string) => Promise<void>
+  onToolAuthStatus: (callback: (statuses: ToolAuthStatus[]) => void) => void
+  removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
@@ -252,6 +271,10 @@ export interface ElectronAPI {
   // Ralph Loop events
   onRalphLoopUpdate: (callback: (state: RalphLoopState) => void) => void
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void) => void
+  onRalphLoopDiscussionComplete: (callback: (data: { referenceAgentId: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }) => void) => void
+
+  // Discussion handoff events
+  onDiscussionCompleting: (callback: (data: { discussionId: string; workspaceId: string; tabId: string; message: string }) => void) => void
 
   // Description generation progress events
   onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void) => void

@@ -151,6 +151,7 @@ import {
   updateDebugSettings,
   getPreventSleepSettings,
   updatePreventSleepSettings,
+  updateDockerSharedBuildCacheSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -168,6 +169,8 @@ import {
   restartStandaloneHeadlessAgent,
   startHeadlessDiscussion,
   cancelHeadlessDiscussion,
+  startRalphLoopDiscussion,
+  cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
 } from './standalone-headless'
 import {
@@ -205,8 +208,15 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import {
+  setAuthCheckerWindow,
+  startToolAuthChecks,
+  stopToolAuthChecks,
+  getToolAuthStatuses,
+  checkAllToolAuth,
+} from './tool-auth-checker'
 import { isGitRepo } from './git-utils'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -282,6 +292,7 @@ function createWindow() {
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
   setAutoUpdaterWindow(mainWindow)
+  setAuthCheckerWindow(mainWindow)
 
   startTimer('window:loadURL', 'window')
   if (process.env.NODE_ENV === 'development') {
@@ -299,6 +310,7 @@ function createWindow() {
     setDevHarnessWindow(null)
     setQueueMainWindow(null)
     setAutoUpdaterWindow(null)
+    setAuthCheckerWindow(null)
   })
 
   // Create system tray
@@ -717,12 +729,21 @@ function registerIpcHandlers() {
   })
 
   // Headless discussion (Discuss: Headless Agent)
-  ipcMain.handle('start-headless-discussion', async (_event, agentId: string) => {
-    return startHeadlessDiscussion(agentId)
+  ipcMain.handle('start-headless-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startHeadlessDiscussion(agentId, initialPrompt)
   })
 
   ipcMain.handle('cancel-headless-discussion', async (_event, discussionId: string) => {
     return cancelHeadlessDiscussion(discussionId)
+  })
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  ipcMain.handle('start-ralph-loop-discussion', async (_event, agentId: string, initialPrompt: string) => {
+    return startRalphLoopDiscussion(agentId, initialPrompt)
+  })
+
+  ipcMain.handle('cancel-ralph-loop-discussion', async (_event, discussionId: string) => {
+    return cancelRalphLoopDiscussion(discussionId)
   })
 
   // Ralph Loop management
@@ -820,7 +841,7 @@ function registerIpcHandlers() {
     return getAllRepositories()
   })
 
-  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => {
+  ipcMain.handle('update-repository', async (_event, id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>) => {
     return updateRepository(id, updates)
   })
 
@@ -1014,7 +1035,38 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('toggle-proxied-tool', async (_event, id: string, enabled: boolean) => {
-    return updateProxiedTool(id, { enabled })
+    const result = updateProxiedTool(id, { enabled })
+    // Re-check auth statuses when a tool is toggled (async, don't block)
+    checkAllToolAuth().catch(() => {})
+    return result
+  })
+
+  // Tool auth status handlers
+  ipcMain.handle('get-tool-auth-statuses', () => {
+    return getToolAuthStatuses()
+  })
+
+  ipcMain.handle('check-tool-auth', async () => {
+    return checkAllToolAuth()
+  })
+
+  ipcMain.handle('run-tool-reauth', async (_event, toolId: string) => {
+    const settings = await getSettings()
+    const tool = settings.docker.proxiedTools.find(t => t.id === toolId)
+    if (!tool?.authCheck?.reauthCommand) {
+      throw new Error(`No reauth command configured for tool ${toolId}`)
+    }
+    const { execWithPath } = await import('./exec-utils')
+    const [cmd, ...args] = tool.authCheck.reauthCommand
+    // Use hostPath if the command matches the tool name (e.g., 'bb' -> '/usr/local/bin/bb')
+    const resolvedCmd = cmd === tool.name ? tool.hostPath : cmd
+    const command = `"${resolvedCmd}" ${args.map(a => `"${a}"`).join(' ')}`
+    devLog('[Main] run-tool-reauth: executing', command)
+    // Fire and forget - don't await, let the process open the browser
+    execWithPath(command).then(
+      () => devLog('[Main] run-tool-reauth completed'),
+      (err) => console.error('[Main] run-tool-reauth failed:', err)
+    )
   })
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
@@ -1023,6 +1075,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-socket-settings', async (_event, settings: { enabled?: boolean; path?: string }) => {
     return updateDockerSocketSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-shared-build-cache-settings', async (_event, settings: { enabled?: boolean }) => {
+    return updateDockerSharedBuildCacheSettings(settings)
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {
@@ -1034,11 +1090,11 @@ function registerIpcHandlers() {
     return getCustomPrompts()
   })
 
-  ipcMain.handle('set-custom-prompt', async (_event, type: PromptType, template: string | null) => {
+  ipcMain.handle('set-custom-prompt', async (_event, type: CustomizablePromptType, template: string | null) => {
     return setCustomPrompt(type, template)
   })
 
-  ipcMain.handle('get-default-prompt', (_event, type: PromptType) => {
+  ipcMain.handle('get-default-prompt', (_event, type: CustomizablePromptType) => {
     return getDefaultPrompt(type)
   })
 
@@ -1227,6 +1283,9 @@ app.whenReady().then(async () => {
     startPeriodicChecks()
   })
 
+  // Start periodic tool auth checks (for tools like bb with SSO auth)
+  startToolAuthChecks()
+
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
   startTimer('main:initializeDockerEnvironment', 'main')
@@ -1253,6 +1312,7 @@ app.on('window-all-closed', async () => {
   closeAllTerminals()
   closeAllSocketServers()
   stopPeriodicChecks()
+  stopToolAuthChecks()
   cleanupPowerSave()
   await cleanupPlanManager()
   await cleanupDevHarness()

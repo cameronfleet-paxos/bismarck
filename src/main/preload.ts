@@ -140,10 +140,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-headless-discussion', agentId),
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt),
   cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-headless-discussion', discussionId),
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  startRalphLoopDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-ralph-loop-discussion', agentId, initialPrompt),
+  cancelRalphLoopDiscussion: (discussionId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-ralph-loop-discussion', discussionId),
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
@@ -252,6 +258,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void): void => {
     ipcRenderer.on('ralph-loop-event', (_event, data) => callback(data))
   },
+  onRalphLoopDiscussionComplete: (callback: (data: {
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  }) => void): void => {
+    ipcRenderer.on('ralph-loop-discussion-complete', (_event, data) => callback(data))
+  },
+  onDiscussionCompleting: (callback: (data: {
+    discussionId: string
+    workspaceId: string
+    tabId: string
+    message: string
+  }) => void): void => {
+    ipcRenderer.on('discussion-completing', (_event, data) => callback(data))
+  },
 
   // Description generation progress events
   onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void): void => {
@@ -276,7 +299,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
   addRepository: (path: string): Promise<Repository | null> =>
     ipcRenderer.invoke('add-repository', path),
@@ -388,10 +411,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-tool-paths'),
   toggleProxiedTool: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  getToolAuthStatuses: () =>
+    ipcRenderer.invoke('get-tool-auth-statuses'),
+  checkToolAuth: () =>
+    ipcRenderer.invoke('check-tool-auth'),
+  runToolReauth: (toolId: string) =>
+    ipcRenderer.invoke('run-tool-reauth', toolId),
+  onToolAuthStatus: (callback: (statuses: Array<{ toolId: string; toolName: string; state: string; reauthHint?: string; message?: string }>) => void): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+    ipcRenderer.on('tool-auth-status', (_event, statuses) => callback(statuses))
+  },
+  removeToolAuthStatusListener: (): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+  },
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
     ipcRenderer.invoke('update-docker-socket-settings', settings),
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 
@@ -510,6 +548,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.removeAllListeners('tool-auth-status')
   },
 
   // Dev test harness (development mode only)

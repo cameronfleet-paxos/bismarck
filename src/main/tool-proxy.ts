@@ -27,6 +27,7 @@ export interface ToolProxyConfig {
     gh: { enabled: boolean }
     bd: { enabled: boolean }
     git: { enabled: boolean }
+    bb: { enabled: boolean }
   }
 }
 
@@ -36,6 +37,7 @@ const DEFAULT_CONFIG: ToolProxyConfig = {
     gh: { enabled: true },
     bd: { enabled: true },
     git: { enabled: true },
+    bb: { enabled: false },
   },
 }
 
@@ -193,10 +195,6 @@ async function handleGhRequest(
     const cwd = body.cwd
 
     logger.debug('proxy', `gh request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined, { subpath })
-
-    // DEBUG: Log git-related env vars and cwd
-    const gitEnvVars = Object.entries(process.env).filter(([k]) => k.startsWith('GIT_')).map(([k, v]) => `${k}=${v}`)
-    logger.info('proxy', `DEBUG gh env - cwd: ${cwd}, GIT vars: ${gitEnvVars.join(', ') || 'none'}`)
 
     // Log the operation
     proxyEvents.emit('gh', { subpath, args, cwd })
@@ -413,6 +411,66 @@ async function handleGitRequest(
 }
 
 /**
+ * Handle bb CLI proxy requests
+ */
+async function handleBbRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (!currentConfig.tools.bb.enabled) {
+    logger.warn('proxy', 'bb tool is disabled, rejecting request')
+    sendJson(res, 403, { success: false, error: 'bb tool is disabled' })
+    return
+  }
+
+  try {
+    const body = (await parseBody(req)) as ProxyRequest & { cwd?: string }
+
+    const args = body.args || []
+    const cwd = body.cwd
+
+    logger.debug('proxy', `bb request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined)
+
+    // Log the operation
+    proxyEvents.emit('bb', { args, cwd })
+
+    // Forward BUILDBUDDY_API_KEY so bb works outside git repos (e.g., worktrees)
+    // Forward GITHUB_TOKEN so bb remote can authenticate to private repos for Go modules
+    const env: Record<string, string> = {}
+    if (process.env.BUILDBUDDY_API_KEY) {
+      env.BUILDBUDDY_API_KEY = process.env.BUILDBUDDY_API_KEY
+    }
+    if (process.env.GITHUB_TOKEN) {
+      env.GITHUB_TOKEN = process.env.GITHUB_TOKEN
+    }
+
+    const result = await executeCommand('bb', args, body.stdin, {
+      cwd,
+      env: Object.keys(env).length > 0 ? env : undefined,
+    })
+
+    logger.proxyRequest('bb', args, result.exitCode === 0, undefined, {
+      exitCode: result.exitCode,
+      stderrPreview: result.stderr?.substring(0, 100),
+    })
+
+    sendJson(res, 200, {
+      success: result.exitCode === 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    })
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+    logger.error('proxy', `bb request failed: ${errorMsg}`)
+    sendJson(res, 400, {
+      success: false,
+      error: errorMsg,
+    })
+  }
+}
+
+/**
  * Handle health check requests
  */
 function handleHealthCheck(res: http.ServerResponse): void {
@@ -451,6 +509,8 @@ async function handleRequest(
     await handleBdRequest(req, res)
   } else if (url.startsWith('/git') && method === 'POST') {
     await handleGitRequest(req, res)
+  } else if (url.startsWith('/bb') && method === 'POST') {
+    await handleBbRequest(req, res)
   } else {
     sendJson(res, 404, { success: false, error: 'Not found' })
   }
@@ -472,6 +532,7 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     gh: { enabled: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true },
     bd: { enabled: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true },
     git: { enabled: proxiedTools.find(t => t.name === 'git')?.enabled ?? true },
+    bb: { enabled: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false },
   }
 
   // Find available port if not explicitly specified
@@ -502,6 +563,7 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
         ghEnabled: currentConfig.tools.gh.enabled,
         bdEnabled: currentConfig.tools.bd.enabled,
         gitEnabled: currentConfig.tools.git.enabled,
+        bbEnabled: currentConfig.tools.bb.enabled,
       })
       proxyEvents.emit('started', { port: currentConfig.port })
       resolve()

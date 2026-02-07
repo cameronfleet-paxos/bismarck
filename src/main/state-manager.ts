@@ -385,26 +385,26 @@ export function getOrCreateTabForWorkspaceWithPreference(
     }
   }
 
-  // If preferred tab specified and has space, use it
+  // Find the starting index for the search (prefer starting from the preferred tab)
+  let startIndex = 0
   if (preferredTabId) {
-    const preferredTab = currentState.tabs.find(t => t.id === preferredTabId)
-    if (preferredTab) {
-      const actualCount = preferredTab.workspaceIds.filter(Boolean).length
-      if (actualCount < getMaxAgentsPerTab()) {
-        return preferredTab
-      }
+    const preferredIndex = currentState.tabs.findIndex(t => t.id === preferredTabId)
+    if (preferredIndex >= 0) {
+      startIndex = preferredIndex
     }
   }
 
-  // Fall back to first tab with space
-  for (const tab of currentState.tabs) {
+  // Look for first tab with space starting from the preferred tab's position
+  // This ensures we don't backfill empty slots on earlier tabs
+  for (let i = startIndex; i < currentState.tabs.length; i++) {
+    const tab = currentState.tabs[i]
     const actualCount = tab.workspaceIds.filter(Boolean).length
     if (actualCount < getMaxAgentsPerTab()) {
       return tab
     }
   }
 
-  // All tabs full, create a new one
+  // All tabs from startIndex onwards are full, create a new one
   return createTab()
 }
 

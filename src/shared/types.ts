@@ -1,7 +1,10 @@
 import type { AgentIconName } from './constants'
 
-// Prompt type for custom prompt configuration
-export type PromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+// Customizable prompt types (available in settings)
+export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+
+// All prompt types (including internal/non-customizable prompts)
+export type PromptType = CustomizablePromptType | 'ralph_loop_discussion'
 
 // Persona mode for interactive Claude sessions (injected via hooks)
 export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
@@ -55,6 +58,7 @@ export interface Repository {
   purpose?: string        // Description of what repo is for
   completionCriteria?: string  // What "done" looks like
   protectedBranches?: string[]  // Branches that should not be modified
+  guidance?: string       // Custom guidance/quirks for headless agents
 }
 
 // Agent definition (stored in ~/.bismarck/config.json)
@@ -141,6 +145,7 @@ export interface AppPreferences {
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
   showDiffView?: boolean
+  showAgentTimer?: boolean
 }
 
 // ============================================

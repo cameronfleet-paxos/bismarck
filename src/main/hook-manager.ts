@@ -253,8 +253,9 @@ export function configureClaudeHook(): void {
   let settingsChanged = false
 
   // Configure Stop hook
+  // Check for EXACT path match to ensure dev/prod hooks don't conflict
   const stopHookExists = settings.hooks.Stop?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismarck'))
+    config.hooks.some((hook) => hook.command === hookScriptPath)
   )
 
   if (!stopHookExists) {
@@ -279,8 +280,9 @@ export function configureClaudeHook(): void {
   }
 
   // Configure Notification hook for permission prompts
+  // Check for EXACT path match to ensure dev/prod hooks don't conflict
   const notificationHookExists = settings.hooks.Notification?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismarck'))
+    config.hooks.some((hook) => hook.command === notificationHookScriptPath)
   )
 
   if (!notificationHookExists) {
@@ -303,8 +305,9 @@ export function configureClaudeHook(): void {
   }
 
   // Configure SessionStart hook to create session-to-workspace mapping
+  // Check for EXACT path match to ensure dev/prod hooks don't conflict
   const sessionStartHookExists = settings.hooks.SessionStart?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('bismarck'))
+    config.hooks.some((hook) => hook.command === sessionStartHookScriptPath)
   )
 
   if (!sessionStartHookExists) {
@@ -326,9 +329,9 @@ export function configureClaudeHook(): void {
   }
 
   // Configure UserPromptSubmit hook for Persona Mode (unified)
-  // Check for new persona-mode-hook (preferred) or old bismarck-mode-hook/otto-mode-hook
+  // Check for EXACT path match to ensure dev/prod hooks don't conflict
   const personaModeHookExists = settings.hooks.UserPromptSubmit?.some((config) =>
-    config.hooks.some((hook) => hook.command.includes('persona-mode-hook'))
+    config.hooks.some((hook) => hook.command === personaModeHookScriptPath)
   )
 
   if (!personaModeHookExists) {
@@ -373,6 +376,10 @@ export function configureClaudeHook(): void {
 
 export function isHookConfigured(): boolean {
   const settingsPath = getClaudeSettingsPath()
+  const hookScriptPath = getHookScriptPath()
+  const notificationHookScriptPath = getNotificationHookScriptPath()
+  const sessionStartHookScriptPath = getSessionStartHookScriptPath()
+  const personaModeHookScriptPath = getPersonaModeHookScriptPath()
 
   if (!fs.existsSync(settingsPath)) {
     return false
@@ -382,24 +389,25 @@ export function isHookConfigured(): boolean {
     const content = fs.readFileSync(settingsPath, 'utf-8')
     const settings = JSON.parse(content) as ClaudeSettings
 
+    // Check for EXACT path match to ensure dev/prod hooks don't conflict
     const stopHookExists =
       settings.hooks?.Stop?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismarck'))
+        config.hooks.some((hook) => hook.command === hookScriptPath)
       ) ?? false
 
     const notificationHookExists =
       settings.hooks?.Notification?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismarck'))
+        config.hooks.some((hook) => hook.command === notificationHookScriptPath)
       ) ?? false
 
     const sessionStartHookExists =
       settings.hooks?.SessionStart?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('bismarck'))
+        config.hooks.some((hook) => hook.command === sessionStartHookScriptPath)
       ) ?? false
 
     const personaModeHookExists =
       settings.hooks?.UserPromptSubmit?.some((config) =>
-        config.hooks.some((hook) => hook.command.includes('persona-mode-hook'))
+        config.hooks.some((hook) => hook.command === personaModeHookScriptPath)
       ) ?? false
 
     return stopHookExists && notificationHookExists && sessionStartHookExists && personaModeHookExists
