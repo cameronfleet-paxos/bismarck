@@ -167,9 +167,10 @@ export function getEnvWithPath(additionalEnv?: Record<string, string>): NodeJS.P
  * Detect paths for all standard tools using findBinary
  * This works in production Electron builds where 'which' doesn't find tools
  */
-export function detectToolPaths(): { bd: string | null; gh: string | null; git: string | null } {
+export function detectToolPaths(): { bd: string | null; bb: string | null; gh: string | null; git: string | null } {
   return {
     bd: findBinary('bd'),
+    bb: findBinary('bb'),
     gh: findBinary('gh'),
     git: findBinary('git'),
   }

@@ -141,7 +141,7 @@ export interface ElectronAPI {
   // Git repository management
   detectGitRepository: (directory: string) => Promise<Repository | null>
   getRepositories: () => Promise<Repository[]>
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>) => Promise<Repository | undefined>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>) => Promise<Repository | undefined>
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
 
@@ -188,6 +188,7 @@ export interface ElectronAPI {
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>
   clearGitHubToken: () => Promise<boolean>
+  checkGitHubTokenScopes: () => Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }>
 
   // Settings management
   getSettings: () => Promise<AppSettings>
@@ -205,6 +206,7 @@ export interface ElectronAPI {
   removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
@@ -234,7 +236,7 @@ export interface ElectronAPI {
   getUpdateSettings: () => Promise<{ autoCheck: boolean }>
   setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
   getAppVersion: () => Promise<string>
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void | (() => void)
   removeUpdateStatusListener: () => void
   signalRendererReady?: () => void
 
@@ -295,9 +297,9 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
 
   // Settings management (Tool Paths)
-  detectToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  getToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  updateToolPaths?: (paths: Partial<{ bd: string | null; gh: string | null; git: string | null }>) => Promise<void>
+  detectToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
+  getToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
+  updateToolPaths?: (paths: Partial<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>) => Promise<void>
 
   // Tray updates
   updateTray: (count: number) => void

@@ -73,20 +73,22 @@ export function TutorialTooltip({
         {/* Description */}
         <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
           {step.description.split('\n').map((line, i) => {
-            // Handle bullet points with bold text
-            const boldMatch = line.match(/^(•\s*)\*\*(.+?)\*\*(.*)$/)
-            if (boldMatch) {
-              return (
-                <p key={i} className={i > 0 ? 'mt-1' : ''}>
-                  {boldMatch[1]}<strong className="text-foreground">{boldMatch[2]}</strong>{boldMatch[3]}
-                </p>
-              )
-            }
             // Empty lines create spacing
             if (line.trim() === '') {
               return <div key={i} className="h-2" />
             }
-            return <p key={i} className={i > 0 ? 'mt-1' : ''}>{line}</p>
+            // Parse inline **bold** markdown anywhere in the line
+            const parts = line.split(/\*\*(.+?)\*\*/g)
+            return (
+              <p key={i} className={i > 0 ? 'mt-1' : ''}>
+                {parts.map((part, j) =>
+                  // Odd indices are the captured bold groups
+                  j % 2 === 1
+                    ? <strong key={j} className="text-foreground">{part}</strong>
+                    : <span key={j}>{part}</span>
+                )}
+              </p>
+            )
           })}
         </div>
 
