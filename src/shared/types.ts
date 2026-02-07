@@ -83,6 +83,7 @@ export interface Agent {
   taskId?: string               // Associated task ID
   isHeadless?: boolean          // Running in headless Docker mode (no interactive terminal)
   isStandaloneHeadless?: boolean // Standalone headless agent (not part of a plan)
+  isTerminal?: boolean           // Terminal-only agent (plain shell, no Claude)
   order?: number                 // Display order in sidebar (lower = higher in list)
 }
 

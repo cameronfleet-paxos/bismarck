@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, TerminalSquare } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ interface Command {
 }
 
 const commands: Command[] = [
+  { id: 'add-terminal', label: 'Add Terminal', icon: TerminalSquare },
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
@@ -47,6 +48,7 @@ interface CommandSearchProps {
   onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
   onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
+  onAddTerminal?: () => void
   onStartPlan?: () => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
   prefillRalphLoopConfig?: {
@@ -69,6 +71,7 @@ export function CommandSearch({
   onStartHeadless,
   onStartHeadlessDiscussion,
   onStartRalphLoopDiscussion,
+  onAddTerminal,
   onStartPlan,
   onStartRalphLoop,
   prefillRalphLoopConfig,
@@ -102,7 +105,8 @@ export function CommandSearch({
       !agent.isPlanAgent &&
       !agent.parentPlanId &&
       !agent.isHeadless &&
-      !agent.isStandaloneHeadless
+      !agent.isStandaloneHeadless &&
+      !agent.isTerminal
     )
   }, [agents])
 
@@ -326,7 +330,10 @@ export function CommandSearch({
       // Check if selecting a command or an agent
       if (idx < filteredCommands.length) {
         const command = filteredCommands[idx]
-        if (command.id === 'start-headless') {
+        if (command.id === 'add-terminal') {
+          onAddTerminal?.()
+          onOpenChange(false)
+        } else if (command.id === 'start-headless') {
           setPendingCommand('headless')
           setMode('agent-select')
           setQuery('')

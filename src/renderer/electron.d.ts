@@ -35,6 +35,7 @@ export interface ElectronAPI {
   ) => Promise<void>
   closeTerminal: (terminalId: string) => Promise<void>
   stopWorkspace: (workspaceId: string) => Promise<void>
+  createTerminalAgent: (name: string, directory: string) => Promise<{ agentId: string; terminalId: string }>
 
   // State management
   getState: () => Promise<AppState>
