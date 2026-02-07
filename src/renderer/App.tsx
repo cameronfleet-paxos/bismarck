@@ -2731,7 +2731,7 @@ function App() {
                               isFocused ? 'ring-2 ring-primary' : ''
                             } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                               !isExpanded && expandedAgentId ? 'invisible' : ''
-                            } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                            } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''}`}
                             onClick={() => {
                               if (!isExpanded) {
                                 handleFocusAgent(workspaceId)
@@ -2858,7 +2858,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -2975,7 +2975,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -3107,7 +3107,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
@@ -3253,7 +3253,7 @@ function App() {
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
                             !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
@@ -3432,7 +3432,7 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                         >
