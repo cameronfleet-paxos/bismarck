@@ -27,6 +27,9 @@ let mainWindow: BrowserWindow | null = null
 let periodicCheckInterval: NodeJS.Timeout | null = null
 let currentStatus: UpdateStatus = { state: 'idle' }
 
+// Dev-only: override the reported app version to test update flows
+let devVersionOverride: string | null = null
+
 // Check interval: 10 minutes
 const CHECK_INTERVAL_MS = 10 * 60 * 1000
 
@@ -58,7 +61,7 @@ function sendStatusToRenderer(status: UpdateStatus): void {
  * Get the current app version
  */
 export function getAppVersion(): string {
-  return app.getVersion()
+  return devVersionOverride ?? app.getVersion()
 }
 
 /**
@@ -300,6 +303,13 @@ function registerIpcHandlers(): void {
   })
 
   // Note: 'open-external' is registered in main.ts, don't duplicate here
+
+  // Dev-only: override reported version to test update flows
+  ipcMain.handle('dev-set-version-override', (_event, version: string | null) => {
+    devVersionOverride = version
+    devLog('[AutoUpdater] Version override set to:', version ?? '(cleared)')
+    return { version: version ?? app.getVersion() }
+  })
 }
 
 /**
