@@ -1000,6 +1000,16 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
     const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
     devLog(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
 
+    // Notify renderer that discussion is completing (show spinner)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('discussion-completing', {
+        discussionId,
+        workspaceId: discussionState.workspaceId,
+        tabId: discussionState.tabId,
+        message: 'Starting headless agent...',
+      })
+    }
+
     // Close the discussion terminal
     if (discussionState.terminalId) {
       const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
@@ -1013,12 +1023,9 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
     removeWorkspaceFromTab(discussionState.workspaceId)
     deleteWorkspace(discussionState.workspaceId)
 
-    // Build prompt from discussion output
-    const headlessPrompt = `Based on the following requirements discussion, implement the requested changes:
-
-${discussionOutput}
-
-Please implement the above requirements, following the approach and file modifications outlined.`
+    // Build prompt from discussion output - kept minimal since startStandaloneHeadlessAgent
+    // applies the full standalone_headless template with proxied tools, completion criteria, etc.
+    const headlessPrompt = `Implement the following requirements from a planning discussion:\n\n${discussionOutput}`
 
     // Start the headless agent with the discussion context
     devLog(`[HeadlessDiscussion] Starting headless agent with discussion context`)
@@ -1239,6 +1246,16 @@ async function completeRalphLoopDiscussion(discussionId: string): Promise<void> 
     // Read the discussion output
     const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
     console.log(`[RalphLoopDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+
+    // Notify renderer that discussion is completing (show spinner)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('discussion-completing', {
+        discussionId,
+        workspaceId: discussionState.workspaceId,
+        tabId: discussionState.tabId,
+        message: 'Preparing Ralph Loop config...',
+      })
+    }
 
     // Parse the discussion output to extract Ralph Loop config
     const config = parseRalphLoopDiscussionOutput(discussionOutput)

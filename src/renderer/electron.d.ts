@@ -269,6 +269,10 @@ export interface ElectronAPI {
   // Ralph Loop events
   onRalphLoopUpdate: (callback: (state: RalphLoopState) => void) => void
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void) => void
+  onRalphLoopDiscussionComplete: (callback: (data: { referenceAgentId: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }) => void) => void
+
+  // Discussion handoff events
+  onDiscussionCompleting: (callback: (data: { discussionId: string; workspaceId: string; tabId: string; message: string }) => void) => void
 
   // Description generation progress events
   onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void) => void

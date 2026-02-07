@@ -267,6 +267,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => void): void => {
     ipcRenderer.on('ralph-loop-discussion-complete', (_event, data) => callback(data))
   },
+  onDiscussionCompleting: (callback: (data: {
+    discussionId: string
+    workspaceId: string
+    tabId: string
+    message: string
+  }) => void): void => {
+    ipcRenderer.on('discussion-completing', (_event, data) => callback(data))
+  },
 
   // Description generation progress events
   onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void): void => {

@@ -274,12 +274,9 @@ export function CommandSearch({
     if (mode === 'prompt-input') {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        if (selectedAgent && prompt.trim() && onStartHeadless) {
-          // Cmd+Shift+Enter -> Opus, Cmd+Enter -> Sonnet
-          const model = e.shiftKey ? 'opus' : 'sonnet'
-          onStartHeadless(selectedAgent.id, prompt.trim(), model)
-          onOpenChange(false)
-        }
+        // Cmd+Shift+Enter -> Opus, Cmd+Enter -> Sonnet
+        const model = e.shiftKey ? 'opus' : 'sonnet'
+        handleSubmitPrompt(model)
       }
       return
     }
