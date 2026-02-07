@@ -337,14 +337,14 @@ export function AuthenticationSettings() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Generate a token at{' '}
+              Generate a classic token at{' '}
               <button
                 onClick={() => window.electronAPI.openExternal('https://github.com/settings/tokens')}
                 className="text-blue-500 hover:underline cursor-pointer"
               >
                 github.com/settings/tokens
               </button>
-              {' '}with <code className="bg-muted px-1 rounded">repo</code> scope.
+              {' '}with <code className="bg-muted px-1 rounded">repo</code> and <code className="bg-muted px-1 rounded">read:packages</code> scopes.
             </p>
           </div>
 
@@ -352,9 +352,21 @@ export function AuthenticationSettings() {
           <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
             <div className="flex gap-2">
               <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-600 dark:text-blue-400">
-                <strong>When to use:</strong> If you're getting SAML SSO errors when creating PRs for organization repositories, you need to configure a token here. The token is passed to <code className="bg-muted px-1 rounded">gh</code> commands via the <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> environment variable.
-              </p>
+              <div className="text-xs text-blue-600 dark:text-blue-400 space-y-1.5">
+                <p>
+                  <strong>When to use:</strong> If you're getting SAML SSO errors when creating PRs for organization repositories, you need to configure a token here. The token is passed to <code className="bg-muted px-1 rounded">gh</code> commands via the <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> environment variable.
+                </p>
+                <p>
+                  <strong>SSO organizations:</strong> If you need access to private packages in a GitHub organization, you must also{' '}
+                  <button
+                    onClick={() => window.electronAPI.openExternal('https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on')}
+                    className="text-blue-500 hover:underline cursor-pointer"
+                  >
+                    authorize the token for SSO
+                  </button>
+                  {' '}in your organization's settings.
+                </p>
+              </div>
             </div>
           </div>
         </div>
