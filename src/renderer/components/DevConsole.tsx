@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus } from 'lucide-react'
+import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus, Download } from 'lucide-react'
 import { Button } from './ui/button'
 import type { HeadlessAgentInfo, StreamEvent } from '@/shared/types'
 
@@ -229,6 +229,39 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
               </p>
             </div>
           )}
+
+          {/* Simulate Update */}
+          <div>
+            <h3 className="text-sm font-medium mb-2">Update Simulation</h3>
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={async () => {
+                  await window.electronAPI?.devSetVersionOverride?.('0.1.0')
+                  await window.electronAPI?.checkForUpdates?.()
+                  log('Simulated outdated version (0.1.0), triggered update check', 'success')
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Simulate Outdated Version
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={async () => {
+                  await window.electronAPI?.devSetVersionOverride?.(null)
+                  log('Version override cleared', 'info')
+                }}
+              >
+                Clear Version Override
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Sets app version to 0.1.0 and triggers update check
+            </p>
+          </div>
 
           {/* Mock Plan Status */}
           {mockPlan && (

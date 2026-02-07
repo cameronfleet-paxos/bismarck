@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitBranch, GitCommitHorizontal, GitPullRequest, GitCompareArrows } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -336,7 +336,10 @@ function App() {
   const [terminalQueueStatus, setTerminalQueueStatus] = useState<{ queued: number; active: number }>({ queued: 0, active: 0 })
 
   // Update available state for header notification
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string } | null>(null)
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean } | null>(null)
+  // Popup for significantly outdated versions (only shows once per session)
+  const [showUpdatePopup, setShowUpdatePopup] = useState(false)
+  const updatePopupShownRef = useRef(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
 
   // Central registry of terminal writers - Map of terminalId -> write function
@@ -375,6 +378,13 @@ function App() {
     }
   }
 
+  const loadRalphLoops = async () => {
+    const loops = await window.electronAPI?.getAllRalphLoops?.()
+    if (loops?.length) {
+      setRalphLoops(new Map(loops.map(loop => [loop.id, loop])))
+    }
+  }
+
   // Load agents and state on mount
   useEffect(() => {
     const mountStartTime = performance.now()
@@ -397,6 +407,10 @@ function App() {
       const headlessStart = performance.now()
       await loadStandaloneHeadlessAgents()
       sendTiming('renderer:loadStandaloneHeadless', headlessStart - benchmarkStartTime, performance.now() - headlessStart)
+
+      const ralphStart = performance.now()
+      await loadRalphLoops()
+      sendTiming('renderer:loadRalphLoops', ralphStart - benchmarkStartTime, performance.now() - ralphStart)
 
       sendTiming('renderer:App-mount-total', mountStartTime - benchmarkStartTime, performance.now() - mountStartTime)
       sendMilestone('renderer-data-loaded')
@@ -464,8 +478,13 @@ function App() {
         devLog('[App] Polled update status:', status?.state)
 
         if (status?.state === 'available') {
-          devLog('[App] Update available:', status.version)
-          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+          devLog('[App] Update available:', status.version, status.significantlyOutdated ? '(significantly outdated)' : '')
+          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+          // Show popup for significantly outdated versions (once per session)
+          if (status.significantlyOutdated && !updatePopupShownRef.current) {
+            updatePopupShownRef.current = true
+            setShowUpdatePopup(true)
+          }
           // Stop polling once we have a result
           if (pollInterval) {
             clearInterval(pollInterval)
@@ -502,7 +521,12 @@ function App() {
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
       devLog('[App] Received update status push:', status.state)
       if (status.state === 'available') {
-        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+        // Show popup for significantly outdated versions (once per session)
+        if (status.significantlyOutdated && !updatePopupShownRef.current) {
+          updatePopupShownRef.current = true
+          setShowUpdatePopup(true)
+        }
       } else {
         setUpdateAvailable(null)
       }
@@ -2165,15 +2189,14 @@ function App() {
                 }}
                 title="Click to view update details"
               >
-                Update available
-              </span>
-              <span className="text-muted-foreground/50">·</span>
-              <span
-                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors underline"
-                onClick={() => window.electronAPI.openExternal(updateAvailable.releaseUrl)}
-                title="View release notes on GitHub"
-              >
-                v{updateAvailable.version}
+                Update: v{updateAvailable.currentVersion} → <span
+                  className="underline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.electronAPI.openExternal(updateAvailable.releaseUrl)
+                  }}
+                  title="View release notes on GitHub"
+                >v{updateAvailable.version}</span>
               </span>
             </div>
           )}
@@ -2914,41 +2937,6 @@ function App() {
                                       <span>{loopState.gitSummary.commits.length}</span>
                                     </span>
                                   )}
-                                  {loopState.gitSummary.pullRequests.length > 0 && (() => {
-                                    const prs = loopState.gitSummary!.pullRequests
-                                    const latestPr = prs[prs.length - 1]
-                                    return (
-                                      <span className="flex items-center gap-1 cursor-pointer relative group">
-                                        <GitPullRequest className="h-3 w-3" />
-                                        <a
-                                          href={latestPr.url}
-                                          onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(latestPr.url) }}
-                                          className="text-blue-400 hover:underline cursor-pointer"
-                                          title={latestPr.title}
-                                        >
-                                          #{latestPr.number}
-                                        </a>
-                                        {prs.length > 1 && (
-                                          <>
-                                            <span className="text-muted-foreground cursor-pointer">...</span>
-                                            <div className="hidden group-hover:block absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg p-2 z-50 min-w-[140px]">
-                                              {prs.map((pr) => (
-                                                <a
-                                                  key={pr.number}
-                                                  href={pr.url}
-                                                  onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(pr.url) }}
-                                                  className="block text-blue-400 hover:underline cursor-pointer py-0.5"
-                                                  title={pr.title}
-                                                >
-                                                  #{pr.number} - {pr.title.length > 30 ? pr.title.slice(0, 30) + '...' : pr.title}
-                                                </a>
-                                              ))}
-                                            </div>
-                                          </>
-                                        )}
-                                      </span>
-                                    )
-                                  })()}
                                 </div>
                               )}
                             </div>
@@ -3579,6 +3567,36 @@ function App() {
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
       />
+
+      {/* Update Available Popup (for significantly outdated versions) */}
+      <Dialog open={showUpdatePopup} onOpenChange={setShowUpdatePopup}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Update Recommended</DialogTitle>
+            <DialogDescription>
+              You're running v{updateAvailable?.currentVersion}, but v{updateAvailable?.version} is available.
+              We recommend updating to get the latest features and bug fixes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdatePopup(false)}
+            >
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUpdatePopup(false)
+                setSettingsInitialSection('updates')
+                setCurrentView('settings')
+              }}
+            >
+              View Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
     </TutorialProvider>

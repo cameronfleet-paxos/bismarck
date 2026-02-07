@@ -19,13 +19,16 @@ const GITHUB_REPO = 'bismarck'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
 let mainWindow: BrowserWindow | null = null
 let periodicCheckInterval: NodeJS.Timeout | null = null
 let currentStatus: UpdateStatus = { state: 'idle' }
+
+// Dev-only: override the reported app version to test update flows
+let devVersionOverride: string | null = null
 
 // Check interval: 10 minutes
 const CHECK_INTERVAL_MS = 10 * 60 * 1000
@@ -58,7 +61,7 @@ function sendStatusToRenderer(status: UpdateStatus): void {
  * Get the current app version
  */
 export function getAppVersion(): string {
-  return app.getVersion()
+  return devVersionOverride ?? app.getVersion()
 }
 
 /**
@@ -87,6 +90,24 @@ function compareVersions(v1: string, v2: string): number {
     if (p1 < p2) return -1
   }
   return 0
+}
+
+/**
+ * Check if the version is significantly outdated (more than 1 minor or major version behind)
+ * Returns true if the user should be prompted to update
+ */
+function isSignificantlyOutdated(currentVersion: string, latestVersion: string): boolean {
+  const clean1 = currentVersion.replace(/^v/, '')
+  const clean2 = latestVersion.replace(/^v/, '')
+
+  const parts1 = clean1.split('.').map(Number)
+  const parts2 = clean2.split('.').map(Number)
+
+  const majorDiff = (parts2[0] || 0) - (parts1[0] || 0)
+  const minorDiff = (parts2[1] || 0) - (parts1[1] || 0)
+
+  // Significantly outdated if: major version behind OR more than 1 minor version behind
+  return majorDiff > 0 || minorDiff > 1
 }
 
 /**
@@ -182,11 +203,14 @@ async function checkForUpdates(): Promise<UpdateStatus> {
     devLog(`[AutoUpdater] Current: v${currentVersion}, Latest: v${latestVersion}`)
 
     if (compareVersions(latestVersion, currentVersion) > 0) {
-      devLog('[AutoUpdater] Update available:', latestVersion)
+      const significantlyOutdated = isSignificantlyOutdated(currentVersion, latestVersion)
+      devLog('[AutoUpdater] Update available:', latestVersion, significantlyOutdated ? '(significantly outdated)' : '')
       const status: UpdateStatus = {
         state: 'available',
         version: latestVersion,
-        releaseUrl: latestRelease.releaseUrl
+        releaseUrl: latestRelease.releaseUrl,
+        currentVersion,
+        significantlyOutdated
       }
       sendStatusToRenderer(status)
       return status
@@ -279,6 +303,13 @@ function registerIpcHandlers(): void {
   })
 
   // Note: 'open-external' is registered in main.ts, don't duplicate here
+
+  // Dev-only: override reported version to test update flows
+  ipcMain.handle('dev-set-version-override', (_event, version: string | null) => {
+    devVersionOverride = version
+    devLog('[AutoUpdater] Version override set to:', version ?? '(cleared)')
+    return { version: version ?? app.getVersion() }
+  })
 }
 
 /**
