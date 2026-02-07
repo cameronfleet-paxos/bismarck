@@ -20,6 +20,7 @@ import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
 import { loadSettings } from './settings-manager'
+import { devLog } from './dev-log'
 
 export interface ContainerConfig {
   image: string // Docker image name (e.g., "bismarck-agent:latest")
@@ -146,7 +147,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
-  console.log('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')
+  devLog('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')
   if (oauthToken) {
     // Validate token length - valid tokens are ~108 chars, truncated tokens are shorter
     if (oauthToken.length < 100) {
