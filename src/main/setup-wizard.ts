@@ -224,24 +224,46 @@ export async function bulkCreateAgents(repos: DiscoveredRepoWithDetails[]): Prom
     const repository = await detectRepository(repo.path)
 
     // Update the repository with purpose, completionCriteria, and protectedBranches
+    // BUT only update fields that are empty in the existing repository
+    // This preserves existing values and only fills in missing ones
     if (repository) {
-      await updateRepository(repository.id, {
-        purpose: repo.purpose || undefined,
-        completionCriteria: repo.completionCriteria || undefined,
-        protectedBranches: repo.protectedBranches || undefined,
-      })
+      const updates: Partial<Pick<typeof repository, 'purpose' | 'completionCriteria' | 'protectedBranches'>> = {}
+
+      // Only update purpose if the repo doesn't have one and we have a new value
+      if (!repository.purpose && repo.purpose) {
+        updates.purpose = repo.purpose
+      }
+
+      // Only update completionCriteria if the repo doesn't have one and we have a new value
+      if (!repository.completionCriteria && repo.completionCriteria) {
+        updates.completionCriteria = repo.completionCriteria
+      }
+
+      // Only update protectedBranches if the repo doesn't have any and we have new values
+      if ((!repository.protectedBranches || repository.protectedBranches.length === 0) && repo.protectedBranches && repo.protectedBranches.length > 0) {
+        updates.protectedBranches = repo.protectedBranches
+      }
+
+      // Only call updateRepository if we have updates to make
+      if (Object.keys(updates).length > 0) {
+        await updateRepository(repository.id, updates)
+      }
     }
 
     // Generate random theme and icon
     const theme = themes[Math.floor(Math.random() * themes.length)]
     const icon = icons[Math.floor(Math.random() * icons.length)]
 
+    // Determine the purpose to use for the agent:
+    // Prefer existing repository values, fall back to provided values
+    const agentPurpose = repository?.purpose || repo.purpose || ''
+
     // Create new agent
     const newAgent: Agent = {
       id: randomUUID(),
       name: repo.name,
       directory: repo.path,
-      purpose: repo.purpose || '', // Use provided purpose or empty string
+      purpose: agentPurpose,
       theme,
       icon,
       repositoryId: repository?.id, // Link to repository if detected

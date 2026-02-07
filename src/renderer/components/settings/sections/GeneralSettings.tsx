@@ -46,6 +46,9 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
   // Diff view state
   const [showDiffView, setShowDiffView] = useState(true)
 
+  // Agent timer state
+  const [showAgentTimer, setShowAgentTimer] = useState(true)
+
   // Grid size reduction confirmation state
   const [gridSizeConfirm, setGridSizeConfirm] = useState<{
     pendingSize: GridSize
@@ -62,6 +65,7 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
         setGridSize(prefs.gridSize || '2x2')
         setTutorialCompleted(prefs.tutorialCompleted || false)
         setShowDiffView(prefs.showDiffView !== false)
+        setShowAgentTimer(prefs.showAgentTimer !== false)
       } catch (error) {
         console.error('Failed to load preferences:', error)
       }
@@ -185,6 +189,18 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update diff view setting:', error)
+    }
+  }
+
+  const handleShowAgentTimerChange = async (enabled: boolean) => {
+    setShowAgentTimer(enabled)
+    try {
+      await window.electronAPI.setPreferences({ showAgentTimer: enabled })
+      onPreferencesChange({})
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update agent timer setting:', error)
     }
   }
 
@@ -323,6 +339,20 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
           <Switch
             checked={showDiffView}
             onCheckedChange={handleShowDiffViewChange}
+          />
+        </div>
+
+        {/* Agent Timer Toggle */}
+        <div className="flex items-center justify-between py-2 border-t pt-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Agent Timer</Label>
+            <p className="text-sm text-muted-foreground">
+              Show elapsed time on headless agent and loop iteration headers
+            </p>
+          </div>
+          <Switch
+            checked={showAgentTimer}
+            onCheckedChange={handleShowAgentTimerChange}
           />
         </div>
 
