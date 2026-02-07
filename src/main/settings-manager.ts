@@ -802,12 +802,30 @@ export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> 
       .map(s => s.trim())
       .filter(s => s.length > 0)
 
+    // GitHub scope hierarchy: broader scopes imply narrower ones
+    const scopeImplies: Record<string, string[]> = {
+      'repo': ['repo:status', 'repo_deployment', 'public_repo', 'repo:invite', 'security_events'],
+      'write:packages': ['read:packages'],
+      'admin:org': ['write:org', 'read:org'],
+      'admin:repo_hook': ['write:repo_hook', 'read:repo_hook'],
+      'admin:org_hook': [],
+      'admin:public_key': ['write:public_key', 'read:public_key'],
+      'admin:gpg_key': ['write:gpg_key', 'read:gpg_key'],
+    }
+
+    // Check if a scope is satisfied by the token's scopes (including implied scopes)
+    const hasScope = (required: string): boolean => {
+      if (scopes.includes(required)) return true
+      // Check if any granted scope implies the required one
+      for (const granted of scopes) {
+        const implied = scopeImplies[granted]
+        if (implied && implied.includes(required)) return true
+      }
+      return false
+    }
+
     const allRequired = [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES]
-    const missingScopes = allRequired.filter(required => {
-      // 'repo' scope implies all repo sub-scopes
-      // 'read:packages' is specific
-      return !scopes.includes(required)
-    })
+    const missingScopes = allRequired.filter(required => !hasScope(required))
 
     // Try to detect SSO authorization by checking if we can list orgs
     // A 403 with SSO message indicates token lacks SSO authorization
