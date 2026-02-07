@@ -141,6 +141,7 @@ import {
   setCustomPrompt,
   hasGitHubToken,
   setGitHubToken,
+  checkGitHubTokenScopes,
   updatePlayboxSettings,
   loadSettings,
   getRalphLoopPresets,
@@ -1010,6 +1011,10 @@ function registerIpcHandlers() {
   ipcMain.handle('clear-github-token', async () => {
     await setGitHubToken(null)
     return true
+  })
+
+  ipcMain.handle('check-github-token-scopes', async () => {
+    return checkGitHubTokenScopes()
   })
 
   // Settings management

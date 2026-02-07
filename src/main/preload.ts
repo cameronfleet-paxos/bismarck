@@ -394,6 +394,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-github-token', token),
   clearGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('clear-github-token'),
+  checkGitHubTokenScopes: (): Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }> =>
+    ipcRenderer.invoke('check-github-token-scopes'),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
