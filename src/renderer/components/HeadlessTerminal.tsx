@@ -12,7 +12,7 @@
  * - Auto-scroll to latest output
  */
 
-import { useEffect, useRef, useState, useMemo, ReactNode } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback, ReactNode, forwardRef, useImperativeHandle } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type {
   ThemeName,
@@ -23,7 +23,8 @@ import type {
   HeadlessAgentStatus,
 } from '@/shared/types'
 import { themes } from '@/shared/constants'
-import { extractPRUrl } from '@/shared/pr-utils'
+import { extractPRUrls } from '@/shared/pr-utils'
+import { TerminalSearch, SearchOptions, SearchResult } from './TerminalSearch'
 
 // URL regex pattern
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
@@ -110,12 +111,19 @@ interface HeadlessTerminalProps {
   model?: 'opus' | 'sonnet' | 'haiku'  // Model name to display in header
   isVisible?: boolean
   isStandalone?: boolean           // True for standalone headless agents
+  searchOpen?: boolean             // External control for search bar visibility
+  onSearchClose?: () => void       // Called when search is closed
   onConfirmDone?: () => void       // Called when user clicks "Confirm Done"
   onStartFollowUp?: () => void     // Called when user clicks "Start Follow-up"
   onRestart?: () => void           // Called when user clicks "Restart" (for interrupted agents)
   isConfirmingDone?: boolean       // Loading state for "Confirm Done" button
   isStartingFollowUp?: boolean     // Loading state for "Start Follow-up" button
   isRestarting?: boolean           // Loading state for "Restart" button
+}
+
+export interface HeadlessTerminalRef {
+  openSearch: () => void
+  closeSearch: () => void
 }
 
 interface CollapsedState {
@@ -260,23 +268,189 @@ function getOutputPreview(
   }
 }
 
-export function HeadlessTerminal({
+export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminalProps>(function HeadlessTerminal({
   events,
   theme,
   status,
   model,
   isVisible = true,
   isStandalone = false,
+  searchOpen: externalSearchOpen,
+  onSearchClose,
   onConfirmDone,
   onStartFollowUp,
   onRestart,
   isConfirmingDone = false,
   isStartingFollowUp = false,
   isRestarting = false,
-}: HeadlessTerminalProps) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<CollapsedState>({})
+  const [internalSearchOpen, setInternalSearchOpen] = useState(false)
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
+  const [searchMatches, setSearchMatches] = useState<Range[]>([])
+  const [prDropdownOpen, setPrDropdownOpen] = useState(false)
+  const prDropdownRef = useRef<HTMLSpanElement>(null)
+  const lastQueryRef = useRef<string>('')
   const themeColors = themes[theme]
+
+  // Use external state if provided, otherwise use internal state
+  const searchOpen = externalSearchOpen !== undefined ? externalSearchOpen : internalSearchOpen
+
+  // Expose search control methods via ref
+  useImperativeHandle(ref, () => ({
+    openSearch: () => {
+      if (externalSearchOpen === undefined) {
+        setInternalSearchOpen(true)
+      }
+    },
+    closeSearch: () => {
+      if (externalSearchOpen === undefined) {
+        setInternalSearchOpen(false)
+      }
+      clearHighlights()
+    },
+  }), [externalSearchOpen])
+
+  // Clear highlights when search is closed
+  const clearHighlights = useCallback(() => {
+    setSearchMatches([])
+    setCurrentMatchIndex(0)
+    lastQueryRef.current = ''
+    // Clear any CSS highlights
+    if (containerRef.current) {
+      CSS.highlights?.delete('search-highlight')
+      CSS.highlights?.delete('search-current')
+    }
+  }, [])
+
+  const handleSearchClose = useCallback(() => {
+    if (onSearchClose) {
+      onSearchClose()
+    } else {
+      setInternalSearchOpen(false)
+    }
+    clearHighlights()
+  }, [onSearchClose, clearHighlights])
+
+  // DOM-based search using CSS Highlights API or fallback
+  const performSearch = useCallback((query: string, options: SearchOptions): SearchResult => {
+    if (!containerRef.current || !query) {
+      clearHighlights()
+      return { found: false, totalMatches: 0, currentMatch: 0 }
+    }
+
+    lastQueryRef.current = query
+
+    // Get all text nodes in the container
+    const walker = document.createTreeWalker(
+      containerRef.current,
+      NodeFilter.SHOW_TEXT,
+      null
+    )
+
+    const matches: Range[] = []
+    const searchQuery = options.caseSensitive ? query : query.toLowerCase()
+
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      const text = options.caseSensitive ? node.textContent : node.textContent?.toLowerCase()
+      if (!text) continue
+
+      let startIndex = 0
+      let foundIndex: number
+
+      while ((foundIndex = text.indexOf(searchQuery, startIndex)) !== -1) {
+        const range = document.createRange()
+        range.setStart(node, foundIndex)
+        range.setEnd(node, foundIndex + query.length)
+        matches.push(range)
+        startIndex = foundIndex + 1
+      }
+    }
+
+    setSearchMatches(matches)
+
+    // Use CSS Highlights API if available
+    if (CSS.highlights && matches.length > 0) {
+      const highlight = new Highlight(...matches)
+      CSS.highlights.set('search-highlight', highlight)
+
+      // Highlight current match differently
+      if (matches[0]) {
+        const currentHighlight = new Highlight(matches[0])
+        CSS.highlights.set('search-current', currentHighlight)
+        matches[0].startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      setCurrentMatchIndex(1)
+    } else if (matches.length > 0) {
+      // Fallback: scroll to first match
+      matches[0].startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setCurrentMatchIndex(1)
+    } else {
+      setCurrentMatchIndex(0)
+    }
+
+    return {
+      found: matches.length > 0,
+      totalMatches: matches.length,
+      currentMatch: matches.length > 0 ? 1 : 0,
+    }
+  }, [clearHighlights])
+
+  const findNext = useCallback((): SearchResult => {
+    if (searchMatches.length === 0) {
+      return { found: false, totalMatches: 0, currentMatch: 0 }
+    }
+
+    const nextIndex = currentMatchIndex >= searchMatches.length ? 1 : currentMatchIndex + 1
+    setCurrentMatchIndex(nextIndex)
+
+    // Update current highlight
+    if (CSS.highlights) {
+      const currentHighlight = new Highlight(searchMatches[nextIndex - 1])
+      CSS.highlights.set('search-current', currentHighlight)
+    }
+
+    // Scroll to match
+    searchMatches[nextIndex - 1]?.startContainer.parentElement?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+
+    return {
+      found: true,
+      totalMatches: searchMatches.length,
+      currentMatch: nextIndex,
+    }
+  }, [searchMatches, currentMatchIndex])
+
+  const findPrevious = useCallback((): SearchResult => {
+    if (searchMatches.length === 0) {
+      return { found: false, totalMatches: 0, currentMatch: 0 }
+    }
+
+    const prevIndex = currentMatchIndex <= 1 ? searchMatches.length : currentMatchIndex - 1
+    setCurrentMatchIndex(prevIndex)
+
+    // Update current highlight
+    if (CSS.highlights) {
+      const currentHighlight = new Highlight(searchMatches[prevIndex - 1])
+      CSS.highlights.set('search-current', currentHighlight)
+    }
+
+    // Scroll to match
+    searchMatches[prevIndex - 1]?.startContainer.parentElement?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+
+    return {
+      found: true,
+      totalMatches: searchMatches.length,
+      currentMatch: prevIndex,
+    }
+  }, [searchMatches, currentMatchIndex])
 
   // Auto-scroll to bottom when new events arrive
   useEffect(() => {
@@ -285,8 +459,21 @@ export function HeadlessTerminal({
     }
   }, [events, isVisible])
 
-  // Extract PR URL from events
-  const prUrl = extractPRUrl(events)
+  // Close PR dropdown on outside click
+  useEffect(() => {
+    if (!prDropdownOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (prDropdownRef.current && !prDropdownRef.current.contains(e.target as Node)) {
+        setPrDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [prDropdownOpen])
+
+  // Extract PR URLs from events
+  const prUrls = extractPRUrls(events)
+  const prUrl = prUrls.length > 0 ? prUrls[prUrls.length - 1] : null
 
   // Toggle collapse state for a tool
   const toggleCollapse = (toolId: string) => {
@@ -758,12 +945,47 @@ export function HeadlessTerminal({
             </div>
             <div className="flex items-center gap-2">
               {prUrl && (
-                <button
-                  onClick={handleOpenPR}
-                  className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
-                >
-                  View PR
-                </button>
+                <span className="relative" ref={prDropdownRef}>
+                  <span className="flex items-center gap-0.5">
+                    <button
+                      onClick={handleOpenPR}
+                      className="px-3 py-1 text-xs font-medium rounded-l bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
+                      style={prUrls.length <= 1 ? { borderRadius: '0.25rem' } : undefined}
+                    >
+                      View PR
+                    </button>
+                    {prUrls.length > 1 && (
+                      <button
+                        onClick={() => setPrDropdownOpen(!prDropdownOpen)}
+                        className="px-1.5 py-1 text-xs font-medium rounded-r bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer border-l border-green-500/50"
+                      >
+                        <span className={`inline-block transition-transform ${prDropdownOpen ? 'rotate-180' : ''}`}>▾</span>
+                      </button>
+                    )}
+                  </span>
+                  {prUrls.length > 1 && prDropdownOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-popover border rounded-md shadow-lg py-1 z-50 min-w-[160px]">
+                      {prUrls.slice().reverse().map((url, i) => {
+                        const prNumber = url.match(/\/pull\/(\d+)$/)?.[1] || '?'
+                        const repoMatch = url.match(/github\.com\/([^/]+\/[^/]+)\//)
+                        const repo = repoMatch?.[1] || ''
+                        const isLatest = i === 0
+                        return (
+                          <a
+                            key={url}
+                            href={url}
+                            onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(url); setPrDropdownOpen(false) }}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-white/10 cursor-pointer transition-colors"
+                          >
+                            <span className="text-foreground font-medium">#{prNumber}</span>
+                            {repo && <span className="text-muted-foreground truncate">{repo}</span>}
+                            {isLatest && <span className="ml-auto text-[10px] px-1 py-0.5 rounded bg-green-500/20 text-green-400">latest</span>}
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+                </span>
               )}
               {isStandalone && onStartFollowUp && (
                 <button
@@ -882,7 +1104,7 @@ export function HeadlessTerminal({
   return (
     <div
       data-tutorial="headless"
-      className="w-full h-full flex flex-col overflow-hidden"
+      className="w-full h-full flex flex-col overflow-hidden relative"
       style={{ backgroundColor: themeColors.bg, color: themeColors.fg }}
     >
       {/* Status bar */}
@@ -934,6 +1156,15 @@ export function HeadlessTerminal({
           </div>
         )}
       </div>
+
+      {/* Search overlay */}
+      <TerminalSearch
+        isOpen={searchOpen}
+        onClose={handleSearchClose}
+        onSearch={performSearch}
+        onFindNext={findNext}
+        onFindPrevious={findPrevious}
+      />
     </div>
   )
-}
+})

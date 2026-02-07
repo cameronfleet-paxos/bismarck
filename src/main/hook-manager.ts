@@ -3,6 +3,7 @@ import * as path from 'path'
 import { app } from 'electron'
 import { getConfigDir } from './config'
 import { PERSONA_PROMPTS } from './persona-prompts'
+import { devLog } from './dev-log'
 
 const HOOK_SCRIPT_NAME = 'stop-hook.sh'
 const NOTIFICATION_HOOK_SCRIPT_NAME = 'notification-hook.sh'
@@ -274,7 +275,7 @@ export function configureClaudeHook(): void {
       ]
     }
     settingsChanged = true
-    console.log('Configured Claude Code Stop hook for Bismarck')
+    devLog('Configured Claude Code Stop hook for Bismarck')
   }
 
   // Configure Notification hook for permission prompts
@@ -298,7 +299,7 @@ export function configureClaudeHook(): void {
     }
     settings.hooks.Notification.push(newNotificationHook)
     settingsChanged = true
-    console.log('Configured Claude Code Notification hook for Bismarck')
+    devLog('Configured Claude Code Notification hook for Bismarck')
   }
 
   // Configure SessionStart hook to create session-to-workspace mapping
@@ -321,7 +322,7 @@ export function configureClaudeHook(): void {
     }
     settings.hooks.SessionStart.push(newSessionStartHook)
     settingsChanged = true
-    console.log('Configured Claude Code SessionStart hook for Bismarck')
+    devLog('Configured Claude Code SessionStart hook for Bismarck')
   }
 
   // Configure UserPromptSubmit hook for Persona Mode (unified)
@@ -355,7 +356,7 @@ export function configureClaudeHook(): void {
     }
     settings.hooks.UserPromptSubmit.push(newPersonaModeHook)
     settingsChanged = true
-    console.log('Configured Claude Code UserPromptSubmit hook for Persona Mode')
+    devLog('Configured Claude Code UserPromptSubmit hook for Persona Mode')
   }
 
   if (settingsChanged) {

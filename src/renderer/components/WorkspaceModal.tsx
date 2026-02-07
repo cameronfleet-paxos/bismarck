@@ -106,6 +106,7 @@ export function AgentModal({
       id: agent?.id || crypto.randomUUID(),
       name: name.trim(),
       directory: directory.trim(),
+      purpose: detectedRepo?.name || name.trim(),
       theme,
       icon,
       repositoryId: detectedRepo?.id,

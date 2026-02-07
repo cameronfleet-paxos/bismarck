@@ -30,6 +30,14 @@ function getDefaultKeyboardShortcuts(): KeyboardShortcuts {
     commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
     dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
     devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+    toggleAgentSidebar: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+    togglePlansSidebar: { key: 'p', modifiers: { meta: true, shift: true, alt: false } },
+    nextTab: { key: ']', modifiers: { meta: true, shift: true, alt: false } },
+    previousTab: { key: '[', modifiers: { meta: true, shift: true, alt: false } },
+    newTab: { key: 't', modifiers: { meta: true, shift: false, alt: false } },
+    closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
+    toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
+    closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
   }
 }
 
@@ -117,7 +125,7 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
       try {
         const prefs = await window.electronAPI.getPreferences()
         if (prefs.keyboardShortcuts) {
-          setShortcuts(prefs.keyboardShortcuts)
+          setShortcuts({ ...getDefaultKeyboardShortcuts(), ...prefs.keyboardShortcuts })
         }
       } catch (error) {
         console.error('Failed to load preferences:', error)
@@ -167,6 +175,7 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
       </div>
 
       <div className="space-y-2">
+        <h4 className="text-sm font-medium text-muted-foreground pt-2">General</h4>
         <ShortcutEditor
           label="Command Palette"
           description="Open the command search dialog"
@@ -187,6 +196,81 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
             description="Toggle developer console (development only)"
             shortcut={shortcuts.devConsole}
             onChange={(s) => handleShortcutChange('devConsole', s)}
+          />
+        )}
+
+        <h4 className="text-sm font-medium text-muted-foreground pt-4">Sidebars</h4>
+        {shortcuts.toggleAgentSidebar && (
+          <ShortcutEditor
+            label="Toggle Agent Sidebar"
+            description="Show or hide the agent sidebar"
+            shortcut={shortcuts.toggleAgentSidebar}
+            onChange={(s) => handleShortcutChange('toggleAgentSidebar', s)}
+          />
+        )}
+
+        {shortcuts.togglePlansSidebar && (
+          <ShortcutEditor
+            label="Toggle Plans Sidebar"
+            description="Show or hide the plans sidebar (Team mode)"
+            shortcut={shortcuts.togglePlansSidebar}
+            onChange={(s) => handleShortcutChange('togglePlansSidebar', s)}
+          />
+        )}
+
+        <h4 className="text-sm font-medium text-muted-foreground pt-4">Tabs</h4>
+        {shortcuts.newTab && (
+          <ShortcutEditor
+            label="New Tab"
+            description="Create a new tab"
+            shortcut={shortcuts.newTab}
+            onChange={(s) => handleShortcutChange('newTab', s)}
+          />
+        )}
+
+        {shortcuts.closeTab && (
+          <ShortcutEditor
+            label="Close Tab"
+            description="Close the current tab"
+            shortcut={shortcuts.closeTab}
+            onChange={(s) => handleShortcutChange('closeTab', s)}
+          />
+        )}
+
+        {shortcuts.nextTab && (
+          <ShortcutEditor
+            label="Next Tab"
+            description="Switch to the next tab"
+            shortcut={shortcuts.nextTab}
+            onChange={(s) => handleShortcutChange('nextTab', s)}
+          />
+        )}
+
+        {shortcuts.previousTab && (
+          <ShortcutEditor
+            label="Previous Tab"
+            description="Switch to the previous tab"
+            shortcut={shortcuts.previousTab}
+            onChange={(s) => handleShortcutChange('previousTab', s)}
+          />
+        )}
+
+        <h4 className="text-sm font-medium text-muted-foreground pt-4">Agents</h4>
+        {shortcuts.toggleMaximizeAgent && (
+          <ShortcutEditor
+            label="Toggle Maximize Agent"
+            description="Maximize or restore the focused agent"
+            shortcut={shortcuts.toggleMaximizeAgent}
+            onChange={(s) => handleShortcutChange('toggleMaximizeAgent', s)}
+          />
+        )}
+
+        {shortcuts.closeAgent && (
+          <ShortcutEditor
+            label="Close Agent"
+            description="Stop the focused agent"
+            shortcut={shortcuts.closeAgent}
+            onChange={(s) => handleShortcutChange('closeAgent', s)}
           />
         )}
       </div>

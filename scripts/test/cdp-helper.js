@@ -320,8 +320,7 @@ class CDPHelper {
    */
   async isDevConsoleVisible() {
     return this.evaluate(`
-      !!document.querySelector('[data-testid="dev-console"]') ||
-      !!document.querySelector('.dev-console')
+      !!document.querySelector('[data-testid="dev-console"]')
     `);
   }
 }
