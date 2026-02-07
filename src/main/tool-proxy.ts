@@ -439,9 +439,13 @@ async function handleBbRequest(
     proxyEvents.emit('bb', { args, cwd })
 
     // Forward BUILDBUDDY_API_KEY so bb works outside git repos (e.g., worktrees)
+    // Forward GITHUB_TOKEN so bb remote can authenticate to private repos for Go modules
     const env: Record<string, string> = {}
     if (process.env.BUILDBUDDY_API_KEY) {
       env.BUILDBUDDY_API_KEY = process.env.BUILDBUDDY_API_KEY
+    }
+    if (process.env.GITHUB_TOKEN) {
+      env.GITHUB_TOKEN = process.env.GITHUB_TOKEN
     }
 
     const result = await executeCommand('bb', args, body.stdin, {
