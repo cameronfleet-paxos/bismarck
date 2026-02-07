@@ -101,12 +101,12 @@ export interface ElectronAPI {
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean) => Promise<{ success: boolean; error?: string }>
 
   // Standalone headless agent management
-  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
+  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet' | 'haiku', tabId?: string) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
-  standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
   startHeadlessDiscussion: (agentId: string, initialPrompt: string) => Promise<{ discussionId: string; workspaceId: string; tabId: string }>
@@ -196,8 +196,8 @@ export interface ElectronAPI {
   addDockerImage: (image: string) => Promise<void>
   removeDockerImage: (image: string) => Promise<boolean>
   setSelectedDockerImage: (image: string) => Promise<void>
-  updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
-  detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
+  updateToolPaths: (paths: { bd?: string | null; bb?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
+  detectToolPaths: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
   getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
   checkToolAuth: () => Promise<ToolAuthStatus[]>
@@ -210,7 +210,7 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; ralph_loop_discussion: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 

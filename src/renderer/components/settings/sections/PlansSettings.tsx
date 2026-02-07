@@ -29,6 +29,7 @@ interface PromptStatus {
   standalone_followup: boolean
   headless_discussion: boolean
   critic: boolean
+  ralph_loop_discussion: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -40,6 +41,7 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   standalone_followup: 'Standalone Follow-up',
   headless_discussion: 'Headless Discussion',
   critic: 'Critic',
+  ralph_loop_discussion: 'Ralph Loop Discussion',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
@@ -51,6 +53,7 @@ const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   standalone_followup: 'Follow-up agents on existing worktrees',
   headless_discussion: 'Headless discussion with agents',
   critic: 'Reviews completed task work and creates fix-up tasks',
+  ralph_loop_discussion: 'Discussion phase in Ralph loop workflow',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -66,6 +69,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     standalone_followup: false,
     headless_discussion: false,
     critic: false,
+    ralph_loop_discussion: false,
   })
   const [criticEnabled, setCriticEnabled] = useState(true)
   const [maxCriticIterations, setMaxCriticIterations] = useState(2)
@@ -90,6 +94,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           standalone_followup: !!customPrompts.standalone_followup,
           headless_discussion: false,
           critic: !!customPrompts.critic,
+          ralph_loop_discussion: !!customPrompts.ralph_loop_discussion,
         })
 
         // Load critic settings

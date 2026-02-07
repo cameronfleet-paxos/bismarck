@@ -87,6 +87,12 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{worktreeName}}', description: 'Worktree name' },
     { name: '{{lastIterationWarning}}', description: 'Warning text on final iteration' },
   ],
+  ralph_loop_discussion: [
+    { name: '{{referenceRepoName}}', description: 'Name of the reference repository' },
+    { name: '{{codebasePath}}', description: 'Path to the codebase' },
+    { name: '{{maxQuestions}}', description: 'Maximum questions to ask' },
+    { name: '{{discussionOutputPath}}', description: 'Path to write discussion output' },
+  ],
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -98,6 +104,7 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   standalone_followup: 'Standalone Follow-up Agent',
   headless_discussion: 'Headless Discussion',
   critic: 'Critic Agent',
+  ralph_loop_discussion: 'Ralph Loop Discussion',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {
