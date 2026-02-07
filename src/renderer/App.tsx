@@ -31,6 +31,7 @@ import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { PromptViewerModal } from '@/renderer/components/PromptViewerModal'
+import { FollowUpModal } from '@/renderer/components/FollowUpModal'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
@@ -220,6 +221,9 @@ function App() {
 
   // Prompt viewer modal state
   const [promptViewerInfo, setPromptViewerInfo] = useState<HeadlessAgentInfo | null>(null)
+
+  // Follow-up modal state
+  const [followUpInfo, setFollowUpInfo] = useState<HeadlessAgentInfo | null>(null)
 
   // Loading state for standalone headless agent actions
   const [confirmingDoneIds, setConfirmingDoneIds] = useState<Set<string>>(new Set())
@@ -1450,14 +1454,30 @@ function App() {
     }
   }
 
+  // Open follow-up modal for a standalone headless agent
   const handleStandaloneStartFollowup = async (headlessId: string) => {
-    // Show a simple prompt for follow-up task
-    const prompt = window.prompt('Enter the follow-up task:')
-    if (!prompt) return
+    // Fetch fresh info from main process (has complete events array in memory)
+    const allAgents = await window.electronAPI?.getStandaloneHeadlessAgents?.()
+    const freshInfo = allAgents?.find(a => a.taskId === headlessId)
+    if (freshInfo) {
+      setFollowUpInfo(freshInfo)
+      return
+    }
+    // Fall back to renderer state
+    const info = headlessAgents.get(headlessId)
+    if (info) {
+      setFollowUpInfo(info)
+    }
+  }
+
+  // Execute the follow-up after user submits from modal
+  const executeFollowUp = async (prompt: string, model: 'opus' | 'sonnet') => {
+    const headlessId = followUpInfo?.taskId
+    if (!headlessId) return
 
     setStartingFollowUpIds(prev => new Set(prev).add(headlessId))
     try {
-      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt)
+      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model)
       if (result) {
         // Remove old agent info from map
         setHeadlessAgents((prev) => {
@@ -1470,6 +1490,8 @@ function App() {
         // Refresh tabs
         const state = await window.electronAPI.getState()
         setTabs(state.tabs || [])
+        // Close the modal
+        setFollowUpInfo(null)
       }
     } finally {
       setStartingFollowUpIds(prev => {
@@ -3527,6 +3549,15 @@ function App() {
 
       {/* Prompt Viewer Modal */}
       <PromptViewerModal info={promptViewerInfo} onClose={() => setPromptViewerInfo(null)} />
+
+      {/* Follow-up Modal */}
+      <FollowUpModal
+        info={followUpInfo}
+        defaultModel={preferences.agentModel === 'opus' ? 'opus' : 'sonnet'}
+        onClose={() => setFollowUpInfo(null)}
+        onSubmit={executeFollowUp}
+        isSubmitting={followUpInfo?.taskId ? startingFollowUpIds.has(followUpInfo.taskId) : false}
+      />
 
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator

@@ -610,7 +610,8 @@ export async function restartStandaloneHeadlessAgent(
  */
 export async function startFollowUpAgent(
   headlessId: string,
-  prompt: string
+  prompt: string,
+  model?: 'opus' | 'sonnet'
 ): Promise<{ headlessId: string; workspaceId: string }> {
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
@@ -760,6 +761,12 @@ export async function startFollowUpAgent(
     planId: repoPath, // Use repo path for bd proxy (where .beads/ directory lives)
     taskId: newHeadlessId,
     image: selectedImage,
+    claudeFlags: model ? ['--model', model] : undefined,
+  }
+
+  // Store model in agent info
+  if (model) {
+    agentInfo.model = model
   }
 
   try {
