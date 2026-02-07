@@ -8,6 +8,7 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic } from './config'
+import type { CustomizablePromptType } from '../shared/types'
 
 /**
  * Tool configuration for proxying host commands into Docker containers
@@ -17,6 +18,12 @@ export interface ProxiedTool {
   name: string           // Tool name, e.g., "npm"
   hostPath: string       // Host command path, e.g., "/usr/local/bin/npm"
   description?: string
+  enabled: boolean       // Whether the tool is available to agents
+  authCheck?: {
+    command: string[]        // e.g. ['bb', 'login', '--check'] — exit 0=valid, 1=needs reauth
+    reauthHint: string       // e.g. 'Run `bb login --browser` in your terminal'
+    reauthCommand?: string[] // e.g. ['bb', 'login', '--browser'] — spawned fire-and-forget
+  }
 }
 
 /**
@@ -43,6 +50,9 @@ export interface AppSettings {
     dockerSocket: {
       enabled: boolean     // Enable Docker socket mounting for testcontainers support
       path: string         // Socket path (default: /var/run/docker.sock)
+    }
+    sharedBuildCache: {
+      enabled: boolean     // Enable shared Go build cache across agents (per-repo)
     }
   }
   prompts: {
@@ -82,6 +92,9 @@ export interface AppSettings {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
   }
+  _internal: {
+    lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
+  }
 }
 
 /**
@@ -118,8 +131,8 @@ export function getDefaultSettings(): AppSettings {
       git: null,
     },
     docker: {
-      images: ['bismarck-agent:latest'],
-      selectedImage: 'bismarck-agent:latest',
+      images: ['bismarckapp/bismarck-agent:latest'],
+      selectedImage: 'bismarckapp/bismarck-agent:latest',
       resourceLimits: {
         cpu: '2',
         memory: '4g',
@@ -130,18 +143,28 @@ export function getDefaultSettings(): AppSettings {
           name: 'git',
           hostPath: '/usr/bin/git',
           description: 'Git version control',
+          enabled: true,
         },
         {
           id: 'gh',
           name: 'gh',
           hostPath: '/usr/local/bin/gh',
           description: 'GitHub CLI',
+          enabled: true,
         },
         {
           id: 'bd',
           name: 'bd',
           hostPath: '/usr/local/bin/bd',
           description: 'Beads task manager',
+          enabled: true,
+        },
+        {
+          id: 'bb',
+          name: 'bb',
+          hostPath: '/usr/local/bin/bb',
+          description: 'BuildBuddy CLI',
+          enabled: false,
         },
       ],
       sshAgent: {
@@ -150,6 +173,9 @@ export function getDefaultSettings(): AppSettings {
       dockerSocket: {
         enabled: true,   // Enabled by default for testcontainers support
         path: '/var/run/docker.sock',
+      },
+      sharedBuildCache: {
+        enabled: true,   // Share Go build cache across agents per-repo
       },
     },
     prompts: {
@@ -188,6 +214,9 @@ export function getDefaultSettings(): AppSettings {
     critic: {
       enabled: true,
       maxIterations: 2,
+    },
+    _internal: {
+      lastLogPurgeVersion: null,
     },
   }
 }
@@ -231,6 +260,10 @@ export async function loadSettings(): Promise<AppSettings> {
           ...defaults.docker.dockerSocket,
           ...(loaded.docker?.dockerSocket || {}),
         },
+        sharedBuildCache: {
+          ...defaults.docker.sharedBuildCache,
+          ...(loaded.docker?.sharedBuildCache || {}),
+        },
       },
       prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
       planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
@@ -241,12 +274,53 @@ export async function loadSettings(): Promise<AppSettings> {
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
       critic: { ...defaults.critic, ...(loaded.critic || {}) },
+      _internal: { ...defaults._internal, ...(loaded._internal || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
     // Check for old-style playbox settings with bismarckMode/ottoMode booleans
     const oldPlaybox = loaded.playbox as { bismarckMode?: boolean; ottoMode?: boolean } | undefined
     let needsMigration = false
+
+    // Migration: Ensure all proxied tools have the 'enabled' field
+    const hasToolsWithoutEnabled = merged.docker.proxiedTools.some(t => (t as { enabled?: boolean }).enabled === undefined)
+    if (hasToolsWithoutEnabled) {
+      merged.docker.proxiedTools = merged.docker.proxiedTools.map(t => ({
+        ...t,
+        enabled: t.enabled ?? true,
+      }))
+      needsMigration = true
+    }
+
+    // Migration: Inject missing default tools (e.g., bb) into existing settings
+    for (const defaultTool of defaults.docker.proxiedTools) {
+      if (!merged.docker.proxiedTools.some(t => t.name === defaultTool.name)) {
+        merged.docker.proxiedTools.push({ ...defaultTool })
+        needsMigration = true
+      }
+    }
+
+    // Migration: Sync authCheck fields from defaults (reauthHint, reauthCommand)
+    for (const defaultTool of defaults.docker.proxiedTools) {
+      if (!defaultTool.authCheck) continue
+      const existing = merged.docker.proxiedTools.find(t => t.name === defaultTool.name)
+      if (existing?.authCheck) {
+        if (JSON.stringify(existing.authCheck.reauthCommand) !== JSON.stringify(defaultTool.authCheck.reauthCommand)) {
+          existing.authCheck.reauthCommand = defaultTool.authCheck.reauthCommand
+          needsMigration = true
+        }
+        if (existing.authCheck.reauthHint !== defaultTool.authCheck.reauthHint) {
+          existing.authCheck.reauthHint = defaultTool.authCheck.reauthHint
+          needsMigration = true
+        }
+      }
+    }
+    // Migration: Remove authCheck from bb (now uses BUILDBUDDY_API_KEY env var)
+    const bbTool = merged.docker.proxiedTools.find(t => t.id === 'bb')
+    if (bbTool?.authCheck) {
+      delete bbTool.authCheck
+      needsMigration = true
+    }
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'
       merged.playbox.customPersonaPrompt = null
@@ -260,6 +334,30 @@ export async function loadSettings(): Promise<AppSettings> {
       merged.playbox.personaMode = 'none'
       merged.playbox.customPersonaPrompt = null
       needsMigration = true
+    }
+
+    // Migration: Rename old Docker image from local name to Docker Hub name
+    const OLD_IMAGE_NAME = 'bismarck-agent:latest'
+    const NEW_IMAGE_NAME = 'bismarckapp/bismarck-agent:latest'
+    if (merged.docker.images.includes(OLD_IMAGE_NAME)) {
+      merged.docker.images = merged.docker.images.map(img => img === OLD_IMAGE_NAME ? NEW_IMAGE_NAME : img)
+      needsMigration = true
+    }
+    if (merged.docker.selectedImage === OLD_IMAGE_NAME) {
+      merged.docker.selectedImage = NEW_IMAGE_NAME
+      needsMigration = true
+    }
+
+    // Migration: One-time purge of debug logs that may contain leaked secrets (v0.6.3)
+    // Triggers for any user upgrading from before 0.6.3, regardless of which version they land on.
+    // Uses semver-style comparison: null (never purged) or any version < '0.6.3' triggers purge.
+    const LOG_PURGE_VERSION = '0.6.3'
+    const priorPurge = merged._internal.lastLogPurgeVersion
+    if (!priorPurge || priorPurge < LOG_PURGE_VERSION) {
+      merged._internal.lastLogPurgeVersion = LOG_PURGE_VERSION
+      needsMigration = true
+      // Fire-and-forget: purge global debug logs and per-plan debug logs
+      purgeDebugLogs().catch(() => {})
     }
 
     settingsCache = merged
@@ -314,6 +412,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...(currentSettings.docker.dockerSocket || defaults.docker.dockerSocket),
         ...(updates.docker?.dockerSocket || {}),
       },
+      sharedBuildCache: {
+        ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+        ...(updates.docker?.sharedBuildCache || {}),
+      },
     },
     prompts: {
       ...(currentSettings.prompts || defaults.prompts),
@@ -350,6 +452,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     critic: {
       ...(currentSettings.critic || defaults.critic),
       ...(updates.critic || {}),
+    },
+    _internal: {
+      ...(currentSettings._internal || defaults._internal),
+      ...(updates._internal || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -474,7 +580,7 @@ export async function setSelectedDockerImage(image: string): Promise<void> {
  */
 export async function getSelectedDockerImage(): Promise<string> {
   const settings = await loadSettings()
-  return settings.docker.selectedImage || 'bismarck-agent:latest'
+  return settings.docker.selectedImage || 'bismarckapp/bismarck-agent:latest'
 }
 
 /**
@@ -527,6 +633,19 @@ export async function updateDockerSocketSettings(socketSettings: { enabled?: boo
 }
 
 /**
+ * Update Docker shared build cache settings
+ */
+export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enabled?: boolean }): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.docker.sharedBuildCache = {
+    ...(settings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+    ...cacheSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
  * Clear the settings cache (useful for testing)
  */
 export function clearSettingsCache(): void {
@@ -536,7 +655,7 @@ export function clearSettingsCache(): void {
 /**
  * Get custom prompt for a specific type
  */
-export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'): Promise<string | null> {
+export async function getCustomPrompt(type: CustomizablePromptType): Promise<string | null> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   const prompts = settings.prompts || defaults.prompts
@@ -546,7 +665,7 @@ export async function getCustomPrompt(type: 'orchestrator' | 'planner' | 'discus
 /**
  * Set custom prompt for a specific type (null to reset to default)
  */
-export async function setCustomPrompt(type: 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic', template: string | null): Promise<void> {
+export async function setCustomPrompt(type: CustomizablePromptType, template: string | null): Promise<void> {
   const settings = await loadSettings()
   const defaults = getDefaultSettings()
   settings.prompts = {
@@ -624,11 +743,144 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 }
 
 /**
- * Check if a GitHub token is configured (without returning the actual token)
+ * Check if a GitHub token is available from any source (env vars or settings)
  */
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Check GitHub token scopes by calling the GitHub API
+ * Returns the scopes the token has and flags any missing required ones
+ */
+export interface GitHubTokenScopeResult {
+  valid: boolean
+  scopes: string[]
+  missingScopes: string[]
+  ssoConfigured: boolean | null  // null = couldn't determine
+  error?: string
+}
+
+const REQUIRED_SCOPES = ['repo']
+const RECOMMENDED_SCOPES = ['read:packages']
+
+export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> {
+  // Check the configured token first (what the user set in settings),
+  // falling back to env var. This ensures we verify what the user just saved,
+  // not an env var that may hold a different token.
+  const settings = await loadSettings()
+  const configuredToken = settings.tools?.githubToken
+  const token = (configuredToken && configuredToken.length > 0) ? configuredToken : await getGitHubToken()
+  if (!token) {
+    return {
+      valid: false,
+      scopes: [],
+      missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+      ssoConfigured: null,
+      error: 'No GitHub token configured',
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.github.com/', {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Bismarck-App',
+      },
+    })
+
+    if (response.status === 401) {
+      return {
+        valid: false,
+        scopes: [],
+        missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+        ssoConfigured: null,
+        error: 'Token is invalid or expired',
+      }
+    }
+
+    const scopeHeader = response.headers.get('x-oauth-scopes') || ''
+    const scopes = scopeHeader
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+
+    // GitHub scope hierarchy: broader scopes imply narrower ones
+    const scopeImplies: Record<string, string[]> = {
+      'repo': ['repo:status', 'repo_deployment', 'public_repo', 'repo:invite', 'security_events'],
+      'write:packages': ['read:packages'],
+      'admin:org': ['write:org', 'read:org'],
+      'admin:repo_hook': ['write:repo_hook', 'read:repo_hook'],
+      'admin:org_hook': [],
+      'admin:public_key': ['write:public_key', 'read:public_key'],
+      'admin:gpg_key': ['write:gpg_key', 'read:gpg_key'],
+    }
+
+    // Check if a scope is satisfied by the token's scopes (including implied scopes)
+    const hasScope = (required: string): boolean => {
+      if (scopes.includes(required)) return true
+      // Check if any granted scope implies the required one
+      for (const granted of scopes) {
+        const implied = scopeImplies[granted]
+        if (implied && implied.includes(required)) return true
+      }
+      return false
+    }
+
+    const allRequired = [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES]
+    const missingScopes = allRequired.filter(required => !hasScope(required))
+
+    // Try to detect SSO authorization by checking if we can list orgs
+    // A 403 with SSO message indicates token lacks SSO authorization
+    let ssoConfigured: boolean | null = null
+    try {
+      const orgsResponse = await fetch('https://api.github.com/user/orgs', {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Bismarck-App',
+        },
+      })
+      if (orgsResponse.ok) {
+        // If we can list orgs, SSO is either not required or is configured
+        ssoConfigured = true
+      } else if (orgsResponse.status === 403) {
+        const body = await orgsResponse.text()
+        if (body.includes('SSO') || body.includes('SAML')) {
+          ssoConfigured = false
+        }
+      }
+    } catch {
+      // Ignore SSO check failures
+    }
+
+    return {
+      valid: response.ok,
+      scopes,
+      missingScopes,
+      ssoConfigured,
+    }
+  } catch (err) {
+    return {
+      valid: false,
+      scopes: [],
+      missingScopes: [...REQUIRED_SCOPES, ...RECOMMENDED_SCOPES],
+      ssoConfigured: null,
+      error: `Failed to verify token: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+/**
+ * Check if a GitHub token is saved in settings.json (ignores env vars)
+ * Used by the setup wizard to determine if a detected token needs to be persisted
+ */
+export async function hasConfiguredGitHubToken(): Promise<boolean> {
+  const settings = await loadSettings()
+  const token = settings.tools?.githubToken
+  return token !== null && token !== undefined && token.length > 0
 }
 
 /**
@@ -771,4 +1023,36 @@ export async function updatePreventSleepSettings(preventSleepSettings: Partial<A
     ...preventSleepSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Purge all debug log files (global and per-plan).
+ * Called once on upgrade to clean up logs that may have contained leaked secrets.
+ */
+async function purgeDebugLogs(): Promise<void> {
+  const configDir = getConfigDir()
+
+  // Purge global debug logs (debug-YYYY-MM-DD.log)
+  try {
+    const files = await fs.readdir(configDir)
+    for (const file of files) {
+      if (file.startsWith('debug') && file.endsWith('.log')) {
+        await fs.unlink(path.join(configDir, file)).catch(() => {})
+      }
+    }
+  } catch {
+    // Config dir may not exist yet
+  }
+
+  // Purge per-plan debug logs
+  const plansDir = path.join(configDir, 'plans')
+  try {
+    const planIds = await fs.readdir(plansDir)
+    for (const planId of planIds) {
+      const logPath = path.join(plansDir, planId, 'debug.log')
+      await fs.unlink(logPath).catch(() => {})
+    }
+  } catch {
+    // Plans dir may not exist
+  }
 }

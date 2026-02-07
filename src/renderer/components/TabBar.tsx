@@ -73,7 +73,7 @@ export function TabBar({
   }
 
   return (
-    <div data-tutorial="tabs" className="border-b bg-muted/30 flex items-center px-2 py-1 gap-1 overflow-x-auto">
+    <div data-testid="tab-bar" data-tutorial="tabs" className="border-b bg-muted/30 flex items-center px-2 py-1 gap-1 overflow-x-auto">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         const isEditing = editingTabId === tab.id
@@ -92,6 +92,7 @@ export function TabBar({
         return (
           <div
             key={tab.id}
+            data-testid={`tab-item-${tab.id}`}
             draggable={!isEditing}
             className={`group flex items-center gap-1 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
               tab.isPlanTab

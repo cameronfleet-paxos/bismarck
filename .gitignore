@@ -4,6 +4,8 @@ dist/
 *.log
 .env
 .env.local
+.env.development.local
 .vite/
 .claude/ralph-loop.local.md
 CLAUDE.local.md
+.beads/daemon-error

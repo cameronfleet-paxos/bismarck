@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setActiveTab: (tabId: string): Promise<void> =>
     ipcRenderer.invoke('set-active-tab', tabId),
   getTabs: (): Promise<AgentTab[]> => ipcRenderer.invoke('get-tabs'),
+  getTabPlanStatus: (tabId: string): Promise<{
+    hasPlan: boolean
+    planId?: string
+    planTitle?: string
+    planStatus?: string
+    isInProgress: boolean
+  }> => ipcRenderer.invoke('get-tab-plan-status', tabId),
   reorderTabs: (tabIds: string[]): Promise<boolean> =>
     ipcRenderer.invoke('reorder-tabs', tabIds),
   reorderWorkspaceInTab: (
@@ -127,16 +134,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string): Promise<{ headlessId: string; workspaceId: string }> =>
-    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt),
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
+    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model),
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-headless-discussion', agentId),
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt),
   cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-headless-discussion', discussionId),
+
+  // Ralph Loop discussion (Discuss: Ralph Loop)
+  startRalphLoopDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-ralph-loop-discussion', agentId, initialPrompt),
+  cancelRalphLoopDiscussion: (discussionId: string): Promise<void> =>
+    ipcRenderer.invoke('cancel-ralph-loop-discussion', discussionId),
 
   // Ralph Loop management
   startRalphLoop: (config: RalphLoopConfig): Promise<RalphLoopState> =>
@@ -245,6 +258,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRalphLoopEvent: (callback: (data: { loopId: string; iterationNumber: number; event: StreamEvent }) => void): void => {
     ipcRenderer.on('ralph-loop-event', (_event, data) => callback(data))
   },
+  onRalphLoopDiscussionComplete: (callback: (data: {
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  }) => void): void => {
+    ipcRenderer.on('ralph-loop-discussion-complete', (_event, data) => callback(data))
+  },
+  onDiscussionCompleting: (callback: (data: {
+    discussionId: string
+    workspaceId: string
+    tabId: string
+    message: string
+  }) => void): void => {
+    ipcRenderer.on('discussion-completing', (_event, data) => callback(data))
+  },
 
   // Description generation progress events
   onDescriptionGenerationProgress: (callback: (event: DescriptionProgressEvent) => void): void => {
@@ -269,12 +299,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-git-repository', directory),
   getRepositories: (): Promise<Repository[]> =>
     ipcRenderer.invoke('get-repositories'),
-  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches'>>): Promise<Repository | undefined> =>
+  updateRepository: (id: string, updates: Partial<Pick<Repository, 'name' | 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>>): Promise<Repository | undefined> =>
     ipcRenderer.invoke('update-repository', id, updates),
   addRepository: (path: string): Promise<Repository | null> =>
     ipcRenderer.invoke('add-repository', path),
   removeRepository: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('remove-repository', id),
+
+  // Git diff operations
+  getChangedFiles: (directory: string): Promise<DiffResult> =>
+    ipcRenderer.invoke('get-changed-files', directory),
+  getFileDiff: (directory: string, filepath: string, force?: boolean): Promise<FileDiffContent> =>
+    ipcRenderer.invoke('get-file-diff', directory, filepath, force),
+  isGitRepo: (directory: string): Promise<boolean> =>
+    ipcRenderer.invoke('is-git-repo', directory),
+  revertFile: (directory: string, filepath: string): Promise<void> =>
+    ipcRenderer.invoke('revert-file', directory, filepath),
+  writeFileContent: (directory: string, filepath: string, content: string): Promise<void> =>
+    ipcRenderer.invoke('write-file-content', directory, filepath, content),
+  revertAllFiles: (directory: string): Promise<void> =>
+    ipcRenderer.invoke('revert-all-files', directory),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>
@@ -326,6 +370,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
   },
 
+  // Docker image pull
+  setupWizardPullDockerImage: (): Promise<{ success: boolean; output: string }> =>
+    ipcRenderer.invoke('setup-wizard:pull-docker-image'),
+  onDockerPullProgress: (callback: (message: string) => void): void => {
+    ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.on('docker-pull-progress', (_event, message) => callback(message))
+  },
+  removeDockerPullProgressListener: (): void => {
+    ipcRenderer.removeAllListeners('docker-pull-progress')
+  },
+
+  // Docker image status
+  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }> =>
+    ipcRenderer.invoke('check-docker-image-status', imageName),
+  pullDockerImage: (imageName: string): Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }> =>
+    ipcRenderer.invoke('pull-docker-image', imageName),
+
   // GitHub token management
   hasGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('has-github-token'),
@@ -333,6 +394,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-github-token', token),
   clearGitHubToken: (): Promise<boolean> =>
     ipcRenderer.invoke('clear-github-token'),
+  checkGitHubTokenScopes: (): Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }> =>
+    ipcRenderer.invoke('check-github-token-scopes'),
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -348,14 +411,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-tool-paths', paths),
   detectToolPaths: () =>
     ipcRenderer.invoke('detect-tool-paths'),
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) =>
-    ipcRenderer.invoke('add-proxied-tool', tool),
-  removeProxiedTool: (id: string) =>
-    ipcRenderer.invoke('remove-proxied-tool', id),
+  toggleProxiedTool: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  getToolAuthStatuses: () =>
+    ipcRenderer.invoke('get-tool-auth-statuses'),
+  checkToolAuth: () =>
+    ipcRenderer.invoke('check-tool-auth'),
+  runToolReauth: (toolId: string) =>
+    ipcRenderer.invoke('run-tool-reauth', toolId),
+  onToolAuthStatus: (callback: (statuses: Array<{ toolId: string; toolName: string; state: string; reauthHint?: string; message?: string }>) => void): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+    ipcRenderer.on('tool-auth-status', (_event, statuses) => callback(statuses))
+  },
+  removeToolAuthStatusListener: (): void => {
+    ipcRenderer.removeAllListeners('tool-auth-status')
+  },
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
     ipcRenderer.invoke('update-docker-socket-settings', settings),
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 
@@ -473,6 +549,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-data')
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
+    ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.removeAllListeners('tool-auth-status')
   },
 
   // Dev test harness (development mode only)
@@ -486,4 +564,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dev-set-mock-flow-options', options),
   devGetMockFlowOptions: (): Promise<{ eventIntervalMs: number; startDelayMs: number }> =>
     ipcRenderer.invoke('dev-get-mock-flow-options'),
+  devSetVersionOverride: (version: string | null): Promise<{ version: string }> =>
+    ipcRenderer.invoke('dev-set-version-override', version),
 })

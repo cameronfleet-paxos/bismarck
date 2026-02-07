@@ -9,6 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneHeadlessAgentInfoPath,
@@ -19,10 +20,12 @@ import {
   writeConfigAtomic,
   getRandomUniqueIcon,
   getWorkspaces,
+  getRepoCacheDir,
+  getRepoModCacheDir,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab } from './state-manager'
-import { getSelectedDockerImage } from './settings-manager'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab } from './state-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -36,7 +39,7 @@ import {
 import { startToolProxy, isProxyRunning } from './tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
-import { buildPrompt, type PromptVariables } from './prompt-templates'
+import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
 import { queueTerminalCreation } from './terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
 import * as fsPromises from 'fs/promises'
@@ -157,23 +160,44 @@ function emitStateUpdate(): void {
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
-  // Format completion criteria section if provided
+async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, protectedBranch: string, completionCriteria?: string, guidance?: string): Promise<string> {
+  // Format completion criteria (folded into COMPLETION REQUIREMENTS via template)
   const completionCriteriaSection = completionCriteria
     ? `
-=== COMPLETION CRITERIA ===
-Before marking your work complete, ensure these pass:
+Before creating your PR, ensure these acceptance criteria pass:
 ${completionCriteria}
-
 Keep iterating until all criteria are satisfied.
+
 `
     : ''
+
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
+`
+    : ''
+
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
+  })
 
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
+    protectedBranch,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_headless', variables)
@@ -185,35 +209,58 @@ Keep iterating until all criteria are satisfied.
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildFollowUpPrompt(
+async function buildFollowUpPrompt(
   userPrompt: string,
   workingDir: string,
   branchName: string,
+  protectedBranch: string,
   recentCommits: Array<{ shortSha: string; message: string }>,
-  completionCriteria?: string
+  completionCriteria?: string,
+  guidance?: string
 ): Promise<string> {
   // Format commit history
   const commitHistory = recentCommits.length > 0
     ? recentCommits.map(c => `  - ${c.shortSha}: ${c.message}`).join('\n')
     : '(No prior commits on this branch)'
 
-  // Format completion criteria section if provided
+  // Format completion criteria (folded into COMPLETION REQUIREMENTS via template)
   const completionCriteriaSection = completionCriteria
     ? `
-=== COMPLETION CRITERIA ===
-Before marking your work complete, ensure these pass:
+Before creating your PR, ensure these acceptance criteria pass:
 ${completionCriteria}
-
 Keep iterating until all criteria are satisfied.
+
 `
     : ''
+
+  // Format guidance section if provided
+  const guidanceSection = guidance
+    ? `
+=== REPOSITORY GUIDANCE ===
+Follow these repo-specific guidelines:
+${guidance}
+`
+    : ''
+
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
+  })
 
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
+    protectedBranch,
     commitHistory,
     completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_followup', variables)
@@ -266,16 +313,26 @@ export async function startStandaloneHeadlessAgent(
   // Ensure tool proxy is running for Docker container communication
   // This is critical - without it, git commands from containers will fail
   const proxyWasRunning = isProxyRunning()
-  console.log(`[StandaloneHeadless] Tool proxy status before start: running=${proxyWasRunning}`)
+  devLog(`[StandaloneHeadless] Tool proxy status before start: running=${proxyWasRunning}`)
   if (!proxyWasRunning) {
-    console.log('[StandaloneHeadless] Starting tool proxy for container communication')
+    devLog('[StandaloneHeadless] Starting tool proxy for container communication')
     await startToolProxy()
-    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
+    devLog(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
   }
 
   // Create the worktree
-  console.log(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
+  devLog(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
+
+  // Create temp directory for builds (Go, etc.) to avoid filling container overlay fs
+  const tmpDir = path.join(worktreePath, '.tmp')
+  await fsPromises.mkdir(tmpDir, { recursive: true })
+
+  // Create shared Go build cache and module cache directories for this repo
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fsPromises.mkdir(sharedCacheDir, { recursive: true })
+  await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
   // Store worktree info for cleanup
   const worktreeInfo: StandaloneWorktreeInfo = {
@@ -373,12 +430,13 @@ export async function startStandaloneHeadlessAgent(
 
   // Start the agent
   const selectedImage = await getSelectedDockerImage()
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   // Try repositoryId first, fallback to path-based lookup for legacy workspaces
   const repository = referenceAgent.repositoryId
     ? await getRepositoryById(referenceAgent.repositoryId)
     : await getRepositoryByPath(referenceAgent.directory)
-  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria)
+  const protectedBranch = repository?.protectedBranches?.[0] || baseBranch
+  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, protectedBranch, repository?.completionCriteria, repository?.guidance)
 
   // Update stored prompt to the full resolved version (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -391,9 +449,11 @@ export async function startStandaloneHeadlessAgent(
     taskId: headlessId,
     image: selectedImage,
     claudeFlags: ['--model', model],
+    sharedCacheDir,
+    sharedModCacheDir,
   }
 
-  console.log(`[StandaloneHeadless] Starting agent with config:`, {
+  devLog(`[StandaloneHeadless] Starting agent with config:`, {
     headlessId,
     worktreePath,
     branchName,
@@ -480,7 +540,7 @@ export function initStandaloneHeadless(): void {
   if (modified) {
     saveStandaloneHeadlessAgentInfo()
   }
-  console.log(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
+  devLog(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
 }
 
 /**
@@ -490,18 +550,18 @@ export function initStandaloneHeadless(): void {
 export async function cleanupStandaloneWorktree(headlessId: string): Promise<void> {
   const agentInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!agentInfo?.worktreeInfo) {
-    console.log(`[StandaloneHeadless] No worktree info for agent ${headlessId}`)
+    devLog(`[StandaloneHeadless] No worktree info for agent ${headlessId}`)
     return
   }
 
   const { path: worktreePath, branch, repoPath } = agentInfo.worktreeInfo
 
-  console.log(`[StandaloneHeadless] Cleaning up worktree for agent ${headlessId}`)
+  devLog(`[StandaloneHeadless] Cleaning up worktree for agent ${headlessId}`)
 
   // Remove the worktree
   try {
     await removeWorktree(repoPath, worktreePath, true)
-    console.log(`[StandaloneHeadless] Removed worktree at ${worktreePath}`)
+    devLog(`[StandaloneHeadless] Removed worktree at ${worktreePath}`)
   } catch (error) {
     console.error(`[StandaloneHeadless] Failed to remove worktree:`, error)
   }
@@ -509,17 +569,17 @@ export async function cleanupStandaloneWorktree(headlessId: string): Promise<voi
   // Delete the local branch
   try {
     await deleteLocalBranch(repoPath, branch)
-    console.log(`[StandaloneHeadless] Deleted local branch ${branch}`)
+    devLog(`[StandaloneHeadless] Deleted local branch ${branch}`)
   } catch (error) {
     // Branch may not exist if worktree removal already deleted it
-    console.log(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
+    devLog(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
   }
 
   // Delete the remote branch if it exists
   try {
     if (await remoteBranchExists(repoPath, branch)) {
       await deleteRemoteBranch(repoPath, branch)
-      console.log(`[StandaloneHeadless] Deleted remote branch ${branch}`)
+      devLog(`[StandaloneHeadless] Deleted remote branch ${branch}`)
     }
   } catch (error) {
     console.error(`[StandaloneHeadless] Failed to delete remote branch:`, error)
@@ -534,7 +594,7 @@ export async function cleanupStandaloneWorktree(headlessId: string): Promise<voi
  * Confirm that a standalone agent is done - cleans up worktree and removes workspace
  */
 export async function confirmStandaloneAgentDone(headlessId: string): Promise<void> {
-  console.log(`[StandaloneHeadless] Confirming done for agent ${headlessId}`)
+  devLog(`[StandaloneHeadless] Confirming done for agent ${headlessId}`)
 
   // Find the workspace associated with this headless agent
   const workspaces = getWorkspaces()
@@ -549,7 +609,7 @@ export async function confirmStandaloneAgentDone(headlessId: string): Promise<vo
     removeActiveWorkspace(workspace.id)
     removeWorkspaceFromTab(workspace.id)
     deleteWorkspace(workspace.id)
-    console.log(`[StandaloneHeadless] Deleted workspace ${workspace.id} and released slot`)
+    devLog(`[StandaloneHeadless] Deleted workspace ${workspace.id} and released slot`)
   }
 
   // Emit state update
@@ -588,7 +648,7 @@ export async function restartStandaloneHeadlessAgent(
     throw new Error(`No reference workspace for repo: ${repoPath}`)
   }
 
-  console.log(`[StandaloneHeadless] Restarting agent ${headlessId} with original prompt`)
+  devLog(`[StandaloneHeadless] Restarting agent ${headlessId} with original prompt`)
 
   // Store original prompt before cleanup
   const originalPrompt = existingInfo.originalPrompt
@@ -609,7 +669,8 @@ export async function restartStandaloneHeadlessAgent(
  */
 export async function startFollowUpAgent(
   headlessId: string,
-  prompt: string
+  prompt: string,
+  model?: 'opus' | 'sonnet'
 ): Promise<{ headlessId: string; workspaceId: string }> {
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
@@ -618,11 +679,11 @@ export async function startFollowUpAgent(
 
   // Ensure tool proxy is running for Docker container communication
   const proxyWasRunning = isProxyRunning()
-  console.log(`[StandaloneHeadless] Tool proxy status before follow-up: running=${proxyWasRunning}`)
+  devLog(`[StandaloneHeadless] Tool proxy status before follow-up: running=${proxyWasRunning}`)
   if (!proxyWasRunning) {
-    console.log('[StandaloneHeadless] Starting tool proxy for follow-up agent')
+    devLog('[StandaloneHeadless] Starting tool proxy for follow-up agent')
     await startToolProxy()
-    console.log(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
+    devLog(`[StandaloneHeadless] Tool proxy started, now running=${isProxyRunning()}`)
   }
 
   // Find the existing workspace
@@ -631,8 +692,18 @@ export async function startFollowUpAgent(
 
   const { path: worktreePath, branch, repoPath } = existingInfo.worktreeInfo
 
-  // Extract repo name and phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "bismarck", "plucky-otter")
+  // Ensure temp directory exists for builds (Go, etc.) to avoid filling container overlay fs
+  const tmpDir = path.join(worktreePath, '.tmp')
+  await fsPromises.mkdir(tmpDir, { recursive: true })
+
+  // Extract repo name and create shared Go build cache and module cache directories
   const repoName = path.basename(repoPath)
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fsPromises.mkdir(sharedCacheDir, { recursive: true })
+  await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
+
+  // Extract phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "plucky-otter")
   const branchSuffix = branch.replace('standalone/', '') // e.g., "bismarck-plucky-otter"
   const phrase = branchSuffix.replace(`${repoName}-`, '') // e.g., "plucky-otter"
 
@@ -743,11 +814,12 @@ export async function startFollowUpAgent(
   const allCommits = await getCommitsBetween(worktreePath, `origin/${defaultBranch}`, 'HEAD')
   // Take last 5 commits (most recent)
   const recentCommits = allCommits.slice(-5)
-  console.log(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
+  devLog(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
 
-  // Look up repository for completion criteria
+  // Look up repository for completion criteria and guidance
   const repository = await getRepositoryByPath(repoPath)
-  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria)
+  const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
   // Store the full resolved prompt (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -759,6 +831,14 @@ export async function startFollowUpAgent(
     planId: repoPath, // Use repo path for bd proxy (where .beads/ directory lives)
     taskId: newHeadlessId,
     image: selectedImage,
+    claudeFlags: model ? ['--model', model] : undefined,
+    sharedCacheDir,
+    sharedModCacheDir,
+  }
+
+  // Store model in agent info
+  if (model) {
+    agentInfo.model = model
   }
 
   try {
@@ -803,6 +883,7 @@ const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map(
  */
 export async function startHeadlessDiscussion(
   referenceAgentId: string,
+  initialPrompt: string,
   maxQuestions: number = 7
 ): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
   if (!mainWindow) {
@@ -843,6 +924,7 @@ export async function startHeadlessDiscussion(
     codebasePath: referenceAgent.directory,
     maxQuestions: maxQuestions,
     discussionOutputPath: discussionOutputPath,
+    initialPrompt: initialPrompt,
   })
 
   // Create discussion workspace
@@ -872,14 +954,14 @@ export async function startHeadlessDiscussion(
 
   try {
     // Create terminal for discussion
-    console.log(`[HeadlessDiscussion] Creating terminal for discussion ${discussionId}`)
+    devLog(`[HeadlessDiscussion] Creating terminal for discussion ${discussionId}`)
     const claudeFlags = `--add-dir "${referenceAgent.directory}"`
     const terminalId = await queueTerminalCreation(workspaceId, mainWindow, {
       initialPrompt: discussionPrompt,
       claudeFlags,
     })
     discussionState.terminalId = terminalId
-    console.log(`[HeadlessDiscussion] Created discussion terminal: ${terminalId}`)
+    devLog(`[HeadlessDiscussion] Created discussion terminal: ${terminalId}`)
 
     // Set up workspace in tab
     addActiveWorkspace(workspaceId)
@@ -911,7 +993,7 @@ export async function startHeadlessDiscussion(
             await fsPromises.access(discussionOutputPath)
             completionTriggered = true
             discussionEmitter.removeListener('data', dataHandler)
-            console.log(`[HeadlessDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
+            devLog(`[HeadlessDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
             await completeHeadlessDiscussion(discussionId)
           } catch {
             // File not created yet, keep waiting
@@ -945,7 +1027,17 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
   try {
     // Read the discussion output
     const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
-    console.log(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+    devLog(`[HeadlessDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+
+    // Notify renderer that discussion is completing (show spinner)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('discussion-completing', {
+        discussionId,
+        workspaceId: discussionState.workspaceId,
+        tabId: discussionState.tabId,
+        message: 'Starting headless agent...',
+      })
+    }
 
     // Close the discussion terminal
     if (discussionState.terminalId) {
@@ -960,15 +1052,12 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
     removeWorkspaceFromTab(discussionState.workspaceId)
     deleteWorkspace(discussionState.workspaceId)
 
-    // Build prompt from discussion output
-    const headlessPrompt = `Based on the following requirements discussion, implement the requested changes:
-
-${discussionOutput}
-
-Please implement the above requirements, following the approach and file modifications outlined.`
+    // Build prompt from discussion output - kept minimal since startStandaloneHeadlessAgent
+    // applies the full standalone_headless template with proxied tools, completion criteria, etc.
+    const headlessPrompt = `Implement the following requirements from a planning discussion:\n\n${discussionOutput}`
 
     // Start the headless agent with the discussion context
-    console.log(`[HeadlessDiscussion] Starting headless agent with discussion context`)
+    devLog(`[HeadlessDiscussion] Starting headless agent with discussion context`)
     const result = await startStandaloneHeadlessAgent(
       discussionState.referenceAgentId,
       headlessPrompt,
@@ -976,7 +1065,7 @@ Please implement the above requirements, following the approach and file modific
       discussionState.tabId // Reuse the same tab
     )
 
-    console.log(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
+    devLog(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
 
     // Clean up discussion state
     activeHeadlessDiscussions.delete(discussionId)
@@ -1012,6 +1101,311 @@ export async function cancelHeadlessDiscussion(discussionId: string): Promise<vo
 
   // Clean up discussion state
   activeHeadlessDiscussions.delete(discussionId)
+
+  emitStateUpdate()
+}
+
+/**
+ * Track active Ralph Loop discussions
+ */
+interface RalphLoopDiscussionState {
+  discussionId: string
+  workspaceId: string
+  referenceAgentId: string
+  tabId: string
+  outputPath: string
+  terminalId?: string
+}
+
+const activeRalphLoopDiscussions: Map<string, RalphLoopDiscussionState> = new Map()
+
+/**
+ * Start a Ralph Loop discussion session
+ *
+ * This creates an interactive Claude session to help the user craft a robust
+ * Ralph Loop prompt that prevents premature exits and ensures task completion.
+ *
+ * @param referenceAgentId - The agent whose directory will be used as the working directory
+ * @param maxQuestions - Maximum number of questions to ask (default: 5)
+ * @returns Discussion session info
+ */
+export async function startRalphLoopDiscussion(
+  referenceAgentId: string,
+  initialPrompt: string,
+  maxQuestions: number = 5
+): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
+  if (!mainWindow) {
+    throw new Error('Main window not available')
+  }
+
+  // Look up the reference agent to get its directory
+  const referenceAgent = getWorkspaceById(referenceAgentId)
+  if (!referenceAgent) {
+    throw new Error(`Reference agent not found: ${referenceAgentId}`)
+  }
+
+  // Get repository info from reference agent's directory
+  const repoPath = await getMainRepoRoot(referenceAgent.directory)
+  if (!repoPath) {
+    throw new Error(`Reference agent directory is not in a git repository: ${referenceAgent.directory}`)
+  }
+  const repoName = path.basename(repoPath)
+
+  // Generate unique IDs
+  const discussionId = `ralph-loop-discussion-${Date.now()}`
+  const workspaceId = randomUUID()
+
+  // Generate random phrase for this discussion
+  const randomPhrase = generateRandomPhrase()
+
+  // Ensure standalone headless directory exists
+  ensureStandaloneHeadlessDir()
+
+  // Create output path for discussion results
+  const discussionDir = path.join(getStandaloneHeadlessDir(), 'discussions', discussionId)
+  await fsPromises.mkdir(discussionDir, { recursive: true })
+  const discussionOutputPath = path.join(discussionDir, 'discussion-output.md')
+
+  // Build the discussion prompt
+  const discussionPrompt = await buildPrompt('ralph_loop_discussion', {
+    referenceRepoName: repoName,
+    codebasePath: referenceAgent.directory,
+    maxQuestions: maxQuestions,
+    discussionOutputPath: discussionOutputPath,
+    initialPrompt: initialPrompt,
+  })
+
+  // Create discussion workspace
+  const existingWorkspaces = getWorkspaces()
+  const discussionWorkspace: Agent = {
+    id: workspaceId,
+    name: `🔄 ${repoName}: ${randomPhrase}`,
+    directory: referenceAgent.directory,
+    purpose: 'Crafting Ralph Loop prompt',
+    theme: 'orange',
+    icon: getRandomUniqueIcon(existingWorkspaces),
+  }
+  saveWorkspace(discussionWorkspace)
+
+  // Create a dedicated tab for the discussion
+  const discussionTab = createTab(`🔄 ${repoName.substring(0, 15)}`)
+
+  // Store discussion state
+  const discussionState: RalphLoopDiscussionState = {
+    discussionId,
+    workspaceId,
+    referenceAgentId,
+    tabId: discussionTab.id,
+    outputPath: discussionOutputPath,
+  }
+  activeRalphLoopDiscussions.set(discussionId, discussionState)
+
+  try {
+    // Create terminal for discussion
+    console.log(`[RalphLoopDiscussion] Creating terminal for discussion ${discussionId}`)
+    const claudeFlags = `--add-dir "${referenceAgent.directory}"`
+    const terminalId = await queueTerminalCreation(workspaceId, mainWindow, {
+      initialPrompt: discussionPrompt,
+      claudeFlags,
+    })
+    discussionState.terminalId = terminalId
+    console.log(`[RalphLoopDiscussion] Created discussion terminal: ${terminalId}`)
+
+    // Set up workspace in tab
+    addActiveWorkspace(workspaceId)
+    addWorkspaceToTab(workspaceId, discussionTab.id)
+    setActiveTab(discussionTab.id)
+
+    // Notify renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-created', {
+        terminalId,
+        workspaceId,
+      })
+      mainWindow.webContents.send('maximize-workspace', workspaceId)
+    }
+
+    // Set up listener for discussion completion
+    const discussionEmitter = getTerminalEmitter(terminalId)
+    if (discussionEmitter) {
+      let completionTriggered = false
+
+      const dataHandler = async (data: string) => {
+        if (completionTriggered) return
+
+        // Check if discussion output file was written
+        if (data.includes('discussion-output.md') && (data.includes('Wrote') || data.includes('lines to'))) {
+          // Verify file exists before completing
+          try {
+            await fsPromises.access(discussionOutputPath)
+            completionTriggered = true
+            discussionEmitter.removeListener('data', dataHandler)
+            console.log(`[RalphLoopDiscussion] Discussion complete, output written to ${discussionOutputPath}`)
+            await completeRalphLoopDiscussion(discussionId)
+          } catch {
+            // File not created yet, keep waiting
+          }
+        }
+      }
+      discussionEmitter.on('data', dataHandler)
+    }
+
+    emitStateUpdate()
+
+    return { discussionId, workspaceId, tabId: discussionTab.id }
+  } catch (error) {
+    // Clean up on error
+    activeRalphLoopDiscussions.delete(discussionId)
+    deleteWorkspace(workspaceId)
+    throw error
+  }
+}
+
+/**
+ * Complete a Ralph Loop discussion and open the Ralph Loop config with pre-populated values
+ */
+async function completeRalphLoopDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeRalphLoopDiscussions.get(discussionId)
+  if (!discussionState) {
+    console.error(`[RalphLoopDiscussion] Discussion not found: ${discussionId}`)
+    return
+  }
+
+  try {
+    // Read the discussion output
+    const discussionOutput = await fsPromises.readFile(discussionState.outputPath, 'utf-8')
+    console.log(`[RalphLoopDiscussion] Read discussion output (${discussionOutput.length} chars)`)
+
+    // Parse the discussion output to extract Ralph Loop config
+    const config = parseRalphLoopDiscussionOutput(discussionOutput)
+
+    // Close the discussion terminal
+    if (discussionState.terminalId) {
+      const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+      if (terminalId) {
+        closeTerminal(terminalId)
+      }
+    }
+
+    // Remove discussion workspace from tab and delete it
+    removeActiveWorkspace(discussionState.workspaceId)
+    removeWorkspaceFromTab(discussionState.workspaceId)
+    deleteWorkspace(discussionState.workspaceId)
+
+    // Notify renderer to open Ralph Loop config with pre-populated values
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ralph-loop-discussion-complete', {
+        referenceAgentId: discussionState.referenceAgentId,
+        prompt: config.prompt,
+        completionPhrase: config.completionPhrase,
+        maxIterations: config.maxIterations,
+        model: config.model,
+      })
+    }
+
+    // Clean up discussion state
+    activeRalphLoopDiscussions.delete(discussionId)
+    // Also delete the tab since we're opening CMD-K instead
+    deleteTab(discussionState.tabId)
+
+  } catch (error) {
+    console.error(`[RalphLoopDiscussion] Failed to complete discussion:`, error)
+    activeRalphLoopDiscussions.delete(discussionId)
+    throw error
+  }
+}
+
+/**
+ * Parse the Ralph Loop discussion output to extract config values
+ */
+function parseRalphLoopDiscussionOutput(output: string): {
+  prompt: string
+  completionPhrase: string
+  maxIterations: number
+  model: 'opus' | 'sonnet'
+} {
+  // Default values
+  let prompt = ''
+  let completionPhrase = '<promise>COMPLETE</promise>'
+  let maxIterations = 50
+  let model: 'opus' | 'sonnet' = 'sonnet'
+
+  // Extract prompt section (most important)
+  const promptMatch = output.match(/## Prompt\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (promptMatch) {
+    prompt = promptMatch[1].trim()
+  } else {
+    // Fallback: use the goal as prompt if no Prompt section found
+    const goalMatch = output.match(/## Goal\s*\n([\s\S]*?)(?=\n## |$)/)
+    if (goalMatch) {
+      prompt = goalMatch[1].trim()
+    }
+  }
+
+  // Extract completion phrase
+  const phraseMatch = output.match(/## Completion Phrase\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (phraseMatch) {
+    const phraseText = phraseMatch[1].trim()
+    // Try to find the exact phrase (often in backticks or quotes)
+    const exactMatch = phraseText.match(/[`"']([^`"']+)[`"']/) || phraseText.match(/<[^>]+>[^<]*<\/[^>]+>/)
+    if (exactMatch) {
+      completionPhrase = exactMatch[0].replace(/[`"']/g, '')
+    } else if (phraseText.length < 100) {
+      completionPhrase = phraseText.split('\n')[0].trim()
+    }
+  }
+
+  // Extract suggested iterations
+  const iterationsMatch = output.match(/## Suggested Iterations\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (iterationsMatch) {
+    const iterText = iterationsMatch[1].trim()
+    const numMatch = iterText.match(/(\d+)/)
+    if (numMatch) {
+      const parsed = parseInt(numMatch[1], 10)
+      if (parsed >= 1 && parsed <= 500) {
+        maxIterations = parsed
+      }
+    }
+  }
+
+  // Extract recommended model
+  const modelMatch = output.match(/## Recommended Model\s*\n([\s\S]*?)(?=\n## |$)/)
+  if (modelMatch) {
+    const modelText = modelMatch[1].toLowerCase()
+    if (modelText.includes('opus')) {
+      model = 'opus'
+    } else if (modelText.includes('sonnet')) {
+      model = 'sonnet'
+    }
+  }
+
+  return { prompt, completionPhrase, maxIterations, model }
+}
+
+/**
+ * Cancel a Ralph Loop discussion
+ */
+export async function cancelRalphLoopDiscussion(discussionId: string): Promise<void> {
+  const discussionState = activeRalphLoopDiscussions.get(discussionId)
+  if (!discussionState) {
+    return
+  }
+
+  // Close the terminal
+  if (discussionState.terminalId) {
+    const terminalId = getTerminalForWorkspace(discussionState.workspaceId)
+    if (terminalId) {
+      closeTerminal(terminalId)
+    }
+  }
+
+  // Clean up workspace
+  removeActiveWorkspace(discussionState.workspaceId)
+  removeWorkspaceFromTab(discussionState.workspaceId)
+  deleteWorkspace(discussionState.workspaceId)
+
+  // Clean up discussion state
+  activeRalphLoopDiscussions.delete(discussionId)
 
   emitStateUpdate()
 }

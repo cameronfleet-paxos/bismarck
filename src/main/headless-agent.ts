@@ -17,6 +17,7 @@ import {
   spawnContainerAgent,
   ContainerConfig,
   ContainerResult,
+  DEFAULT_IMAGE,
 } from './docker-sandbox'
 import { logger, LogContext } from './logger'
 import {
@@ -28,6 +29,7 @@ import {
   extractTextContent,
 } from './stream-parser'
 import { isProxyRunning, getProxyConfig } from './tool-proxy'
+import { getGitHubToken } from './settings-manager'
 import { writeCrashLog } from './crash-logger'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 
@@ -52,6 +54,8 @@ export interface HeadlessAgentOptions {
   claudeFlags?: string[]
   env?: Record<string, string>
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
+  sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
+  sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
 }
 
 export interface AgentResult {
@@ -136,19 +140,25 @@ export class HeadlessAgent extends EventEmitter {
     }
 
     try {
+      // Retrieve GitHub token from settings so containers can access private registries
+      const githubToken = await getGitHubToken()
+
       // Build container config
       const containerConfig: ContainerConfig = {
-        image: options.image || 'bismarck-agent:latest',
+        image: options.image || DEFAULT_IMAGE,
         workingDir: options.worktreePath,
         planDir: options.planDir,
         planId: options.planId,
         prompt: options.prompt,
         claudeFlags: options.claudeFlags,
         env: {
+          ...(githubToken ? { GITHUB_TOKEN: githubToken, GH_TOKEN: githubToken, GITHUB_ACCESS_TOKEN: githubToken } : {}),
           ...options.env,
           BISMARCK_TASK_ID: options.taskId || '',
         },
         useEntrypoint: options.useEntrypoint,
+        sharedCacheDir: options.sharedCacheDir,
+        sharedModCacheDir: options.sharedModCacheDir,
       }
 
       // Spawn container
