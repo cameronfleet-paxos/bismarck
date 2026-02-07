@@ -82,7 +82,7 @@ jobs:
         run: |
           TAG="${{ steps.version.outputs.version }}"
           # Get full tag annotation and skip the first line (version header)
-          NOTES=$(git tag -l --format='%(contents)' "$TAG" | tail -n +2 | sed '/^$/d')
+          NOTES=$(git tag -l --format='%(contents)' "$TAG" | tail -n +2)
           if [ -z "$NOTES" ]; then
             NOTES="No release notes provided."
           fi
