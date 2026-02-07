@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil, ExternalLink, Copy, ClipboardPaste } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Textarea } from '@/renderer/components/ui/textarea'
@@ -179,6 +179,8 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [newRepoPath, setNewRepoPath] = useState('')
   const [addingRepo, setAddingRepo] = useState(false)
   const [addRepoError, setAddRepoError] = useState<string | null>(null)
+  const [repoCopyFeedback, setRepoCopyFeedback] = useState<string | null>(null)
+  const [repoImportFeedback, setRepoImportFeedback] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
@@ -907,14 +909,69 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                                   <div className="text-sm text-muted-foreground italic">Not set</div>
                                 )}
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => startEditingRepo(repo)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Edit
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => startEditingRepo(repo)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={async () => {
+                                    const exportData = {
+                                      name: repo.name,
+                                      purpose: repo.purpose || null,
+                                      completionCriteria: repo.completionCriteria || null,
+                                      protectedBranches: repo.protectedBranches || [],
+                                      guidance: repo.guidance || null,
+                                    }
+                                    await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
+                                    setRepoCopyFeedback(repo.id)
+                                    setTimeout(() => setRepoCopyFeedback(null), 2000)
+                                  }}
+                                >
+                                  {repoCopyFeedback === repo.id ? (
+                                    <><Check className="h-4 w-4 mr-2 text-green-500" />Copied</>
+                                  ) : (
+                                    <><Copy className="h-4 w-4 mr-2" />Export</>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={async () => {
+                                    try {
+                                      const text = await navigator.clipboard.readText()
+                                      const data = JSON.parse(text)
+                                      const updates: Partial<Pick<Repository, 'purpose' | 'completionCriteria' | 'protectedBranches' | 'guidance'>> = {}
+                                      if (data.purpose !== undefined) updates.purpose = data.purpose || undefined
+                                      if (data.completionCriteria !== undefined) updates.completionCriteria = data.completionCriteria || undefined
+                                      if (data.protectedBranches !== undefined) updates.protectedBranches = Array.isArray(data.protectedBranches) ? data.protectedBranches : undefined
+                                      if (data.guidance !== undefined) updates.guidance = data.guidance || undefined
+                                      await window.electronAPI.updateRepository(repo.id, updates)
+                                      const repos = await window.electronAPI.getRepositories()
+                                      setRepositories(repos)
+                                      setRepoImportFeedback(repo.id)
+                                      setTimeout(() => setRepoImportFeedback(null), 2000)
+                                    } catch {
+                                      setRepoImportFeedback('error')
+                                      setTimeout(() => setRepoImportFeedback(null), 2000)
+                                    }
+                                  }}
+                                >
+                                  {repoImportFeedback === repo.id ? (
+                                    <><Check className="h-4 w-4 mr-2 text-green-500" />Imported</>
+                                  ) : repoImportFeedback === 'error' ? (
+                                    <><X className="h-4 w-4 mr-2 text-red-500" />Invalid</>
+                                  ) : (
+                                    <><ClipboardPaste className="h-4 w-4 mr-2" />Import</>
+                                  )}
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
