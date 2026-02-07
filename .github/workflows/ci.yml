@@ -48,7 +48,7 @@ jobs:
 
       - name: Start Electron with xvfb
         run: |
-          NODE_ENV=development xvfb-run -a ./node_modules/.bin/electron --remote-debugging-port=9222 --no-sandbox . > /tmp/electron.log 2>&1 &
+          xvfb-run -a ./node_modules/.bin/electron --remote-debugging-port=9222 --no-sandbox . > /tmp/electron.log 2>&1 &
           echo "Waiting for Electron CDP endpoint..."
           for i in $(seq 1 30); do
             if curl -s http://localhost:9222/json > /dev/null 2>&1; then
