@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitBranch, GitCommitHorizontal, GitPullRequest, GitCompareArrows } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -375,6 +375,13 @@ function App() {
     }
   }
 
+  const loadRalphLoops = async () => {
+    const loops = await window.electronAPI?.getAllRalphLoops?.()
+    if (loops?.length) {
+      setRalphLoops(new Map(loops.map(loop => [loop.id, loop])))
+    }
+  }
+
   // Load agents and state on mount
   useEffect(() => {
     const mountStartTime = performance.now()
@@ -397,6 +404,10 @@ function App() {
       const headlessStart = performance.now()
       await loadStandaloneHeadlessAgents()
       sendTiming('renderer:loadStandaloneHeadless', headlessStart - benchmarkStartTime, performance.now() - headlessStart)
+
+      const ralphStart = performance.now()
+      await loadRalphLoops()
+      sendTiming('renderer:loadRalphLoops', ralphStart - benchmarkStartTime, performance.now() - ralphStart)
 
       sendTiming('renderer:App-mount-total', mountStartTime - benchmarkStartTime, performance.now() - mountStartTime)
       sendMilestone('renderer-data-loaded')
@@ -2914,41 +2925,6 @@ function App() {
                                       <span>{loopState.gitSummary.commits.length}</span>
                                     </span>
                                   )}
-                                  {loopState.gitSummary.pullRequests.length > 0 && (() => {
-                                    const prs = loopState.gitSummary!.pullRequests
-                                    const latestPr = prs[prs.length - 1]
-                                    return (
-                                      <span className="flex items-center gap-1 cursor-pointer relative group">
-                                        <GitPullRequest className="h-3 w-3" />
-                                        <a
-                                          href={latestPr.url}
-                                          onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(latestPr.url) }}
-                                          className="text-blue-400 hover:underline cursor-pointer"
-                                          title={latestPr.title}
-                                        >
-                                          #{latestPr.number}
-                                        </a>
-                                        {prs.length > 1 && (
-                                          <>
-                                            <span className="text-muted-foreground cursor-pointer">...</span>
-                                            <div className="hidden group-hover:block absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg p-2 z-50 min-w-[140px]">
-                                              {prs.map((pr) => (
-                                                <a
-                                                  key={pr.number}
-                                                  href={pr.url}
-                                                  onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal?.(pr.url) }}
-                                                  className="block text-blue-400 hover:underline cursor-pointer py-0.5"
-                                                  title={pr.title}
-                                                >
-                                                  #{pr.number} - {pr.title.length > 30 ? pr.title.slice(0, 30) + '...' : pr.title}
-                                                </a>
-                                              ))}
-                                            </div>
-                                          </>
-                                        )}
-                                      </span>
-                                    )
-                                  })()}
                                 </div>
                               )}
                             </div>
