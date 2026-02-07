@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, X, Save, Check, ChevronDown, ChevronRight, Pencil, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Save, Check } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
-import { Textarea } from '@/renderer/components/ui/textarea'
 import { Label } from '@/renderer/components/ui/label'
 import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
@@ -15,20 +14,7 @@ import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sectio
 import { UpdatesSettings } from '@/renderer/components/settings/sections/UpdatesSettings'
 import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
 import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
-import type { Repository } from '@/shared/types'
-
-// Convert git remote URL to GitHub web URL
-function getGitHubUrlFromRemote(remoteUrl: string): string | null {
-  // Handle SSH URLs: git@github.com:owner/repo.git
-  const sshMatch = remoteUrl.match(/git@github\.com:(.+?)(?:\.git)?$/)
-  if (sshMatch) return `https://github.com/${sshMatch[1]}`
-
-  // Handle HTTPS URLs: https://github.com/owner/repo.git
-  const httpsMatch = remoteUrl.match(/https:\/\/github\.com\/(.+?)(?:\.git)?$/)
-  if (httpsMatch) return `https://github.com/${httpsMatch[1]}`
-
-  return null
-}
+import { RepositoriesSettings } from '@/renderer/components/settings/sections/RepositoriesSettings'
 
 type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'repositories' | 'playbox' | 'advanced'
 
@@ -167,18 +153,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [checkingAuth, setCheckingAuth] = useState(false)
   const [reauthingToolId, setReauthingToolId] = useState<string | null>(null)
 
-  // Repositories state
-  const [repositories, setRepositories] = useState<Repository[]>([])
-  const [expandedRepoId, setExpandedRepoId] = useState<string | null>(null)
-  const [editingRepoId, setEditingRepoId] = useState<string | null>(null)
-  const [editPurpose, setEditPurpose] = useState('')
-  const [editCompletionCriteria, setEditCompletionCriteria] = useState('')
-  const [editProtectedBranches, setEditProtectedBranches] = useState('')
-  const [editGuidance, setEditGuidance] = useState('')
-  const [newRepoPath, setNewRepoPath] = useState('')
-  const [addingRepo, setAddingRepo] = useState(false)
-  const [addRepoError, setAddRepoError] = useState<string | null>(null)
-
   useEffect(() => {
     loadSettings()
 
@@ -216,9 +190,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       setGhPath(loaded.paths.gh || '')
       setGitPath(loaded.paths.git || '')
 
-      // Load repositories
-      const repos = await window.electronAPI.getRepositories()
-      setRepositories(repos)
     } catch (error) {
       console.error('Failed to load settings:', error)
     } finally {
@@ -263,81 +234,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       await loadSettings()
     } catch (error) {
       console.error('Failed to toggle proxied tool:', error)
-    }
-  }
-
-  const startEditingRepo = (repo: Repository) => {
-    setEditingRepoId(repo.id)
-    setEditPurpose(repo.purpose || '')
-    setEditCompletionCriteria(repo.completionCriteria || '')
-    setEditProtectedBranches(repo.protectedBranches?.join(', ') || '')
-    setEditGuidance(repo.guidance || '')
-  }
-
-  const cancelEditingRepo = () => {
-    setEditingRepoId(null)
-    setEditPurpose('')
-    setEditCompletionCriteria('')
-    setEditProtectedBranches('')
-    setEditGuidance('')
-  }
-
-  const handleSaveRepo = async (repoId: string) => {
-    setSaving(true)
-    try {
-      const protectedBranches = editProtectedBranches
-        .split(',')
-        .map((b) => b.trim())
-        .filter((b) => b.length > 0)
-
-      await window.electronAPI.updateRepository(repoId, {
-        purpose: editPurpose || undefined,
-        completionCriteria: editCompletionCriteria || undefined,
-        protectedBranches: protectedBranches.length > 0 ? protectedBranches : undefined,
-        guidance: editGuidance || undefined,
-      })
-      await loadSettings()
-      cancelEditingRepo()
-      // Show saved indicator
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to save repository:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleAddRepository = async () => {
-    if (!newRepoPath.trim()) return
-
-    setAddingRepo(true)
-    setAddRepoError(null)
-    try {
-      const repo = await window.electronAPI.addRepository(newRepoPath.trim())
-      if (repo) {
-        await loadSettings()
-        setNewRepoPath('')
-        setShowSaved(true)
-        setTimeout(() => setShowSaved(false), 2000)
-      } else {
-        setAddRepoError('Not a valid git repository')
-      }
-    } catch (error) {
-      setAddRepoError(`Failed to add repository: ${error}`)
-    } finally {
-      setAddingRepo(false)
-    }
-  }
-
-  const handleRemoveRepository = async (repoId: string) => {
-    try {
-      await window.electronAPI.removeRepository(repoId)
-      await loadSettings()
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to remove repository:', error)
     }
   }
 
@@ -643,260 +539,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       case 'repositories':
         return (
           <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Repositories</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Git repositories for your agent workspaces
-            </p>
-
-            {/* Add repository form */}
-            <div className="mb-6 p-4 bg-muted/30 rounded-lg">
-              <Label className="text-sm font-medium mb-2 block">Add Repository</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="/path/to/your/repository"
-                  value={newRepoPath}
-                  onChange={(e) => {
-                    setNewRepoPath(e.target.value)
-                    setAddRepoError(null)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddRepository()
-                  }}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleAddRepository}
-                  disabled={!newRepoPath.trim() || addingRepo}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  {addingRepo ? 'Adding...' : 'Add'}
-                </Button>
-              </div>
-              {addRepoError && (
-                <p className="text-sm text-destructive mt-2">{addRepoError}</p>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">
-                Enter the absolute path to a git repository
-              </p>
-            </div>
-
-            {repositories.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No repositories found.</p>
-                <p className="text-sm mt-2">
-                  Add a repository above or create agents with git-initialized directories.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {repositories.map((repo) => {
-                  const isExpanded = expandedRepoId === repo.id
-                  const isEditing = editingRepoId === repo.id
-
-                  return (
-                    <div
-                      key={repo.id}
-                      className="border rounded-lg overflow-hidden"
-                    >
-                      {/* Header - always visible */}
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setExpandedRepoId(isExpanded ? null : repo.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            setExpandedRepoId(isExpanded ? null : repo.id)
-                          }
-                        }}
-                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left cursor-pointer"
-                      >
-                        <div className="flex items-center gap-3">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <div>
-                            {repo.remoteUrl && getGitHubUrlFromRemote(repo.remoteUrl) ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.electronAPI.openExternal(getGitHubUrlFromRemote(repo.remoteUrl!)!)
-                                }}
-                                className="font-medium text-blue-500 hover:text-blue-400 hover:underline flex items-center gap-1"
-                              >
-                                {repo.name}
-                                <ExternalLink className="h-3 w-3" />
-                              </button>
-                            ) : (
-                              <div className="font-medium">{repo.name}</div>
-                            )}
-                            <div className="text-xs text-muted-foreground font-mono">
-                              {repo.rootPath}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm text-muted-foreground">
-                            {repo.defaultBranch}
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleRemoveRepository(repo.id)
-                            }}
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                            title="Remove repository"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Expanded content */}
-                      {isExpanded && (
-                        <div className="border-t p-4 bg-muted/30">
-                          {/* Read-only fields */}
-                          <div className="space-y-3 mb-4">
-                            <div>
-                              <Label className="text-xs text-muted-foreground">Path</Label>
-                              <div className="font-mono text-sm">{repo.rootPath}</div>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">Default Branch</Label>
-                              <div className="text-sm">{repo.defaultBranch}</div>
-                            </div>
-                            {repo.remoteUrl && (
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Remote URL</Label>
-                                <div className="font-mono text-sm break-all">{repo.remoteUrl}</div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Editable fields */}
-                          {isEditing ? (
-                            <div className="space-y-4 pt-4 border-t">
-                              <div className="space-y-2">
-                                <Label htmlFor={`purpose-${repo.id}`}>Purpose</Label>
-                                <Textarea
-                                  id={`purpose-${repo.id}`}
-                                  placeholder="What is this repository for?"
-                                  value={editPurpose}
-                                  onChange={(e) => setEditPurpose(e.target.value)}
-                                  rows={3}
-                                  className="min-h-[80px]"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`completion-${repo.id}`}>Completion Criteria</Label>
-                                <Textarea
-                                  id={`completion-${repo.id}`}
-                                  placeholder="What does 'done' look like?"
-                                  value={editCompletionCriteria}
-                                  onChange={(e) => setEditCompletionCriteria(e.target.value)}
-                                  rows={3}
-                                  className="min-h-[80px]"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`protected-${repo.id}`}>Protected Branches</Label>
-                                <Input
-                                  id={`protected-${repo.id}`}
-                                  placeholder="main, master, production (comma-separated)"
-                                  value={editProtectedBranches}
-                                  onChange={(e) => setEditProtectedBranches(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  Branches that agents should not modify directly
-                                </p>
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`guidance-${repo.id}`}>Headless Agent Guidance</Label>
-                                <Textarea
-                                  id={`guidance-${repo.id}`}
-                                  placeholder="Custom guidance for headless agents working on this repo (e.g., 'always run tests with --coverage', 'use feat/ branch prefix')"
-                                  value={editGuidance}
-                                  onChange={(e) => setEditGuidance(e.target.value)}
-                                  rows={4}
-                                  className="min-h-[100px]"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  Repo-specific instructions applied to all headless agents
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleSaveRepo(repo.id)}
-                                  disabled={saving}
-                                >
-                                  <Save className="h-4 w-4 mr-2" />
-                                  {saving ? 'Saving...' : 'Save'}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={cancelEditingRepo}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-3 pt-4 border-t">
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Purpose</Label>
-                                {repo.purpose ? (
-                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.purpose}</pre>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground italic">Not set</div>
-                                )}
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Completion Criteria</Label>
-                                {repo.completionCriteria ? (
-                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.completionCriteria}</pre>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground italic">Not set</div>
-                                )}
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Protected Branches</Label>
-                                <div className="text-sm">
-                                  {repo.protectedBranches && repo.protectedBranches.length > 0
-                                    ? repo.protectedBranches.join(', ')
-                                    : <span className="text-muted-foreground italic">None</span>}
-                                </div>
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Headless Agent Guidance</Label>
-                                {repo.guidance ? (
-                                  <pre className="text-sm font-mono whitespace-pre-wrap bg-muted/50 rounded p-2 mt-1">{repo.guidance}</pre>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground italic">Not set</div>
-                                )}
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => startEditingRepo(repo)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Edit
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <RepositoriesSettings onSettingsChange={loadSettings} />
           </div>
         )
 
@@ -963,7 +606,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
         {/* Content area */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-3xl">{renderContent()}</div>
+          <div className={activeSection === 'repositories' ? 'max-w-5xl' : 'max-w-3xl'}>{renderContent()}</div>
         </main>
       </div>
     </div>
