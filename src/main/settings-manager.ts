@@ -17,6 +17,7 @@ export interface ProxiedTool {
   name: string           // Tool name, e.g., "npm"
   hostPath: string       // Host command path, e.g., "/usr/local/bin/npm"
   description?: string
+  enabled: boolean       // Whether the tool is available to agents
 }
 
 /**
@@ -130,18 +131,21 @@ export function getDefaultSettings(): AppSettings {
           name: 'git',
           hostPath: '/usr/bin/git',
           description: 'Git version control',
+          enabled: true,
         },
         {
           id: 'gh',
           name: 'gh',
           hostPath: '/usr/local/bin/gh',
           description: 'GitHub CLI',
+          enabled: true,
         },
         {
           id: 'bd',
           name: 'bd',
           hostPath: '/usr/local/bin/bd',
           description: 'Beads task manager',
+          enabled: true,
         },
       ],
       sshAgent: {
@@ -247,6 +251,16 @@ export async function loadSettings(): Promise<AppSettings> {
     // Check for old-style playbox settings with bismarckMode/ottoMode booleans
     const oldPlaybox = loaded.playbox as { bismarckMode?: boolean; ottoMode?: boolean } | undefined
     let needsMigration = false
+
+    // Migration: Ensure all proxied tools have the 'enabled' field
+    const hasToolsWithoutEnabled = merged.docker.proxiedTools.some(t => (t as { enabled?: boolean }).enabled === undefined)
+    if (hasToolsWithoutEnabled) {
+      merged.docker.proxiedTools = merged.docker.proxiedTools.map(t => ({
+        ...t,
+        enabled: t.enabled ?? true,
+      }))
+      needsMigration = true
+    }
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'
       merged.playbox.customPersonaPrompt = null
