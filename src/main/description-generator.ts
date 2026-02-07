@@ -9,7 +9,7 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { DiscoveredRepo, DescriptionProgressEvent } from '../shared/types'
-import { getDefaultBranch } from './git-utils'
+import { getDefaultBranch, isGitRepo } from './git-utils'
 import { spawnWithPath, findBinary } from './exec-utils'
 import { devLog } from './dev-log'
 
@@ -102,9 +102,48 @@ export async function generateDescriptions(
   repos: DiscoveredRepo[],
   onProgress?: (event: DescriptionProgressEvent) => void
 ): Promise<DescriptionResult[]> {
-  // Emit initial pending status for all repos
+  // Filter out non-git repositories - only generate descriptions for git repos
+  const gitRepos: DiscoveredRepo[] = []
+  const nonGitResults: DescriptionResult[] = []
+
+  for (const repo of repos) {
+    if (await isGitRepo(repo.path)) {
+      gitRepos.push(repo)
+    } else {
+      console.log(`[DescriptionGenerator] Skipping non-git directory: ${repo.path}`)
+      // Return empty result for non-git directories
+      const result: DescriptionResult = {
+        repoPath: repo.path,
+        purpose: '',
+        completionCriteria: '',
+        protectedBranches: [],
+      }
+      nonGitResults.push(result)
+      // Emit completed status immediately for non-git directories
+      if (onProgress) {
+        onProgress({
+          repoPath: repo.path,
+          repoName: repo.name,
+          status: 'completed',
+          result: {
+            purpose: '',
+            completionCriteria: '',
+            protectedBranches: [],
+          },
+          quote: getRandomVictoryQuote(),
+        })
+      }
+    }
+  }
+
+  // If no git repos to process, return early
+  if (gitRepos.length === 0) {
+    return nonGitResults
+  }
+
+  // Emit initial pending status for all git repos
   if (onProgress) {
-    for (const repo of repos) {
+    for (const repo of gitRepos) {
       onProgress({
         repoPath: repo.path,
         repoName: repo.name,
@@ -119,7 +158,7 @@ export async function generateDescriptions(
     devLog('[DescriptionGenerator] Claude CLI not found, returning empty descriptions')
     // Still detect protected branches even without claude CLI
     const results = await Promise.all(
-      repos.map(async (repo) => {
+      gitRepos.map(async (repo) => {
         const protectedBranches = await detectProtectedBranches(repo.path)
         const result = {
           repoPath: repo.path,
@@ -144,11 +183,11 @@ export async function generateDescriptions(
         return result
       })
     )
-    return results
+    return [...nonGitResults, ...results]
   }
 
   const results = await Promise.all(
-    repos.map(async (repo): Promise<DescriptionResult> => {
+    gitRepos.map(async (repo): Promise<DescriptionResult> => {
       // Emit generating status
       if (onProgress) {
         onProgress({
@@ -213,7 +252,7 @@ export async function generateDescriptions(
     })
   )
 
-  return results
+  return [...nonGitResults, ...results]
 }
 
 interface GeneratedDescription {

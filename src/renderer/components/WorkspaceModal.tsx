@@ -21,7 +21,7 @@ import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, ThemeName, Repository } from '@/shared/types'
 import type { AgentIconName } from '@/shared/constants'
 import { themes, agentIcons } from '@/shared/constants'
-import { GitBranch, X } from 'lucide-react'
+import { GitBranch, X, FolderOpen } from 'lucide-react'
 
 interface AgentModalProps {
   open: boolean
@@ -92,6 +92,22 @@ export function AgentModal({
     setDetectedRepo(null)
   }, [agent, open])
 
+  const handleBrowse = async () => {
+    try {
+      const selectedPath = await window.electronAPI.setupWizardShowFolderPicker()
+      if (selectedPath) {
+        setDirectory(selectedPath)
+        // Auto-fill name from directory basename if name is empty
+        if (!name.trim()) {
+          const dirName = selectedPath.split('/').pop() || ''
+          setName(dirName)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to open folder picker:', err)
+    }
+  }
+
   const handleSave = async () => {
     if (!name.trim()) {
       setError('Name is required')
@@ -134,12 +150,25 @@ export function AgentModal({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="directory">Home Directory</Label>
-            <Input
-              id="directory"
-              value={directory}
-              onChange={(e) => setDirectory(e.target.value)}
-              placeholder="/path/to/your/project"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="directory"
+                value={directory}
+                onChange={(e) => setDirectory(e.target.value)}
+                placeholder="/path/to/your/project"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleBrowse}
+                title="Browse for directory"
+                data-testid="browse-directory-button"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            </div>
             {/* Git repository detection status */}
             {directory.trim() && (
               <div className="text-xs flex items-center gap-1.5 mt-1">
