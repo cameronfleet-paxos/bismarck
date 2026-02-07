@@ -8,6 +8,7 @@ import { BrowserWindow } from 'electron'
 import { getWorkspaceById, saveWorkspace } from './config'
 import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
+import { devLog } from './dev-log'
 
 /**
  * Strip ANSI escape codes from terminal output
@@ -170,7 +171,7 @@ export function createTerminal(
       const currentWorkspace = getWorkspaceById(workspaceId)
       if (currentWorkspace?.sessionId) {
         saveWorkspace({ ...currentWorkspace, sessionId: undefined })
-        console.log(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
+        devLog(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
       }
     }
   })
@@ -198,7 +199,7 @@ export function createTerminal(
       if (trustPromptDebounce) return
       trustPromptDebounce = true
       trustPromptBuffer = '' // Clear buffer once matched
-      console.log(`[Terminal] Auto-accepting workspace trust prompt for bismarck directory`)
+      devLog(`[Terminal] Auto-accepting workspace trust prompt for bismarck directory`)
       // Send '1' to select "Yes, I trust this folder" after a short delay
       setTimeout(() => {
         ptyProcess.write('1\r')
@@ -220,7 +221,7 @@ export function createTerminal(
 
       // Already in accept mode - stop listening
       if (data.includes('accept edits on')) {
-        console.log(`[Terminal] Task agent in auto-accept mode`)
+        devLog(`[Terminal] Task agent in auto-accept mode`)
         acceptModeDone = true
         return
       }
@@ -230,14 +231,14 @@ export function createTerminal(
       if (data.includes('⏵') && !data.includes('accept edits on')) {
         if (acceptModeDebounce) return
         if (acceptModeAttempts >= MAX_ACCEPT_MODE_ATTEMPTS) {
-          console.log(`[Terminal] Max accept mode attempts reached`)
+          devLog(`[Terminal] Max accept mode attempts reached`)
           acceptModeDone = true
           return
         }
 
         acceptModeDebounce = true
         acceptModeAttempts++
-        console.log(`[Terminal] Cycling accept mode (attempt ${acceptModeAttempts})`)
+        devLog(`[Terminal] Cycling accept mode (attempt ${acceptModeAttempts})`)
 
         setTimeout(() => {
           ptyProcess.write('\x1b[Z') // Shift+Tab
@@ -347,7 +348,7 @@ export function getActiveTerminalIds(): string[] {
  * Get terminal ID for a workspace
  */
 export function getTerminalForWorkspace(workspaceId: string): string | undefined {
-  console.log(`[Terminal] Looking for workspace ${workspaceId} in terminals:`, Array.from(terminals.entries()).map(([id, t]) => ({ id, workspaceId: t.workspaceId })))
+  devLog(`[Terminal] Looking for workspace ${workspaceId} in terminals:`, Array.from(terminals.entries()).map(([id, t]) => ({ id, workspaceId: t.workspaceId })))
   for (const [terminalId, terminal] of terminals) {
     if (terminal.workspaceId === workspaceId) {
       return terminalId

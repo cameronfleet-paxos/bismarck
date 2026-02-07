@@ -20,6 +20,7 @@ import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
 import { loadSettings } from './settings-manager'
+import { devLog } from './dev-log'
 
 export interface ContainerConfig {
   image: string // Docker image name (e.g., "bismarck-agent:latest")
@@ -31,6 +32,8 @@ export interface ContainerConfig {
   prompt: string // The prompt to send to Claude
   claudeFlags?: string[] // Additional claude CLI flags
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
+  sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
+  sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
 }
 
 export interface ContainerResult {
@@ -41,8 +44,15 @@ export interface ContainerResult {
   wait: () => Promise<number>
 }
 
-// Default image name - should match what's built by Dockerfile
-const DEFAULT_IMAGE = 'bismarck-agent:latest'
+export interface DockerImageInfo {
+  exists: boolean
+  imageId?: string
+  created?: string
+  size?: number
+}
+
+// Default image name - Docker Hub registry image
+export const DEFAULT_IMAGE = 'bismarckapp/bismarck-agent:latest'
 
 // Mock image for testing without real Claude API calls
 export const MOCK_IMAGE = 'bismarck-agent-mock:test'
@@ -95,6 +105,26 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // The git wrapper needs to know the host path to execute commands
   args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${config.workingDir}`)
 
+  // Redirect Go temp dir to workspace volume to avoid filling container overlay fs
+  // GOTMPDIR must be per-worktree (scratch files can collide between concurrent builds)
+  args.push('-e', 'GOTMPDIR=/workspace/.tmp')
+
+  // Redirect Go build cache: use shared per-repo cache if enabled, otherwise per-worktree
+  if (settings.docker.sharedBuildCache?.enabled && config.sharedCacheDir) {
+    args.push('-v', `${config.sharedCacheDir}:/shared-cache`)
+    args.push('-e', 'GOCACHE=/shared-cache')
+  } else {
+    args.push('-e', 'GOCACHE=/workspace/.tmp/go-build')
+  }
+
+  // Redirect Go module cache: use shared per-repo cache if enabled, otherwise per-worktree
+  if (settings.docker.sharedBuildCache?.enabled && config.sharedModCacheDir) {
+    args.push('-v', `${config.sharedModCacheDir}:/shared-modcache`)
+    args.push('-e', 'GOMODCACHE=/shared-modcache')
+  } else {
+    args.push('-e', 'GOMODCACHE=/workspace/.tmp/go-mod')
+  }
+
   // Forward SSH agent for private repo access (Bazel, Go modules)
   // This allows real git (used outside /workspace) to authenticate with GitHub
   // On macOS, Docker Desktop provides a special socket path for SSH agent forwarding
@@ -139,7 +169,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
-  console.log('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')
+  devLog('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length})` : '')
   if (oauthToken) {
     // Validate token length - valid tokens are ~108 chars, truncated tokens are shorter
     if (oauthToken.length < 100) {
@@ -209,7 +239,20 @@ export async function spawnContainerAgent(
     workingDir: config.workingDir,
     envVars: envVarsForLog,
   })
-  logger.debug('docker', `Docker command: docker ${args.join(' ')}`, logContext)
+
+  // Redact sensitive env var values from full docker command log
+  const SENSITIVE_ENV_PATTERNS = ['TOKEN', 'SECRET', 'KEY', 'OAUTH', 'PASSWORD', 'CREDENTIAL']
+  const redactedArgs = args.map((arg, i) => {
+    if (args[i - 1] === '-e' && arg.includes('=')) {
+      const eqIdx = arg.indexOf('=')
+      const varName = arg.substring(0, eqIdx)
+      if (SENSITIVE_ENV_PATTERNS.some(p => varName.toUpperCase().includes(p))) {
+        return `${varName}=[REDACTED]`
+      }
+    }
+    return arg
+  })
+  logger.debug('docker', `Docker command: docker ${redactedArgs.join(' ')}`, logContext)
 
   const dockerProcess = spawnWithPath('docker', args, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -344,6 +387,50 @@ export async function checkImageExists(
 }
 
 /**
+ * Get detailed info about a Docker image
+ */
+export async function getImageInfo(
+  imageName: string = DEFAULT_IMAGE
+): Promise<DockerImageInfo> {
+  return new Promise((resolve) => {
+    const proc = spawnWithPath(
+      'docker',
+      ['image', 'inspect', '--format', '{{json .}}', imageName],
+      { stdio: 'pipe' }
+    )
+
+    let output = ''
+
+    proc.stdout?.on('data', (data) => {
+      output += data.toString()
+    })
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        resolve({ exists: false })
+        return
+      }
+
+      try {
+        const info = JSON.parse(output.trim())
+        resolve({
+          exists: true,
+          imageId: info.Id?.replace('sha256:', '').substring(0, 12),
+          created: info.Created,
+          size: info.Size,
+        })
+      } catch {
+        resolve({ exists: true })
+      }
+    })
+
+    proc.on('error', () => {
+      resolve({ exists: false })
+    })
+  })
+}
+
+/**
  * Build the bismarck-agent Docker image
  */
 export async function buildAgentImage(
@@ -376,6 +463,53 @@ export async function buildAgentImage(
     })
 
     proc.on('error', (err) => {
+      resolve({
+        success: false,
+        output: err.message,
+      })
+    })
+  })
+}
+
+/**
+ * Pull a Docker image from a registry (e.g., Docker Hub)
+ */
+export async function pullImage(
+  imageName: string = DEFAULT_IMAGE,
+  onProgress?: (message: string) => void
+): Promise<{ success: boolean; output: string }> {
+  return new Promise((resolve) => {
+    logger.info('docker', 'Pulling Docker image', undefined, { image: imageName })
+    const proc = spawnWithPath('docker', ['pull', imageName], { stdio: 'pipe' })
+
+    let output = ''
+
+    proc.stdout?.on('data', (data) => {
+      const text = data.toString()
+      output += text
+      onProgress?.(text.trim())
+    })
+
+    proc.stderr?.on('data', (data) => {
+      const text = data.toString()
+      output += text
+      onProgress?.(text.trim())
+    })
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        logger.info('docker', 'Docker image pulled successfully', undefined, { image: imageName })
+      } else {
+        logger.error('docker', 'Failed to pull Docker image', undefined, { image: imageName, exitCode: code })
+      }
+      resolve({
+        success: code === 0,
+        output,
+      })
+    })
+
+    proc.on('error', (err) => {
+      logger.error('docker', 'Error pulling Docker image', undefined, { error: err.message })
       resolve({
         success: false,
         output: err.message,
@@ -449,7 +583,7 @@ export function getDockerfilePath(): string {
 
 /**
  * Initialize Docker environment for headless mode
- * Checks if Docker is available and builds the image if needed
+ * Checks if Docker is available and pulls the image if needed
  */
 export async function initializeDockerEnvironment(): Promise<{
   success: boolean
@@ -473,45 +607,75 @@ export async function initializeDockerEnvironment(): Promise<{
 
   logger.info('docker', 'Docker is available')
 
-  // Check if image exists
+  // Always try to pull the latest image (fast if already up-to-date, Docker checks digests)
+  logger.info('docker', 'Pulling Docker image from registry', undefined, { image: DEFAULT_IMAGE })
+  const pullResult = await pullImage(DEFAULT_IMAGE)
+
+  if (pullResult.success) {
+    logger.info('docker', 'Docker image pulled successfully', undefined, { image: DEFAULT_IMAGE })
+    return {
+      success: true,
+      dockerAvailable: true,
+      imageBuilt: true,
+      message: 'Docker image pulled successfully',
+    }
+  }
+
+  // Pull failed - check if we have a cached local image to fall back to
+  logger.warn('docker', 'Failed to pull Docker image', undefined, {
+    pullOutput: pullResult.output.substring(0, 200),
+  })
+
   const imageExists = await checkImageExists(DEFAULT_IMAGE)
   if (imageExists) {
-    logger.info('docker', 'Docker image already exists', undefined, { image: DEFAULT_IMAGE })
+    logger.info('docker', 'Using cached local image', undefined, { image: DEFAULT_IMAGE })
     return {
       success: true,
       dockerAvailable: true,
       imageBuilt: false,
-      message: 'Docker environment ready',
+      message: 'Using cached Docker image (pull failed, likely offline)',
     }
   }
 
-  // Build the image
-  logger.info('docker', 'Building Docker image', undefined, { image: DEFAULT_IMAGE })
-  const dockerfilePath = getDockerfilePath()
+  // No local image either - fallback to local build in dev mode only
+  logger.warn('docker', 'No cached image available, attempting local build fallback')
 
-  // Check if Dockerfile exists
-  const fs = await import('fs/promises')
-  try {
-    await fs.access(dockerfilePath)
-  } catch {
-    logger.error('docker', 'Dockerfile not found', undefined, { path: dockerfilePath })
+  const isDev = process.env.NODE_ENV === 'development'
+  if (!isDev) {
+    logger.error('docker', 'Cannot build locally in production mode')
     return {
       success: false,
       dockerAvailable: true,
       imageBuilt: false,
-      message: `Dockerfile not found at ${dockerfilePath}`,
+      message: `Failed to pull Docker image: ${pullResult.output.substring(0, 200)}`,
+    }
+  }
+
+  logger.info('docker', 'Dev mode: attempting local Dockerfile build', undefined, { image: DEFAULT_IMAGE })
+  const dockerfilePath = getDockerfilePath()
+
+  const fs = await import('fs/promises')
+  try {
+    await fs.access(dockerfilePath)
+  } catch {
+    logger.error('docker', 'Dockerfile not found for local build', undefined, { path: dockerfilePath })
+    return {
+      success: false,
+      dockerAvailable: true,
+      imageBuilt: false,
+      message: `Failed to pull image and Dockerfile not found at ${dockerfilePath}`,
     }
   }
 
   const buildResult = await buildAgentImage(dockerfilePath, DEFAULT_IMAGE)
 
   if (buildResult.success) {
-    logger.info('docker', 'Docker image built successfully', undefined, { image: DEFAULT_IMAGE })
+    logger.info('docker', 'Docker image built successfully (dev fallback)', undefined, { image: DEFAULT_IMAGE })
     return {
       success: true,
       dockerAvailable: true,
       imageBuilt: true,
-      message: 'Docker image built successfully',
+      message: 'Docker image built successfully (local build)',
     }
   } else {
     logger.error('docker', 'Failed to build Docker image', undefined, {

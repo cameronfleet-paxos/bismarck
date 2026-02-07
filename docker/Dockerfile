@@ -7,6 +7,9 @@
 
 FROM node:20-bookworm
 
+ARG BISMARCK_VERSION=dev
+LABEL org.opencontainers.image.version="${BISMARCK_VERSION}"
+
 # Install non-sensitive dev tools
 RUN apt-get update && apt-get install -y \
     curl \
@@ -59,6 +62,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
+# Install common Go tools (goimports for formatting)
+RUN GOPATH=/tmp/gotools /usr/local/go/bin/go install golang.org/x/tools/cmd/goimports@latest \
+    && mv /tmp/gotools/bin/goimports /usr/local/bin/goimports \
+    && rm -rf /tmp/gotools
+
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
@@ -75,6 +83,11 @@ RUN chmod +x /usr/local/bin/bd
 # This proxies git commands to the host where the worktree can be resolved
 COPY git-proxy-wrapper.sh /usr/local/bin/git
 RUN chmod +x /usr/local/bin/git
+
+# Copy bb CLI wrapper that calls the tool proxy
+# This proxies bb (BuildBuddy) commands to the host where SSO auth lives
+COPY bb-proxy-wrapper.sh /usr/local/bin/bb
+RUN chmod +x /usr/local/bin/bb
 
 # Create non-root user (Claude refuses --dangerously-skip-permissions as root)
 RUN useradd -m -s /bin/bash agent && \

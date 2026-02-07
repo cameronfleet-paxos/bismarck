@@ -2,8 +2,9 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, GripVertical, Pencil, Eye } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2 } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { devLog } from './utils/dev-log'
 import {
   Dialog,
   DialogContent,
@@ -30,12 +31,14 @@ import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { PromptViewerModal } from '@/renderer/components/PromptViewerModal'
+import { FollowUpModal } from '@/renderer/components/FollowUpModal'
 import { BootProgressIndicator } from '@/renderer/components/BootProgressIndicator'
 import { Breadcrumb } from '@/renderer/components/Breadcrumb'
 import { AttentionQueue } from '@/renderer/components/AttentionQueue'
 import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
+import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -64,6 +67,14 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
   dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
   devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+  toggleAgentSidebar: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+  togglePlansSidebar: { key: 'p', modifiers: { meta: true, shift: true, alt: false } },
+  nextTab: { key: ']', modifiers: { meta: true, shift: true, alt: false } },
+  previousTab: { key: '[', modifiers: { meta: true, shift: true, alt: false } },
+  newTab: { key: 't', modifiers: { meta: true, shift: false, alt: false } },
+  closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
+  toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
+  closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -186,6 +197,23 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+  const [deleteConfirmPlanInfo, setDeleteConfirmPlanInfo] = useState<{
+    hasPlan: boolean
+    planTitle?: string
+    isInProgress: boolean
+  } | null>(null)
+
+  // Diff overlay state (tracks which workspace has diff open)
+  const [diffOpenForWorkspace, setDiffOpenForWorkspace] = useState<string | null>(null)
+
+  // Track whether agent was expanded before diff was opened (to restore on close)
+  const [expandedBeforeDiff, setExpandedBeforeDiff] = useState<boolean>(false)
+
+  // Track which agent directories are git repos (for hiding diff button)
+  const [gitRepoStatus, setGitRepoStatus] = useState<Map<string, boolean>>(new Map())
+
+  // Track file change counts per workspace for diff badge
+  const [fileChangeCounts, setFileChangeCounts] = useState<Map<string, number>>(new Map())
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
@@ -194,10 +222,16 @@ function App() {
   // Prompt viewer modal state
   const [promptViewerInfo, setPromptViewerInfo] = useState<HeadlessAgentInfo | null>(null)
 
+  // Follow-up modal state
+  const [followUpInfo, setFollowUpInfo] = useState<HeadlessAgentInfo | null>(null)
+
   // Loading state for standalone headless agent actions
   const [confirmingDoneIds, setConfirmingDoneIds] = useState<Set<string>>(new Set())
   const [startingFollowUpIds, setStartingFollowUpIds] = useState<Set<string>>(new Set())
   const [restartingIds, setRestartingIds] = useState<Set<string>>(new Set())
+
+  // Discussion completing spinner state (overlays the discussion workspace)
+  const [discussionCompletingWorkspaceId, setDiscussionCompletingWorkspaceId] = useState<string | null>(null)
 
   // Dev console state (development only)
   const [devConsoleOpen, setDevConsoleOpen] = useState(false)
@@ -205,6 +239,16 @@ function App() {
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+  const [prefillRalphLoopConfig, setPrefillRalphLoopConfig] = useState<{
+    referenceAgentId: string
+    prompt: string
+    completionPhrase: string
+    maxIterations: number
+    model: 'opus' | 'sonnet'
+  } | null>(null)
+
+  // Terminal search state (CMD-F) - tracks which agent has search open
+  const [terminalSearchAgentId, setTerminalSearchAgentId] = useState<string | null>(null)
 
   // Discussion execute state - maps planId to selected agent id
   const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
@@ -230,6 +274,70 @@ function App() {
     }
   }, [preferencesLoaded, agents.length, preferences.tutorialCompleted])
 
+  // Check git repo status for agent directories (to hide diff button for non-git repos)
+  useEffect(() => {
+    const directories = new Set(agents.map(a => a.directory))
+    const unchecked = [...directories].filter(d => !gitRepoStatus.has(d))
+    if (unchecked.length === 0) return
+
+    Promise.all(
+      unchecked.map(async (dir) => {
+        try {
+          const isGit = await window.electronAPI.isGitRepo(dir)
+          return [dir, isGit] as const
+        } catch {
+          // If check fails (e.g., IPC not available), assume git repo to keep button visible
+          return [dir, true] as const
+        }
+      })
+    ).then((results) => {
+      setGitRepoStatus(prev => {
+        const next = new Map(prev)
+        for (const [dir, isGit] of results) {
+          next.set(dir, isGit)
+        }
+        return next
+      })
+    })
+  }, [agents])
+
+  // Poll file change counts for visible agents (for diff badge)
+  useEffect(() => {
+    const pollChangeCounts = async () => {
+      if (preferences.showDiffView === false) return
+      const activeTab = tabs.find(t => t.id === activeTabId)
+      if (!activeTab) return
+
+      const agentsToCheck = activeTerminals
+        .filter(t => activeTab.workspaceIds.includes(t.workspaceId))
+        .map(t => agents.find(a => a.id === t.workspaceId))
+        .filter((a): a is Agent => !!a && !a.isHeadless && !a.isStandaloneHeadless && gitRepoStatus.get(a.directory) !== false)
+
+      if (agentsToCheck.length === 0) return
+
+      const results = await Promise.allSettled(
+        agentsToCheck.map(async (agent) => {
+          const result = await window.electronAPI.getChangedFiles(agent.directory)
+          return [agent.id, result.files.length] as const
+        })
+      )
+
+      setFileChangeCounts(prev => {
+        const next = new Map(prev)
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            next.set(r.value[0], r.value[1])
+          }
+        }
+        return next
+      })
+    }
+
+    pollChangeCounts()
+    const interval = setInterval(pollChangeCounts, 5000)
+    return () => clearInterval(interval)
+  }, [activeTabId, activeTerminals, agents, gitRepoStatus, tabs, preferences.showDiffView])
+
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
     if (expandPlanId) {
@@ -242,8 +350,14 @@ function App() {
   const [terminalQueueStatus, setTerminalQueueStatus] = useState<{ queued: number; active: number }>({ queued: 0, active: 0 })
 
   // Update available state for header notification
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string } | null>(null)
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean } | null>(null)
+  // Popup for significantly outdated versions (only shows once per session)
+  const [showUpdatePopup, setShowUpdatePopup] = useState(false)
+  const updatePopupShownRef = useRef(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
+
+  // Tool auth status (for tools like bb that need SSO re-auth)
+  const [toolsNeedingReauth, setToolsNeedingReauth] = useState<Array<{ toolId: string; toolName: string; state: string; reauthHint?: string }>>([])
 
   // Central registry of terminal writers - Map of terminalId -> write function
   const terminalWritersRef = useRef<Map<string, TerminalWriter>>(new Map())
@@ -281,6 +395,13 @@ function App() {
     }
   }
 
+  const loadRalphLoops = async () => {
+    const loops = await window.electronAPI?.getAllRalphLoops?.()
+    if (loops?.length) {
+      setRalphLoops(new Map(loops.map(loop => [loop.id, loop])))
+    }
+  }
+
   // Load agents and state on mount
   useEffect(() => {
     const mountStartTime = performance.now()
@@ -303,6 +424,10 @@ function App() {
       const headlessStart = performance.now()
       await loadStandaloneHeadlessAgents()
       sendTiming('renderer:loadStandaloneHeadless', headlessStart - benchmarkStartTime, performance.now() - headlessStart)
+
+      const ralphStart = performance.now()
+      await loadRalphLoops()
+      sendTiming('renderer:loadRalphLoops', ralphStart - benchmarkStartTime, performance.now() - ralphStart)
 
       sendTiming('renderer:App-mount-total', mountStartTime - benchmarkStartTime, performance.now() - mountStartTime)
       sendMilestone('renderer-data-loaded')
@@ -367,11 +492,16 @@ function App() {
         const status = await window.electronAPI?.getUpdateStatus?.()
         if (!mounted) return
 
-        console.log('[App] Polled update status:', status?.state)
+        devLog('[App] Polled update status:', status?.state)
 
         if (status?.state === 'available') {
-          console.log('[App] Update available:', status.version)
-          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+          devLog('[App] Update available:', status.version, status.significantlyOutdated ? '(significantly outdated)' : '')
+          setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+          // Show popup for significantly outdated versions (once per session)
+          if (status.significantlyOutdated && !updatePopupShownRef.current) {
+            updatePopupShownRef.current = true
+            setShowUpdatePopup(true)
+          }
           // Stop polling once we have a result
           if (pollInterval) {
             clearInterval(pollInterval)
@@ -406,9 +536,14 @@ function App() {
 
     // Also listen for push updates (for manual checks from Settings)
     window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
-      console.log('[App] Received update status push:', status.state)
+      devLog('[App] Received update status push:', status.state)
       if (status.state === 'available') {
-        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl })
+        setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
+        // Show popup for significantly outdated versions (once per session)
+        if (status.significantlyOutdated && !updatePopupShownRef.current) {
+          updatePopupShownRef.current = true
+          setShowUpdatePopup(true)
+        }
       } else {
         setUpdateAvailable(null)
       }
@@ -421,6 +556,25 @@ function App() {
       }
       clearTimeout(maxPollTimeout)
       window.electronAPI?.removeUpdateStatusListener?.()
+    }
+  }, [])
+
+  // Listen for tool auth status updates (e.g., bb SSO expiry)
+  useEffect(() => {
+    // Get initial statuses
+    window.electronAPI?.getToolAuthStatuses?.().then((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    // Listen for push updates
+    window.electronAPI?.onToolAuthStatus?.((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    return () => {
+      window.electronAPI?.removeToolAuthStatusListener?.()
     }
   }, [])
 
@@ -439,6 +593,14 @@ function App() {
     }
   }, [focusedAgentId, waitingQueue])
 
+  // Close diff overlay and restore agent expansion state
+  const closeDiffAndRestore = useCallback((tabId: string) => {
+    if (!expandedBeforeDiff) {
+      setMaximizedAgentIdByTab(prev => ({ ...prev, [tabId]: null }))
+    }
+    setDiffOpenForWorkspace(null)
+  }, [expandedBeforeDiff])
+
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
@@ -446,6 +608,11 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to return to main view from settings or close command search
       if (e.key === 'Escape') {
+        if (terminalSearchAgentId) {
+          e.preventDefault()
+          setTerminalSearchAgentId(null)
+          return
+        }
         if (currentView === 'settings') {
           e.preventDefault()
           setCurrentView('main')
@@ -456,6 +623,17 @@ function App() {
           setCommandSearchOpen(false)
           return
         }
+      }
+
+      // CMD+F: Open terminal search for focused agent
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        // Focus the current agent if we have one (interactive or headless)
+        const focusedId = focusedAgentIdRef.current
+        if (focusedId) {
+          setTerminalSearchAgentId(focusedId)
+        }
+        return
       }
 
       // Dev console shortcut (development only)
@@ -469,6 +647,132 @@ function App() {
       if (matchesShortcut(e, shortcuts.commandPalette)) {
         e.preventDefault()
         setCommandSearchOpen(true)
+        return
+      }
+
+      // Toggle agent sidebar shortcut
+      if (matchesShortcut(e, shortcuts.toggleAgentSidebar)) {
+        e.preventDefault()
+        setSidebarCollapsed(prev => !prev)
+        return
+      }
+
+      // Toggle plans sidebar shortcut (only in team mode)
+      if (matchesShortcut(e, shortcuts.togglePlansSidebar)) {
+        if (preferences.operatingMode === 'team') {
+          e.preventDefault()
+          const newOpen = !planSidebarOpen
+          setPlanSidebarOpen(newOpen)
+          window.electronAPI?.setPlanSidebarOpen?.(newOpen)
+        }
+        return
+      }
+
+      // Next tab shortcut
+      if (matchesShortcut(e, shortcuts.nextTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const nextIndex = (currentIndex + 1) % tabs.length
+          const nextTabId = tabs[nextIndex].id
+          setActiveTabId(nextTabId)
+          window.electronAPI?.setActiveTab?.(nextTabId)
+        }
+        return
+      }
+
+      // Previous tab shortcut
+      if (matchesShortcut(e, shortcuts.previousTab)) {
+        e.preventDefault()
+        if (tabs.length > 1 && activeTabId) {
+          const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+          const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length
+          const prevTabId = tabs[prevIndex].id
+          setActiveTabId(prevTabId)
+          window.electronAPI?.setActiveTab?.(prevTabId)
+        }
+        return
+      }
+
+      // New tab shortcut
+      if (matchesShortcut(e, shortcuts.newTab)) {
+        e.preventDefault()
+        window.electronAPI?.createTab?.().then((newTab) => {
+          if (newTab) {
+            setActiveTabId(newTab.id)
+          }
+        })
+        return
+      }
+
+      // Close tab shortcut
+      if (matchesShortcut(e, shortcuts.closeTab)) {
+        e.preventDefault()
+        if (activeTabId && tabs.length > 1) {
+          // Don't close if it's the only tab
+          const activeTab = tabs.find(t => t.id === activeTabId)
+          if (activeTab) {
+            // Trigger deletion - this will show confirmation if there are agents
+            handleTabDeleteRequest(activeTabId)
+          }
+        }
+        return
+      }
+
+      // Toggle maximize agent shortcut
+      if (matchesShortcut(e, shortcuts.toggleMaximizeAgent)) {
+        e.preventDefault()
+        if (activeTabId && focusedAgentIdRef.current) {
+          const currentMaximized = maximizedAgentIdByTab[activeTabId]
+          if (currentMaximized === focusedAgentIdRef.current) {
+            // Already maximized, minimize
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: null }))
+          } else {
+            // Maximize the focused agent
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [activeTabId]: focusedAgentIdRef.current }))
+          }
+        }
+        return
+      }
+
+      // Close agent shortcut
+      if (matchesShortcut(e, shortcuts.closeAgent)) {
+        e.preventDefault()
+        if (focusedAgentIdRef.current) {
+          window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
+        }
+        return
+      }
+
+      // Cmd+D: Toggle diff overlay for focused agent
+      if (e.key === 'd' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        if (preferences.showDiffView === false) return
+
+        // If diff is already open, close it and restore expansion state
+        if (diffOpenForWorkspace) {
+          const tabForDiff = tabs.find(t => t.workspaceIds.includes(diffOpenForWorkspace))
+          if (tabForDiff) {
+            closeDiffAndRestore(tabForDiff.id)
+          } else {
+            setDiffOpenForWorkspace(null)
+          }
+          return
+        }
+
+        // Otherwise, open diff for the focused agent (if any)
+        if (focusedAgentId) {
+          const tabForAgent = tabs.find(t => t.workspaceIds.includes(focusedAgentId))
+          if (tabForAgent) {
+            const activeTabMaxId = maximizedAgentIdByTab[tabForAgent.id] || null
+            const isExpandMode = preferences.attentionMode === 'expand' && waitingQueue.length > 0
+            const autoExpId = isExpandMode ? waitingQueue[0] : null
+            const isCurrentlyExpanded = activeTabMaxId === focusedAgentId || autoExpId === focusedAgentId
+            setExpandedBeforeDiff(isCurrentlyExpanded)
+            setMaximizedAgentIdByTab(prev => ({ ...prev, [tabForAgent.id]: focusedAgentId }))
+          }
+          setDiffOpenForWorkspace(focusedAgentId)
+        }
         return
       }
 
@@ -520,7 +824,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, preferences.attentionMode, preferences.keyboardShortcuts, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent])
+  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -557,7 +861,7 @@ function App() {
         // Load headless agents for the active plan
         const loadedHeadlessAgents = await window.electronAPI?.getHeadlessAgentsForPlan?.(activePlan.id)
         if (loadedHeadlessAgents && loadedHeadlessAgents.length > 0) {
-          console.log('[Renderer] Loaded headless agents from main process:', loadedHeadlessAgents.length)
+          devLog('[Renderer] Loaded headless agents from main process:', loadedHeadlessAgents.length)
           setHeadlessAgents((prev) => {
             const newMap = new Map(prev)
             for (const info of loadedHeadlessAgents) {
@@ -657,20 +961,20 @@ function App() {
 
     // Listen for agent waiting events
     window.electronAPI?.onAgentWaiting?.((agentId: string) => {
-      console.log(`[Renderer] Received agent-waiting event for ${agentId}`)
+      devLog(`[Renderer] Received agent-waiting event for ${agentId}`)
       // Check if user is already focused on this agent using the ref
       if (focusedAgentIdRef.current === agentId) {
-        console.log(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
+        devLog(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
         window.electronAPI?.acknowledgeWaiting?.(agentId)
         return  // Don't add to waiting queue or trigger attention
       }
 
       // Add to waiting queue since user isn't focused on this agent
       setWaitingQueue((prev) => {
-        console.log(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
+        devLog(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
         if (!prev.includes(agentId)) {
           const newQueue = [...prev, agentId]
-          console.log(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
+          devLog(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
           window.electronAPI?.updateTray?.(newQueue.length)
           return newQueue
         }
@@ -715,7 +1019,7 @@ function App() {
 
     // Plan event listeners (Team Mode)
     window.electronAPI?.onPlanUpdate?.((plan: Plan) => {
-      console.log('[Renderer] Received plan-update', { id: plan.id, orchestratorTabId: plan.orchestratorTabId, status: plan.status })
+      devLog('[Renderer] Received plan-update', { id: plan.id, orchestratorTabId: plan.orchestratorTabId, status: plan.status })
       setPlans((prev) => {
         const index = prev.findIndex((p) => p.id === plan.id)
         if (index >= 0) {
@@ -736,7 +1040,7 @@ function App() {
             }
           }
           if (agentsToRemove.length > 0) {
-            console.log('[Renderer] Clearing headless agents for plan', {
+            devLog('[Renderer] Clearing headless agents for plan', {
               planId: plan.id,
               planStatus: plan.status,
               agentsToRemove,
@@ -746,7 +1050,7 @@ function App() {
             for (const taskId of agentsToRemove) {
               newMap.delete(taskId)
             }
-            console.log('[Renderer] Headless agents cleared', { totalAgentsAfter: newMap.size })
+            devLog('[Renderer] Headless agents cleared', { totalAgentsAfter: newMap.size })
             return newMap
           }
           return prev
@@ -755,7 +1059,7 @@ function App() {
     })
 
     window.electronAPI?.onPlanDeleted?.((planId: string) => {
-      console.log('[Renderer] Received plan-deleted', { planId })
+      devLog('[Renderer] Received plan-deleted', { planId })
       setPlans((prev) => prev.filter((p) => p.id !== planId))
       // Clear any headless agents associated with this plan
       setHeadlessAgents((prev) => {
@@ -834,15 +1138,23 @@ function App() {
       loadAgents()
     })
 
+    // Discussion completing spinner (overlay on the discussion terminal)
+    window.electronAPI?.onDiscussionCompleting?.((data) => {
+      devLog('[Renderer] Received discussion-completing', data)
+      setDiscussionCompletingWorkspaceId(data.workspaceId)
+    })
+
     // Headless agent events
     window.electronAPI?.onHeadlessAgentStarted?.((data) => {
-      console.log('[Renderer] Received headless-agent-started', data)
+      devLog('[Renderer] Received headless-agent-started', data)
+      // Clear discussion completing spinner - the handoff agent has started
+      setDiscussionCompletingWorkspaceId(null)
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
-        console.log('[Renderer] getHeadlessAgentInfo returned:', info)
+        devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
           setHeadlessAgents((prev) => {
             const newMap = new Map(prev).set(data.taskId, info)
-            console.log('[Renderer] Updated headlessAgents map, size:', newMap.size)
+            devLog('[Renderer] Updated headlessAgents map, size:', newMap.size)
             return newMap
           })
         }
@@ -850,12 +1162,12 @@ function App() {
     })
 
     window.electronAPI?.onHeadlessAgentUpdate?.((info: HeadlessAgentInfo) => {
-      console.log('[Renderer] Received headless-agent-update', { taskId: info.taskId, status: info.status })
+      devLog('[Renderer] Received headless-agent-update', { taskId: info.taskId, status: info.status })
       const taskId = info.taskId
       if (taskId) {
         setHeadlessAgents((prev) => {
           const newMap = new Map(prev).set(taskId, info)
-          console.log('[Renderer] Updated headlessAgents via update event, size:', newMap.size)
+          devLog('[Renderer] Updated headlessAgents via update event, size:', newMap.size)
           return newMap
         })
       }
@@ -877,7 +1189,7 @@ function App() {
 
     // Ralph Loop event listeners
     window.electronAPI?.onRalphLoopUpdate?.((state: RalphLoopState) => {
-      console.log('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
+      devLog('[Renderer] Received ralph-loop-update', { id: state.id, status: state.status, iteration: state.currentIteration })
       setRalphLoops((prev) => {
         const newMap = new Map(prev)
         newMap.set(state.id, state)
@@ -907,6 +1219,18 @@ function App() {
         }
         return updated
       })
+    })
+
+    // Ralph Loop discussion complete - open CMD-K with pre-populated values
+    window.electronAPI?.onRalphLoopDiscussionComplete?.((data) => {
+      setPrefillRalphLoopConfig({
+        referenceAgentId: data.referenceAgentId,
+        prompt: data.prompt,
+        completionPhrase: data.completionPhrase,
+        maxIterations: data.maxIterations,
+        model: data.model,
+      })
+      setCommandSearchOpen(true)
     })
 
     // Terminal queue status for boot progress indicator
@@ -1125,6 +1449,49 @@ function App() {
     })
   }
 
+  // Handle Ralph Loop iteration reorder via drag-and-drop
+  const handleRalphLoopReorder = (loopId: string, draggedUniqueId: string, targetUniqueId: string) => {
+    setHeadlessAgentOrder((prev) => {
+      const key = `ralph-loop-${loopId}`
+      const newMap = new Map(prev)
+      const currentOrder = newMap.get(key) || []
+
+      // Get all iteration unique IDs for this loop
+      const loopState = ralphLoops.get(loopId)
+      if (!loopState) return prev
+      const iterationIds = loopState.iterations.map(
+        (iter) => `ralph-${loopState.id}-iter-${iter.iterationNumber}`
+      )
+
+      // Build the order array - use existing order or default to current list order
+      let orderedIds = currentOrder.length > 0
+        ? currentOrder.filter((id) => iterationIds.includes(id))
+        : iterationIds
+
+      // Add any new iterations that aren't in the order yet
+      for (const id of iterationIds) {
+        if (!orderedIds.includes(id)) {
+          orderedIds.push(id)
+        }
+      }
+
+      const dragIndex = orderedIds.indexOf(draggedUniqueId)
+      const targetIndex = orderedIds.indexOf(targetUniqueId)
+
+      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+        return prev
+      }
+
+      // Remove dragged item and insert at target position
+      orderedIds = [...orderedIds]
+      orderedIds.splice(dragIndex, 1)
+      orderedIds.splice(targetIndex, 0, draggedUniqueId)
+
+      newMap.set(key, orderedIds)
+      return newMap
+    })
+  }
+
   const handleStopHeadlessAgent = async (agent: Agent) => {
     // Trigger the destroy confirmation dialog (same behavior as delete button)
     if (agent.taskId) {
@@ -1182,14 +1549,30 @@ function App() {
     }
   }
 
+  // Open follow-up modal for a standalone headless agent
   const handleStandaloneStartFollowup = async (headlessId: string) => {
-    // Show a simple prompt for follow-up task
-    const prompt = window.prompt('Enter the follow-up task:')
-    if (!prompt) return
+    // Fetch fresh info from main process (has complete events array in memory)
+    const allAgents = await window.electronAPI?.getStandaloneHeadlessAgents?.()
+    const freshInfo = allAgents?.find(a => a.taskId === headlessId)
+    if (freshInfo) {
+      setFollowUpInfo(freshInfo)
+      return
+    }
+    // Fall back to renderer state
+    const info = headlessAgents.get(headlessId)
+    if (info) {
+      setFollowUpInfo(info)
+    }
+  }
+
+  // Execute the follow-up after user submits from modal
+  const executeFollowUp = async (prompt: string, model: 'opus' | 'sonnet') => {
+    const headlessId = followUpInfo?.taskId
+    if (!headlessId) return
 
     setStartingFollowUpIds(prev => new Set(prev).add(headlessId))
     try {
-      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt)
+      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model)
       if (result) {
         // Remove old agent info from map
         setHeadlessAgents((prev) => {
@@ -1202,6 +1585,8 @@ function App() {
         // Refresh tabs
         const state = await window.electronAPI.getState()
         setTabs(state.tabs || [])
+        // Close the modal
+        setFollowUpInfo(null)
       }
     } finally {
       setStartingFollowUpIds(prev => {
@@ -1343,15 +1728,28 @@ function App() {
   }
 
   // Start headless discussion handler
-  const handleStartHeadlessDiscussion = async (agentId: string) => {
+  const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string) => {
     try {
-      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId)
+      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId, initialPrompt)
       if (result) {
         // Reload agents to pick up the new discussion workspace
         await loadAgents()
       }
     } catch (error) {
       console.error('Failed to start headless discussion:', error)
+    }
+  }
+
+  // Start Ralph Loop discussion handler
+  const handleStartRalphLoopDiscussion = async (agentId: string, initialPrompt: string) => {
+    try {
+      const result = await window.electronAPI?.startRalphLoopDiscussion?.(agentId, initialPrompt)
+      if (result) {
+        // Reload agents to pick up the new discussion workspace
+        await loadAgents()
+      }
+    } catch (error) {
+      console.error('Failed to start Ralph Loop discussion:', error)
     }
   }
 
@@ -1400,7 +1798,10 @@ function App() {
     )
   }
 
-  const handleTabDeleteRequest = (tabId: string) => {
+  const handleTabDeleteRequest = async (tabId: string) => {
+    // Check if this tab has an in-progress plan
+    const planStatus = await window.electronAPI?.getTabPlanStatus?.(tabId)
+    setDeleteConfirmPlanInfo(planStatus || null)
     // Show confirmation dialog instead of deleting immediately
     setDeleteConfirmTabId(tabId)
   }
@@ -1513,12 +1914,12 @@ function App() {
     if (!plan) {
       // Only log for plan tabs to avoid noise
       if (tab.isPlanTab) {
-        console.log('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
+        devLog('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
       }
       return []
     }
     const agentInfos = Array.from(headlessAgents.values()).filter((info) => info.planId === plan.id)
-    console.log('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
+    devLog('[Renderer] getHeadlessAgentsForTab:', { tabId: tab.id, planId: plan.id, agentsFound: agentInfos.length, headlessAgentsTotal: headlessAgents.size, allHeadless: Array.from(headlessAgents.entries()) })
 
     // Apply custom order if available
     const customOrder = headlessAgentOrder.get(plan.id)
@@ -1574,23 +1975,39 @@ function App() {
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
     const results: Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> = []
-    console.log('[Renderer] getRalphLoopIterationsForTab:', { tabId: tab.id, ralphLoopsSize: ralphLoops.size, ralphLoopIds: Array.from(ralphLoops.keys()) })
+    devLog('[Renderer] getRalphLoopIterationsForTab:', { tabId: tab.id, ralphLoopsSize: ralphLoops.size, ralphLoopIds: Array.from(ralphLoops.keys()) })
     for (const [, loopState] of ralphLoops) {
-      console.log('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
+      devLog('[Renderer] Checking loop:', { loopId: loopState.id, loopTabId: loopState.tabId, targetTabId: tab.id, match: loopState.tabId === tab.id })
       if (loopState.tabId === tab.id) {
         // Return ALL iterations, not just the running/most recent one
         for (const iteration of loopState.iterations) {
           const agent = agents.find(a => a.id === iteration.workspaceId)
           results.push({ loopState, iteration, agent })
         }
+
+        // Apply custom order if available
+        const key = `ralph-loop-${loopState.id}`
+        const customOrder = headlessAgentOrder.get(key)
+        if (customOrder && customOrder.length > 0) {
+          results.sort((a, b) => {
+            const aId = `ralph-${a.loopState.id}-iter-${a.iteration.iterationNumber}`
+            const bId = `ralph-${b.loopState.id}-iter-${b.iteration.iterationNumber}`
+            const aIdx = customOrder.indexOf(aId)
+            const bIdx = customOrder.indexOf(bId)
+            if (aIdx === -1 && bIdx === -1) return 0
+            if (aIdx === -1) return 1
+            if (bIdx === -1) return -1
+            return aIdx - bIdx
+          })
+        }
       }
     }
     return results
-  }, [ralphLoops, agents])
+  }, [ralphLoops, agents, headlessAgentOrder])
 
   // Debug: Log headlessAgents state changes
   useEffect(() => {
-    console.log('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
+    devLog('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
   }, [headlessAgents])
 
   // Group agents by plan for sidebar display
@@ -1664,11 +2081,11 @@ function App() {
   }
 
   const handleExecutePlan = async (planId: string, referenceAgentId: string) => {
-    console.log('[App] handleExecutePlan called:', { planId, referenceAgentId })
-    console.log('[App] electronAPI available:', !!window.electronAPI)
-    console.log('[App] executePlan available:', !!window.electronAPI?.executePlan)
+    devLog('[App] handleExecutePlan called:', { planId, referenceAgentId })
+    devLog('[App] electronAPI available:', !!window.electronAPI)
+    devLog('[App] executePlan available:', !!window.electronAPI?.executePlan)
     const result = await window.electronAPI?.executePlan?.(planId, referenceAgentId)
-    console.log('[App] executePlan result:', result)
+    devLog('[App] executePlan result:', result)
 
     // Navigate to the plan's tab
     if (result?.orchestratorTabId) {
@@ -1787,13 +2204,13 @@ function App() {
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
-            console.log('[App.onComplete] Starting with', newAgents?.length, 'agents')
+            devLog('[App.onComplete] Starting with', newAgents?.length, 'agents')
 
             // Group agents into logical tabs using Haiku analysis
             if (newAgents && newAgents.length > 0) {
-              console.log('[App.onComplete] Grouping agents into tabs...')
+              devLog('[App.onComplete] Grouping agents into tabs...')
               await window.electronAPI.setupWizardGroupAgentsIntoTabs(newAgents)
-              console.log('[App.onComplete] Agents grouped into tabs')
+              devLog('[App.onComplete] Agents grouped into tabs')
             }
 
             // Create terminals BEFORE loadAgents triggers the wizard → main app transition
@@ -1801,23 +2218,23 @@ function App() {
             // loadAgents() sets agents.length > 0 which unmounts the wizard
             const createdTerminals: { terminalId: string; workspaceId: string }[] = []
             if (newAgents && newAgents.length > 0) {
-              console.log('[App.onComplete] Creating terminals for', newAgents.length, 'agents...')
+              devLog('[App.onComplete] Creating terminals for', newAgents.length, 'agents...')
               for (const agent of newAgents) {
                 // Skip headless agents - they don't use terminals
                 if (!agent.isHeadless && !agent.isStandaloneHeadless) {
-                  console.log('[App.onComplete] Creating terminal for agent:', agent.id, agent.name)
+                  devLog('[App.onComplete] Creating terminal for agent:', agent.id, agent.name)
                   const terminalId = await window.electronAPI.createTerminal(agent.id)
-                  console.log('[App.onComplete] Terminal created:', terminalId)
+                  devLog('[App.onComplete] Terminal created:', terminalId)
                   createdTerminals.push({ terminalId, workspaceId: agent.id })
                 }
               }
-              console.log('[App.onComplete] All terminals created:', createdTerminals.length)
+              devLog('[App.onComplete] All terminals created:', createdTerminals.length)
             }
 
             // NOW load agents - this triggers the wizard → main app transition
-            console.log('[App.onComplete] Loading agents...')
+            devLog('[App.onComplete] Loading agents...')
             await loadAgents()
-            console.log('[App.onComplete] Agents loaded')
+            devLog('[App.onComplete] Agents loaded')
 
             // Set terminals state after loadAgents (state updates are batched)
             if (createdTerminals.length > 0) {
@@ -1825,21 +2242,21 @@ function App() {
             }
 
             // Refresh tabs to get the grouped state
-            console.log('[App.onComplete] Refreshing tabs state...')
+            devLog('[App.onComplete] Refreshing tabs state...')
             const state = await window.electronAPI.getState()
             setTabs(state.tabs || [])
             setActiveTabId(state.activeTabId)
 
             // Reload preferences to get updated operatingMode from wizard
             // This ensures the tutorial includes the correct steps based on plan mode selection
-            console.log('[App.onComplete] Loading preferences...')
+            devLog('[App.onComplete] Loading preferences...')
             const freshPrefs = await window.electronAPI.getPreferences()
             setPreferences(freshPrefs)
             // Trigger tutorial after setup wizard completes (if not already completed)
             if (!freshPrefs.tutorialCompleted) {
               setShouldStartTutorial(true)
             }
-            console.log('[App.onComplete] Complete!')
+            devLog('[App.onComplete] Complete!')
           }}
           onSkip={() => {
             // Open the manual agent creation modal
@@ -1887,7 +2304,7 @@ function App() {
       {/* Main workspace view - always rendered to preserve terminal state */}
       <div className={`h-screen bg-background flex flex-col ${currentView === 'settings' ? 'hidden' : ''}`}>
       {/* Header */}
-      <header className="relative border-b px-4 py-2 flex items-center justify-between">
+      <header data-testid="app-header" className="relative border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo />
           <BootProgressIndicator
@@ -1908,6 +2325,20 @@ function App() {
           {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
         </span>
         <div className="flex items-center gap-2">
+          {toolsNeedingReauth.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
+                onClick={() => {
+                  setSettingsInitialSection('tools')
+                  setCurrentView('settings')
+                }}
+                title="Click to view tool auth details"
+              >
+                {toolsNeedingReauth.map(t => t.toolName).join(', ')}: re-auth required
+              </span>
+            </div>
+          )}
           {updateAvailable && (
             <div className="flex items-center gap-1.5 text-xs">
               <span
@@ -1918,15 +2349,14 @@ function App() {
                 }}
                 title="Click to view update details"
               >
-                Update available
-              </span>
-              <span className="text-muted-foreground/50">·</span>
-              <span
-                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors underline"
-                onClick={() => window.electronAPI.openExternal(updateAvailable.releaseUrl)}
-                title="View release notes on GitHub"
-              >
-                v{updateAvailable.version}
+                Update: v{updateAvailable.currentVersion} → <span
+                  className="underline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.electronAPI.openExternal(updateAvailable.releaseUrl)
+                  }}
+                  title="View release notes on GitHub"
+                >v{updateAvailable.version}</span>
               </span>
             </div>
           )}
@@ -1941,12 +2371,13 @@ function App() {
               Next ({waitingQueue.length - 1})
             </Button>
           )}
-          <Button size="sm" onClick={handleAddAgent}>
+          <Button size="sm" onClick={handleAddAgent} data-testid="add-agent-button">
             <Plus className="h-4 w-4 mr-1" />
             Add
           </Button>
           {preferences.operatingMode === 'team' && (
             <Button
+              data-testid="plans-button"
               data-tutorial="plan-mode"
               size="sm"
               variant={planSidebarOpen ? 'secondary' : 'ghost'}
@@ -1962,6 +2393,7 @@ function App() {
             </Button>
           )}
           <Button
+            data-testid="settings-button"
             data-tutorial="settings-button"
             size="sm"
             variant="ghost"
@@ -2342,7 +2774,7 @@ function App() {
                               isFocused ? 'ring-2 ring-primary' : ''
                             } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                               !isExpanded && expandedAgentId ? 'invisible' : ''
-                            } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                            } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''}`}
                             onClick={() => {
                               if (!isExpanded) {
                                 handleFocusAgent(workspaceId)
@@ -2428,6 +2860,8 @@ function App() {
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                                searchOpen={terminalSearchAgentId === agent.id}
+                                onSearchClose={() => setTerminalSearchAgentId(null)}
                                 registerWriter={registerWriter}
                                 unregisterWriter={unregisterWriter}
                                 getBufferedContent={getBufferedContent}
@@ -2438,7 +2872,7 @@ function App() {
                       })}
                     {/* Headless agent terminals */}
                     {getHeadlessAgentsForTab(tab).map((info) => {
-                      console.log('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
+                      devLog('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
                       const isDragging = draggedHeadlessId === info.id
@@ -2446,16 +2880,6 @@ function App() {
                       return (
                         <div
                           key={info.id}
-                          draggable={!expandedAgentId}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData('headlessId', info.id)
-                            e.dataTransfer.effectAllowed = 'move'
-                            setDraggedHeadlessId(info.id)
-                          }}
-                          onDragEnd={() => {
-                            setDraggedHeadlessId(null)
-                            setDropTargetHeadlessId(null)
-                          }}
                           onDragOver={(e) => {
                             e.preventDefault()
                             if (draggedHeadlessId && draggedHeadlessId !== info.id) {
@@ -2477,17 +2901,26 @@ function App() {
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
-                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''} ${
-                            !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
-                          }`}
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
-                            info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
-                          }`}>
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('headlessId', info.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(info.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                              info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
+                            } ${!expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          >
                             <div className="flex items-center gap-2">
-                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
                               <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -2535,7 +2968,15 @@ function App() {
                             </div>
                           </div>
                           <div className="h-[calc(100%-2rem)]">
-                            <HeadlessTerminal events={info.events} theme="teal" status={info.status} model={info.model} isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)} />
+                            <HeadlessTerminal
+                              events={info.events}
+                              theme="teal"
+                              status={info.status}
+                              model={info.model}
+                              isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
+                            />
                           </div>
                         </div>
                       )
@@ -2543,14 +2984,59 @@ function App() {
                     {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
                     {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
                       const isExpanded = expandedAgentId === info.id
+                      const isDragging = draggedHeadlessId === agent.id
+                      const isDropTarget = dropTargetHeadlessId === agent.id && !isDragging
                       return (
                         <div
                           key={`standalone-${info.id}-${tab.id}`}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== agent.id) {
+                              setDropTargetHeadlessId(agent.id)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === agent.id) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== agent.id) {
+                              // Only handle drops from other standalone agents in this tab
+                              const standaloneAgents = getStandaloneHeadlessForTab(tab)
+                              const draggedAgent = standaloneAgents.find(s => s.agent.id === draggedHeadlessId)
+                              if (draggedAgent) {
+                                const targetPosition = tab.workspaceIds.indexOf(agent.id)
+                                if (targetPosition !== -1) {
+                                  handleReorderInTab(draggedHeadlessId, targetPosition)
+                                }
+                              }
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('standaloneHeadlessId', agent.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(agent.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
                               <AgentIcon icon={agent.icon} className="w-4 h-4" />
                               <span>{agent.name}</span>
@@ -2607,6 +3093,8 @@ function App() {
                               model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -2633,17 +3121,68 @@ function App() {
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
                       const isExpanded = expandedAgentId === uniqueId
+                      const isDragging = draggedHeadlessId === uniqueId
+                      const isDropTarget = dropTargetHeadlessId === uniqueId && !isDragging
                       return (
                         <div
                           key={uniqueId}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== uniqueId) {
+                              setDropTargetHeadlessId(uniqueId)
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dropTargetHeadlessId === uniqueId) {
+                              setDropTargetHeadlessId(null)
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            if (draggedHeadlessId && draggedHeadlessId !== uniqueId) {
+                              // Only handle drops from other Ralph Loop iterations
+                              if (draggedHeadlessId.startsWith(`ralph-${loopState.id}-iter-`)) {
+                                handleRalphLoopReorder(loopState.id, draggedHeadlessId, uniqueId)
+                              }
+                            }
+                            setDraggedHeadlessId(null)
+                            setDropTargetHeadlessId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('ralphIterationId', uniqueId)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggedHeadlessId(uniqueId)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedHeadlessId(null)
+                              setDropTargetHeadlessId(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
                               {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
                               <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
+                              {/* Git Summary */}
+                              {loopState.gitSummary && (
+                                <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
+                                  {loopState.gitSummary.commits.length > 0 && (
+                                    <span className="flex items-center gap-1" title={`${loopState.gitSummary.commits.length} commit${loopState.gitSummary.commits.length !== 1 ? 's' : ''}`}>
+                                      <GitCommitHorizontal className="h-3 w-3" />
+                                      <span>{loopState.gitSummary.commits.length}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -2686,6 +3225,8 @@ function App() {
                               status={iteration.status === 'pending' ? 'starting' : iteration.status}
                               model={loopState.config.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === uniqueId}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                             />
                           </div>
                         </div>
@@ -2755,7 +3296,7 @@ function App() {
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${isWaiting ? 'ring-2 ring-yellow-500' : ''} ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''} ${
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
                             !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
@@ -2782,6 +3323,40 @@ function App() {
                                 <span className="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded">
                                   Waiting
                                 </span>
+                              )}
+                              {/* Diff toggle button (only for non-headless agents in git repos) */}
+                              {preferences.showDiffView !== false && !agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === workspaceId) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: workspaceId }))
+                                        setDiffOpenForWorkspace(workspaceId)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {fileChangeCounts.has(workspaceId) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      fileChangeCounts.get(workspaceId) === 0
+                                        ? 'bg-green-500'
+                                        : fileChangeCounts.get(workspaceId)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {fileChangeCounts.get(workspaceId)! > 99 ? '99+' : fileChangeCounts.get(workspaceId)}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {/* Maximize/Minimize button */}
                               <Button
@@ -2844,16 +3419,32 @@ function App() {
                               )}
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <Terminal
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
+                              searchOpen={terminalSearchAgentId === agent.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               registerWriter={registerWriter}
                               unregisterWriter={unregisterWriter}
                               getBufferedContent={getBufferedContent}
                             />
+                            {/* Diff overlay (absolute position over terminal) */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === workspaceId && (
+                              <DiffOverlay
+                                directory={agent.directory}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
+                            {/* Discussion completing overlay */}
+                            {discussionCompletingWorkspaceId === workspaceId && (
+                              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/90">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Starting headless agent...</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -2866,16 +3457,49 @@ function App() {
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
+                      const isDropTarget = dropTargetPosition === position && isActiveTab
+                      const isDragging = draggedWorkspaceId === agent.id
 
                       return (
                         <div
                           key={`headless-${info.id}-${tab.id}`}
                           style={{ gridRow, gridColumn: gridCol }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (!expandedAgentId) {
+                              setDropTargetPosition(position)
+                            }
+                          }}
+                          onDragLeave={() => setDropTargetPosition(null)}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const sourceId = e.dataTransfer.getData('workspaceId')
+                            if (sourceId && sourceId !== agent.id && !expandedAgentId) {
+                              handleReorderInTab(sourceId, position)
+                            }
+                            setDropTargetPosition(null)
+                            setDraggedWorkspaceId(null)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
                             !isExpanded && expandedAgentId ? 'invisible' : ''
-                          } ${isExpanded ? 'absolute inset-0 z-10' : ''}`}
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                         >
-                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                          <div
+                            draggable={!expandedAgentId}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('workspaceId', agent.id)
+                              setDraggedWorkspaceId(agent.id)
+                            }}
+                            onDragEnd={() => {
+                              setDraggedWorkspaceId(null)
+                              setDropTargetPosition(null)
+                            }}
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                              !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
+                          >
                             <div className="flex items-center gap-2">
                               <AgentIcon icon={agent.icon} className="w-4 h-4" />
                               <span>{agent.name}</span>
@@ -2937,6 +3561,8 @@ function App() {
                               model={info.model}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               isStandalone={true}
+                              searchOpen={terminalSearchAgentId === info.id}
+                              onSearchClose={() => setTerminalSearchAgentId(null)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -3099,21 +3725,45 @@ function App() {
       {/* Delete Tab Confirmation Dialog */}
       <Dialog
         open={deleteConfirmTabId !== null}
-        onOpenChange={(open) => !open && setDeleteConfirmTabId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteConfirmTabId(null)
+            setDeleteConfirmPlanInfo(null)
+          }
+        }}
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Close Tab</DialogTitle>
+            <DialogTitle className={deleteConfirmPlanInfo?.isInProgress ? 'text-red-400' : ''}>
+              {deleteConfirmPlanInfo?.isInProgress ? 'Cancel Running Plan?' : 'Close Tab'}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to close this tab? All workspaces in this tab will be closed.
+              {deleteConfirmPlanInfo?.isInProgress ? (
+                <>
+                  <span className="font-medium text-foreground">"{deleteConfirmPlanInfo.planTitle}"</span> has agents actively running.
+                  Closing this tab will:
+                </>
+              ) : (
+                'Are you sure you want to close this tab? All workspaces in this tab will be closed.'
+              )}
             </DialogDescription>
           </DialogHeader>
+          {deleteConfirmPlanInfo?.isInProgress && (
+            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+              <li>Stop all running agents</li>
+              <li>Cancel the plan execution</li>
+              <li>Clean up worktrees and branches</li>
+            </ul>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteConfirmTabId(null)}
+              onClick={() => {
+                setDeleteConfirmTabId(null)
+                setDeleteConfirmPlanInfo(null)
+              }}
             >
-              Cancel
+              {deleteConfirmPlanInfo?.isInProgress ? 'Keep Running' : 'Cancel'}
             </Button>
             <Button
               variant="destructive"
@@ -3121,10 +3771,11 @@ function App() {
                 if (deleteConfirmTabId) {
                   handleTabDelete(deleteConfirmTabId)
                   setDeleteConfirmTabId(null)
+                  setDeleteConfirmPlanInfo(null)
                 }
               }}
             >
-              Close Tab
+              {deleteConfirmPlanInfo?.isInProgress ? 'Cancel Plan & Close' : 'Close Tab'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3161,6 +3812,15 @@ function App() {
       {/* Prompt Viewer Modal */}
       <PromptViewerModal info={promptViewerInfo} onClose={() => setPromptViewerInfo(null)} />
 
+      {/* Follow-up Modal */}
+      <FollowUpModal
+        info={followUpInfo}
+        defaultModel={preferences.agentModel === 'opus' ? 'opus' : 'sonnet'}
+        onClose={() => setFollowUpInfo(null)}
+        onSubmit={executeFollowUp}
+        isSubmitting={followUpInfo?.taskId ? startingFollowUpIds.has(followUpInfo.taskId) : false}
+      />
+
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator
         open={planCreatorOpen}
@@ -3188,7 +3848,13 @@ function App() {
       {/* Command Search (CMD-K) */}
       <CommandSearch
         open={commandSearchOpen}
-        onOpenChange={setCommandSearchOpen}
+        onOpenChange={(open) => {
+          setCommandSearchOpen(open)
+          if (!open) {
+            // Clear prefill when closing
+            setPrefillRalphLoopConfig(null)
+          }
+        }}
         agents={agents}
         activeTerminals={activeTerminals}
         waitingQueue={waitingQueue}
@@ -3197,9 +3863,41 @@ function App() {
         onSelectAgent={handleCommandSearchSelect}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
+        onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
+        prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
+
+      {/* Update Available Popup (for significantly outdated versions) */}
+      <Dialog open={showUpdatePopup} onOpenChange={setShowUpdatePopup}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Update Recommended</DialogTitle>
+            <DialogDescription>
+              You're running v{updateAvailable?.currentVersion}, but v{updateAvailable?.version} is available.
+              We recommend updating to get the latest features and bug fixes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdatePopup(false)}
+            >
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUpdatePopup(false)
+                setSettingsInitialSection('updates')
+                setCurrentView('settings')
+              }}
+            >
+              View Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
     </TutorialProvider>

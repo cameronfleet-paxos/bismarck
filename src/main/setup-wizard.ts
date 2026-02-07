@@ -14,9 +14,10 @@ import { isGitRepo, getRepoRoot, getRemoteUrl, getLastCommitDate } from './git-u
 import { saveWorkspace, getWorkspaces, getClaudeOAuthToken } from './config'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 import { detectRepository, updateRepository } from './repository-manager'
-import { loadSettings, updateSettings, setGitHubToken, hasGitHubToken } from './settings-manager'
+import { loadSettings, updateSettings, setGitHubToken, hasConfiguredGitHubToken } from './settings-manager'
 import { findBinary, detectGitHubToken, detectGitHubTokenWithReason } from './exec-utils'
 import { setPreferences } from './state-manager'
+import { checkImageExists, pullImage, DEFAULT_IMAGE, checkDockerAvailable } from './docker-sandbox'
 
 /**
  * Status of a single dependency for plan mode
@@ -49,6 +50,14 @@ export interface ClaudeOAuthTokenStatus {
 /**
  * Collection of all plan mode dependencies
  */
+/**
+ * Docker image availability status
+ */
+export interface DockerImageStatus {
+  available: boolean
+  imageName: string
+}
+
 export interface PlanModeDependencies {
   docker: DependencyStatus
   bd: DependencyStatus
@@ -57,6 +66,7 @@ export interface PlanModeDependencies {
   claude: DependencyStatus
   githubToken: GitHubTokenStatus
   claudeOAuthToken: ClaudeOAuthTokenStatus
+  dockerImage: DockerImageStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 
@@ -358,7 +368,7 @@ async function checkDocker(): Promise<{ path: string | null; version: string | n
  * Uses the shared detectGitHubToken from exec-utils
  */
 async function detectGitHubTokenStatus(): Promise<GitHubTokenStatus> {
-  const configured = await hasGitHubToken()
+  const configured = await hasConfiguredGitHubToken()
 
   if (configured) {
     return { detected: false, source: null, configured: true }
@@ -459,6 +469,16 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     installCommand: 'npm install -g @anthropic-ai/claude-code',
   }
 
+  // Check Docker image availability (only if Docker is installed)
+  let dockerImageAvailable = false
+  if (dockerResult.path !== null) {
+    dockerImageAvailable = await checkImageExists(DEFAULT_IMAGE)
+  }
+  const dockerImage: DockerImageStatus = {
+    available: dockerImageAvailable,
+    imageName: DEFAULT_IMAGE,
+  }
+
   // Check if all required dependencies are installed
   const allRequiredInstalled = [docker, bd, git, claude]
     .filter(d => d.required)
@@ -472,6 +492,7 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     claude,
     githubToken: githubTokenStatus,
     claudeOAuthToken: claudeOAuthTokenStatus,
+    dockerImage,
     allRequiredInstalled,
   }
 }
