@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 class CDPHelper {
-  constructor(port = 9222) {
+  constructor(port = parseInt(process.env.CDP_PORT || '9222', 10)) {
     this.port = port;
     this.ws = null;
     this.messageId = 0;
@@ -320,8 +320,7 @@ class CDPHelper {
    */
   async isDevConsoleVisible() {
     return this.evaluate(`
-      !!document.querySelector('[data-testid="dev-console"]') ||
-      !!document.querySelector('.dev-console')
+      !!document.querySelector('[data-testid="dev-console"]')
     `);
   }
 }

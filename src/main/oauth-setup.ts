@@ -7,6 +7,7 @@
 
 import { setClaudeOAuthToken } from './config'
 import { spawnWithPath } from './exec-utils'
+import { devLog } from './dev-log'
 
 // Regex to match OAuth tokens from claude setup-token output
 // Tokens are ~108 chars and end with 'AA'
@@ -42,7 +43,7 @@ function stripAnsi(str: string): string {
  */
 export async function runSetupToken(): Promise<string> {
   return new Promise((resolve, reject) => {
-    console.log('[OAuthSetup] Starting claude setup-token...')
+    devLog('[OAuthSetup] Starting claude setup-token...')
 
     // Use `script` to allocate a PTY for the interactive command
     // This is necessary on macOS/Linux for the OAuth flow to work
@@ -65,8 +66,7 @@ export async function runSetupToken(): Promise<string> {
       if (match && !tokenFound) {
         tokenFound = true
         const token = match[0]
-        console.log('[OAuthSetup] Token found, length:', token.length)
-        console.log('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
+        devLog('[OAuthSetup] Token found, length:', token.length)
         setClaudeOAuthToken(token)
         // Kill the process since we have the token
         proc.kill()
@@ -84,16 +84,15 @@ export async function runSetupToken(): Promise<string> {
         return
       }
 
-      console.log('[OAuthSetup] Process closed with code:', code)
-      console.log('[OAuthSetup] stdout length:', stdout.length)
+      devLog('[OAuthSetup] Process closed with code:', code)
+      devLog('[OAuthSetup] stdout length:', stdout.length)
 
       // Try one more time to find token in accumulated output
       const cleanOutput = stripAnsi(stdout)
       const match = cleanOutput.match(TOKEN_REGEX)
       if (match) {
         const token = match[0]
-        console.log('[OAuthSetup] Token found on close, length:', token.length)
-        console.log('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
+        devLog('[OAuthSetup] Token found on close, length:', token.length)
         setClaudeOAuthToken(token)
         resolve(token)
         return
@@ -108,7 +107,7 @@ export async function runSetupToken(): Promise<string> {
     })
 
     proc.on('error', (err) => {
-      console.log('[OAuthSetup] Process error:', err.message)
+      devLog('[OAuthSetup] Process error:', err.message)
       reject(new Error(`Failed to run setup-token: ${err.message}`))
     })
   })

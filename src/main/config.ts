@@ -135,6 +135,14 @@ export function getStandaloneWorktreePath(repoName: string, branchName: string):
   return path.join(getStandaloneWorktreesPath(), repoName, branchName)
 }
 
+export function getRepoCacheDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.gocache')
+}
+
+export function getRepoModCacheDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.gomodcache')
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [
@@ -177,6 +185,14 @@ export function getDefaultKeyboardShortcuts() {
     commandPalette: { key: 'k', modifiers: { meta: true, shift: false, alt: false } },
     dismissAgent: { key: 'n', modifiers: { meta: true, shift: false, alt: false } },
     devConsole: { key: 'd', modifiers: { meta: true, shift: true, alt: false } },
+    toggleAgentSidebar: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+    togglePlansSidebar: { key: 'p', modifiers: { meta: true, shift: true, alt: false } },
+    nextTab: { key: ']', modifiers: { meta: true, shift: true, alt: false } },
+    previousTab: { key: '[', modifiers: { meta: true, shift: true, alt: false } },
+    newTab: { key: 't', modifiers: { meta: true, shift: false, alt: false } },
+    closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
+    toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
+    closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
   }
 }
 
@@ -187,6 +203,8 @@ export function getDefaultPreferences(): AppPreferences {
     agentModel: 'sonnet',
     gridSize: '2x2',
     keyboardShortcuts: getDefaultKeyboardShortcuts(),
+    showDiffView: true,
+    showAgentTimer: true,
   }
 }
 

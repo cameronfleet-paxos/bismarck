@@ -13,6 +13,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { devLog } from './dev-log'
 
 // Types
 export type BenchmarkPhase = 'main' | 'window' | 'renderer' | 'agent' | 'ipc'
@@ -112,7 +113,7 @@ function writeSnapshot(): void {
     fs.writeFileSync(tempPath, JSON.stringify(benchmark, null, 2))
     fs.renameSync(tempPath, getSnapshotPath())
     snapshotWritten = true
-    console.log(`[Benchmark] Snapshot written to ${getSnapshotPath()}`)
+    devLog(`[Benchmark] Snapshot written to ${getSnapshotPath()}`)
   } catch (error) {
     console.warn('[Benchmark] Failed to write snapshot:', error)
   }
@@ -199,7 +200,7 @@ export function endTimer(label: string): number {
   // Write to log immediately
   const logLine = `[${timestamp}] [TIMING] ${label} phase=${pending.phase} start=${pending.startMs}ms dur=${durationMs}ms end=${endMs}ms`
   writeToLog(logLine)
-  console.log(logLine)
+  devLog(logLine)
 
   return durationMs
 }
@@ -221,7 +222,7 @@ export function milestone(name: string): void {
   // Write to log immediately
   const logLine = `[${timestamp}] [MILESTONE] ${name} at=${ms}ms`
   writeToLog(logLine)
-  console.log(logLine)
+  devLog(logLine)
 
   // Trigger snapshot write on first agent ready
   if (name === 'first-agent-ready' && !firstAgentReady) {
@@ -269,7 +270,7 @@ export function recordRendererTiming(
   // Write to log immediately
   const logLine = `[${timestamp}] [TIMING] ${label} phase=${phase} start=${adjustedStartMs}ms dur=${durationMs}ms end=${endMs}ms (renderer)`
   writeToLog(logLine)
-  console.log(logLine)
+  devLog(logLine)
 }
 
 /**
@@ -287,7 +288,7 @@ export function recordRendererMilestone(name: string): void {
   // Write to log immediately
   const logLine = `[${timestamp}] [MILESTONE] ${name} at=${ms}ms (renderer)`
   writeToLog(logLine)
-  console.log(logLine)
+  devLog(logLine)
 }
 
 /**

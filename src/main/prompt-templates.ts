@@ -49,15 +49,21 @@ export interface PromptVariables {
   // Headless task agent variables
   gitCommands?: string           // Branch-strategy-dependent git instructions
   completionCriteria?: string    // Repository completion criteria (PR mode only)
+  guidance?: string              // Repository-specific guidance for headless agents
 
   // Standalone headless agent variables
   userPrompt?: string            // The user's task description
   workingDir?: string            // Worktree path
   branchName?: string            // Git branch name
+  protectedBranch?: string       // Protected branch for PR base (e.g., main or master)
   commitHistory?: string         // Recent commits for context (follow-up agents)
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+  initialPrompt?: string         // User's initial prompt/description for discussion
+
+  // Proxied tools section (dynamically built based on enabled tools)
+  proxiedToolsSection?: string
 
   // Critic agent variables
   originalTaskId?: string
@@ -313,7 +319,16 @@ Title: {{taskTitle}}
 === FIRST STEP ===
 Read your task details to understand what you need to do:
   bd show {{taskId}}
-{{completionCriteria}}
+{{guidance}}
+=== WORKFLOW ===
+For non-trivial tasks (more than a simple fix or small change):
+1. After reading your task details, enter plan mode to explore the codebase and design your approach
+   - Investigate existing patterns, utilities, and code structure
+   - Auto-accept the plan and proceed to implementation
+2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
+
+For trivial tasks, skip planning and just do the work directly.
+
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
@@ -340,7 +355,7 @@ You are in a dedicated git worktree: /workspace
 Base branch: {{baseBranch}}
 
 === COMPLETION REQUIREMENTS ===
-1. Complete the work described in the task title
+{{completionCriteria}}1. Complete the work described in the task title
 {{completionInstructions}}
 
 CRITICAL: There is no interactive mode. You must:
@@ -351,49 +366,40 @@ CRITICAL: There is no interactive mode. You must:
 
 Working Directory: {{workingDir}}
 Branch: {{branchName}}
+Protected Branch: {{protectedBranch}}
 
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
+{{proxiedToolsSection}}
 
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+=== WORKFLOW ===
+For non-trivial tasks (more than a simple fix or small change):
+1. Enter plan mode to explore the codebase and design your approach
+   - Investigate existing patterns, utilities, and code structure
+   - Design your implementation approach
+   - Auto-accept the plan and proceed to implementation
+2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
 
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+For trivial tasks (typo fixes, single-line changes, simple renames), skip planning and just do the work directly.
 
 === YOUR TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{guidance}}
 === COMPLETION REQUIREMENTS ===
-When you complete your work:
+{{completionCriteria}}When you complete your work:
 
-1. Commit your changes using multiple -m flags (avoids shell escaping issues with HEREDOCs):
+1. Commit your changes:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Detail 2" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 2. Push your branch:
    git push -u origin {{branchName}}
 
-3. Create a PR using gh api with echo piped JSON (handles special characters reliably):
-   echo '{"head":"{{branchName}}","base":"main","title":"Your PR Title","body":"Summary of changes"}' | gh api repos/OWNER/REPO/pulls --input -
-
-   IMPORTANT for PR body:
-   - Keep body simple, single line, no markdown formatting
-   - Escape quotes with backslash: \\"quoted\\"
-   - Use \\n for newlines if absolutely needed
-   - If gh api hangs for >30s, cancel and retry with simpler body
+3. Create a PR:
+   gh pr create --base {{protectedBranch}} --title "Your PR Title" --body "Summary of changes"
 
 4. Report the PR URL in your final message`,
 
@@ -401,48 +407,40 @@ When you complete your work:
 
 Working Directory: {{workingDir}}
 Branch: {{branchName}}
+Protected Branch: {{protectedBranch}}
 
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
+{{proxiedToolsSection}}
 
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
+=== WORKFLOW ===
+For non-trivial follow-up work:
+1. Review the previous commits, then enter plan mode to design your approach
+2. Use TaskCreate to break down work into trackable steps if the follow-up involves multiple distinct steps
 
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+For simple follow-ups, skip planning and just do the work directly.
 
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
 
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{guidance}}
 === COMPLETION REQUIREMENTS ===
-1. Review the previous commits above to understand what was done
+{{completionCriteria}}1. Review the previous commits above to understand what was done
 
-2. Make your changes and commit using multiple -m flags (avoids shell escaping issues):
+2. Make your changes and commit:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 3. Push your changes:
    git push origin {{branchName}}
 
-4. Update the existing PR if needed using echo piped JSON:
-   echo '{"title":"New Title","body":"Updated summary"}' | gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH --input -
-
-   IMPORTANT: Keep body simple, single line, escape quotes with backslash
+4. Update the existing PR if needed:
+   gh pr edit --title "New Title" --body "Updated summary"
 
 5. Report the PR URL in your final message`,
 
@@ -512,8 +510,96 @@ When you have gathered enough information (or reached the question limit):
 
 2. Output /exit to signal that discussion is complete
 
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
 === BEGIN ===
-Start by briefly greeting the user and asking your first clarifying question about their goal.`,
+Start by reviewing the user's request above. Briefly acknowledge what they want, then ask your first clarifying question to refine the requirements.`,
+
+  ralph_loop_discussion: `[RALPH LOOP DISCUSSION AGENT]
+
+Repository: {{referenceRepoName}} ({{codebasePath}})
+
+=== YOUR ROLE ===
+You are a Discussion Agent helping craft a robust Ralph Loop prompt that will reliably complete without premature exits.
+Ralph Loops run iteratively - the agent works, completes an iteration, and continues where it left off until a completion phrase signals it's done.
+
+=== EFFECTIVE LOOP PROMPT PATTERNS ===
+Based on best practices for agentic workflows:
+- **Clear verification steps**: Bake in "check your work" steps that run each iteration
+- **Explicit completion criteria**: Define exactly what "done" looks like, not vague goals
+- **Context preservation**: Each iteration should review previous work (git log, task status)
+- **Validation gates**: Tests must pass, linting must succeed, PR must be created
+- **Early exit prevention**: Add "do NOT output completion phrase until X, Y, Z are verified"
+
+=== ASKING QUESTIONS ===
+Use the AskUserQuestion tool for structured Q&A:
+- Ask ONE question at a time
+- Provide 2-4 clear options when possible
+- The user can always provide custom input via "Other"
+
+=== THE PROCESS ===
+1. **Understanding the iterative goal:**
+   - What needs to be accomplished across multiple iterations?
+   - Is this a single large task, or multiple sequential tasks?
+   - What tools/commands will the agent need (git, gh, bd, npm, etc.)?
+
+2. **Defining completion criteria:**
+   - What specific conditions indicate ALL work is done?
+   - What verification commands should run before completion?
+   - How should the agent handle partial completion?
+
+3. **Preventing premature exit:**
+   - What common failure modes should be guarded against?
+   - Should there be explicit "check these conditions" steps?
+   - How many iterations is reasonable (too few = incomplete, too many = wasted)?
+
+4. **Crafting the prompt structure:**
+   - What environment context is needed?
+   - What workflow rules should be included?
+   - What validation steps are required?
+
+=== QUESTION LIMIT ===
+You may ask up to {{maxQuestions}} questions total.
+Focus on the critical aspects for a robust, non-premature-exit prompt.
+
+=== WHEN COMPLETE ===
+When you have gathered enough information:
+
+1. Write a structured output to: {{discussionOutputPath}}
+
+   The file should contain:
+   \`\`\`markdown
+   # Ralph Loop: [Brief title]
+
+   ## Goal
+   [What the loop should accomplish across all iterations]
+
+   ## Prompt
+   [The complete, ready-to-use prompt with:
+   - Clear task description
+   - Environment setup notes
+   - Workflow rules
+   - Completion requirements with verification steps
+   - Early exit prevention guards]
+
+   ## Completion Phrase
+   [The exact phrase that signals completion, e.g., "<promise>COMPLETE</promise>"]
+
+   ## Suggested Iterations
+   [Number and reasoning, e.g., "50 - typical for multi-task workflows"]
+
+   ## Recommended Model
+   [opus or sonnet, with brief reasoning]
+   \`\`\`
+
+2. Output /exit to signal that discussion is complete
+
+=== USER'S INITIAL REQUEST ===
+{{initialPrompt}}
+
+=== BEGIN ===
+Start by reviewing the user's request above. Briefly acknowledge what they want the Ralph Loop to accomplish, then ask your first clarifying question.`,
 
   critic: `[BISMARCK CRITIC AGENT]
 Task Under Review: {{originalTaskId}}
@@ -571,13 +657,15 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
     case 'task':
-      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria']
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':
-      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
-      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
+    case 'ralph_loop_discussion':
+      return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'critic':
       return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
               'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
@@ -611,12 +699,69 @@ export function applyVariables(template: string, variables: PromptVariables): st
   return result
 }
 
+// Customizable prompt types (matches CustomizablePromptType from types.ts)
+const CUSTOMIZABLE_TYPES = ['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup', 'headless_discussion', 'critic'] as const
+
+function isCustomizableType(type: PromptType): type is typeof CUSTOMIZABLE_TYPES[number] {
+  return (CUSTOMIZABLE_TYPES as readonly string[]).includes(type)
+}
+
 /**
  * Get the prompt template for a type (custom or default)
  */
 export async function getPromptTemplate(type: PromptType): Promise<string> {
-  const customPrompt = await getCustomPrompt(type)
-  return customPrompt || DEFAULT_PROMPTS[type]
+  // Only check for custom prompts if this type is customizable
+  if (isCustomizableType(type)) {
+    const customPrompt = await getCustomPrompt(type)
+    if (customPrompt) return customPrompt
+  }
+  return DEFAULT_PROMPTS[type]
+}
+
+/**
+ * Build the PROXIED COMMANDS section based on which tools are enabled
+ */
+export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
+  const sections: string[] = []
+  let num = 1
+
+  if (enabledTools.git) {
+    sections.push(`${num}. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.`)
+    num++
+  }
+
+  if (enabledTools.gh) {
+    sections.push(`${num}. GitHub CLI (gh):
+   - gh pr create, gh pr view, gh pr edit
+   - All standard gh commands work`)
+    num++
+  }
+
+  if (enabledTools.bd) {
+    sections.push(`${num}. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically`)
+    num++
+  }
+
+  if (enabledTools.bb) {
+    sections.push(`${num}. BuildBuddy CLI (bb):
+   - bb view, bb run, bb test, bb remote
+   - IMPORTANT: Always use \`bb remote --os=linux --arch=amd64\` for remote commands (e.g. \`bb remote --os=linux --arch=amd64 test //...\`). The host is macOS ARM but remote executors are Linux x86.
+   - All standard bb commands work`)
+  }
+
+  if (sections.length === 0) {
+    return ''
+  }
+
+  return `=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+${sections.join('\n\n')}`
 }
 
 /**
