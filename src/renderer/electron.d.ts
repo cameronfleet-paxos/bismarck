@@ -319,6 +319,9 @@ export interface ElectronAPI {
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
   devResetSettings?: () => Promise<void>
+  devStartDebugLogTail?: (numInitialLines?: number) => Promise<{ logPath: string; initialContent: string }>
+  devStopDebugLogTail?: () => Promise<void>
+  onDebugLogLines?: (callback: (lines: string) => void) => void
 }
 
 declare global {

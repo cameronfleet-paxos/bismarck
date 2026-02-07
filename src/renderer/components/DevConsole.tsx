@@ -5,8 +5,8 @@
  * Provides testing tools for the headless agent flow.
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus, Download, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus, Download, ScrollText, RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
 import type { HeadlessAgentInfo, StreamEvent } from '@/shared/types'
 
@@ -29,6 +29,12 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
   const [eventLog, setEventLog] = useState<Array<{ time: string; message: string; type: 'info' | 'success' | 'error' }>>([])
   const [isRunning, setIsRunning] = useState(false)
   const [singleAgentId, setSingleAgentId] = useState('')
+  const [rightTab, setRightTab] = useState<'events' | 'debug'>('events')
+  const [debugLogLines, setDebugLogLines] = useState<string[]>([])
+  const [debugLogPath, setDebugLogPath] = useState<string | null>(null)
+  const [debugLogTailing, setDebugLogTailing] = useState(false)
+  const debugLogRef = useRef<HTMLDivElement>(null)
+  const debugAutoScrollRef = useRef(true)
 
   // Log helper
   const log = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
@@ -122,6 +128,58 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
   const handleClearLog = () => {
     setEventLog([])
   }
+
+  // Start/stop debug log tailing when tab switches or console opens/closes
+  useEffect(() => {
+    if (!open || rightTab !== 'debug') {
+      if (debugLogTailing) {
+        window.electronAPI?.devStopDebugLogTail?.()
+        setDebugLogTailing(false)
+      }
+      return
+    }
+
+    let cancelled = false
+
+    const startTail = async () => {
+      try {
+        const result = await window.electronAPI?.devStartDebugLogTail?.(200)
+        if (cancelled) return
+        if (result) {
+          setDebugLogPath(result.logPath)
+          const lines = result.initialContent.split('\n').filter((l: string) => l.trim())
+          setDebugLogLines(lines)
+          setDebugLogTailing(true)
+        }
+      } catch {
+        // Debug log not available
+      }
+    }
+
+    startTail()
+
+    // Listen for new lines
+    const handleNewLines = (content: string) => {
+      const newLines = content.split('\n').filter((l: string) => l.trim())
+      if (newLines.length > 0) {
+        setDebugLogLines(prev => [...prev.slice(-500), ...newLines])
+      }
+    }
+    window.electronAPI?.onDebugLogLines?.(handleNewLines)
+
+    return () => {
+      cancelled = true
+      window.electronAPI?.devStopDebugLogTail?.()
+      setDebugLogTailing(false)
+    }
+  }, [open, rightTab])
+
+  // Auto-scroll debug log
+  useEffect(() => {
+    if (debugAutoScrollRef.current && debugLogRef.current) {
+      debugLogRef.current.scrollTop = debugLogRef.current.scrollHeight
+    }
+  }, [debugLogLines])
 
   // Close on Escape key
   useEffect(() => {
@@ -345,36 +403,95 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
           )}
         </div>
 
-        {/* Right panel - Event Log */}
+        {/* Right panel - Tabbed Log View */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 border-b">
-            <h3 className="text-sm font-medium">Event Log</h3>
-            <Button variant="ghost" size="sm" onClick={handleClearLog}>
-              <Trash2 className="w-3 h-3 mr-1" />
-              Clear
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
-            {eventLog.length === 0 ? (
-              <div className="text-muted-foreground text-center py-8">
-                No events yet. Start a mock flow to see events.
-              </div>
+            <div className="flex items-center gap-1">
+              <button
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${rightTab === 'events' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setRightTab('events')}
+              >
+                Event Log
+              </button>
+              <button
+                className={`px-3 py-1 text-sm rounded-md transition-colors flex items-center gap-1.5 ${rightTab === 'debug' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setRightTab('debug')}
+              >
+                <ScrollText className="w-3 h-3" />
+                Debug Log
+                {debugLogTailing && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
+              </button>
+            </div>
+            {rightTab === 'events' ? (
+              <Button variant="ghost" size="sm" onClick={handleClearLog}>
+                <Trash2 className="w-3 h-3 mr-1" />
+                Clear
+              </Button>
             ) : (
-              eventLog.map((entry, i) => (
-                <div
-                  key={i}
-                  className={`px-2 py-1 rounded ${
-                    entry.type === 'success' ? 'bg-green-500/10 text-green-400' :
-                    entry.type === 'error' ? 'bg-red-500/10 text-red-400' :
-                    'bg-muted'
-                  }`}
-                >
-                  <span className="text-muted-foreground">[{entry.time}]</span>{' '}
-                  {entry.message}
-                </div>
-              ))
+              <Button variant="ghost" size="sm" onClick={() => setDebugLogLines([])}>
+                <Trash2 className="w-3 h-3 mr-1" />
+                Clear
+              </Button>
             )}
           </div>
+
+          {rightTab === 'events' ? (
+            <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
+              {eventLog.length === 0 ? (
+                <div className="text-muted-foreground text-center py-8">
+                  No events yet. Start a mock flow to see events.
+                </div>
+              ) : (
+                eventLog.map((entry, i) => (
+                  <div
+                    key={i}
+                    className={`px-2 py-1 rounded ${
+                      entry.type === 'success' ? 'bg-green-500/10 text-green-400' :
+                      entry.type === 'error' ? 'bg-red-500/10 text-red-400' :
+                      'bg-muted'
+                    }`}
+                  >
+                    <span className="text-muted-foreground">[{entry.time}]</span>{' '}
+                    {entry.message}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div
+              ref={debugLogRef}
+              className="flex-1 overflow-y-auto p-2 font-mono text-[11px] leading-relaxed"
+              onScroll={() => {
+                if (debugLogRef.current) {
+                  const { scrollTop, scrollHeight, clientHeight } = debugLogRef.current
+                  debugAutoScrollRef.current = scrollHeight - scrollTop - clientHeight < 50
+                }
+              }}
+            >
+              {debugLogLines.length === 0 ? (
+                <div className="text-muted-foreground text-center py-8">
+                  {debugLogPath ? `Tailing: ${debugLogPath}` : 'No debug log available. Is debug logging enabled in settings?'}
+                </div>
+              ) : (
+                debugLogLines.map((line, i) => {
+                  const isError = line.includes('[ERROR]') || line.includes('[WARN]')
+                  const isInfo = line.includes('[INFO]')
+                  return (
+                    <div
+                      key={i}
+                      className={`px-1 py-0.5 whitespace-pre-wrap break-all ${
+                        isError ? 'text-red-400' :
+                        isInfo ? 'text-foreground' :
+                        'text-muted-foreground'
+                      }`}
+                    >
+                      {line}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
         </div>
       </div>
 

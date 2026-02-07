@@ -111,7 +111,7 @@ function getLogDateSuffix(): string {
 }
 
 // Get global debug log path from settings with date-based rolling
-function getGlobalLogPath(): string {
+export function getGlobalLogPath(): string {
   const basePath = getDebugSettingsSync().logPath
   // Convert debug.log to debug-YYYY-MM-DD.log
   const dir = path.dirname(basePath)
