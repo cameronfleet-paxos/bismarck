@@ -33,6 +33,7 @@ export function SetupTerminal({ terminalId }: SetupTerminalProps) {
       lineHeight: 1.2,
       cursorBlink: true,
       allowTransparency: true,
+      scrollback: 10000,
     })
 
     const fitAddon = new FitAddon()
@@ -42,6 +43,21 @@ export function SetupTerminal({ terminalId }: SetupTerminalProps) {
       window.electronAPI.openExternal(uri)
     })
     xterm.loadAddon(webLinksAddon)
+
+    // Allow OS-level navigation keys to pass through
+    xterm.attachCustomKeyEventHandler((event) => {
+      // Allow Cmd+arrows and Option+arrows for text navigation
+      if ((event.metaKey || event.altKey) &&
+          (event.key === 'ArrowLeft' || event.key === 'ArrowRight' ||
+           event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        return false // false means "don't handle in xterm, pass to app"
+      }
+      // Allow Cmd+Backspace for delete line
+      if (event.metaKey && event.key === 'Backspace') {
+        return false
+      }
+      return true // true means "let xterm handle this key"
+    })
 
     xterm.open(terminalRef.current)
     fitAddon.fit()

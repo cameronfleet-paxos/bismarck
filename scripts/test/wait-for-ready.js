@@ -12,11 +12,28 @@
  */
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Load .env.development.local if it exists (for port overrides per worktree)
+const envFile = path.resolve(__dirname, '../../.env.development.local');
+if (fs.existsSync(envFile)) {
+  const lines = fs.readFileSync(envFile, 'utf-8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...rest] = trimmed.split('=');
+      if (key && rest.length > 0 && !process.env[key]) {
+        process.env[key] = rest.join('=');
+      }
+    }
+  }
+}
 
 const PORTS = {
-  VITE: 5173,
-  CDP: 9222,
-  CDP_SERVER: 9333
+  VITE: parseInt(process.env.VITE_PORT || '5173', 10),
+  CDP: parseInt(process.env.CDP_PORT || '9222', 10),
+  CDP_SERVER: parseInt(process.env.CDP_SERVER_PORT || '9333', 10)
 };
 
 const DEFAULT_TIMEOUT = 60000; // 60 seconds

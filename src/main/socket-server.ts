@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow, Notification } from 'electron'
 import { getConfigDir } from './config'
+import { devLog } from './dev-log'
 
 interface StopEvent {
   event: 'stop'
@@ -61,14 +62,14 @@ function notifyWaitingCountChanged(): void {
 
 function handleStopEvent(event: StopEvent): void {
   const { workspaceId } = event
-  console.log(`[StopEvent] Handling stop for workspace ${workspaceId}`)
+  devLog(`[StopEvent] Handling stop for workspace ${workspaceId}`)
 
   // Add to waiting queue if not already there
   if (!waitingQueue.includes(workspaceId)) {
     waitingQueue.push(workspaceId)
-    console.log(`[StopEvent] Added to queue, queue now: ${JSON.stringify(waitingQueue)}`)
+    devLog(`[StopEvent] Added to queue, queue now: ${JSON.stringify(waitingQueue)}`)
   } else {
-    console.log(`[StopEvent] Already in queue`)
+    devLog(`[StopEvent] Already in queue`)
   }
 
   // Send notification
@@ -90,18 +91,18 @@ function handleStopEvent(event: StopEvent): void {
 
   // Notify renderer
   if (mainWindow && !mainWindow.isDestroyed()) {
-    console.log(`[StopEvent] Sending agent-waiting event to renderer`)
+    devLog(`[StopEvent] Sending agent-waiting event to renderer`)
     mainWindow.webContents.send('agent-waiting', workspaceId)
     // Don't auto-focus - let the renderer's expand mode handle visibility
   } else {
-    console.log(`[StopEvent] WARNING: mainWindow not available`)
+    devLog(`[StopEvent] WARNING: mainWindow not available`)
   }
 
   notifyWaitingCountChanged()
 }
 
 export function createSocketServer(workspaceId: string): void {
-  console.log(`[SocketServer] Creating socket for workspace ${workspaceId}, instanceId=${instanceId}`)
+  devLog(`[SocketServer] Creating socket for workspace ${workspaceId}, instanceId=${instanceId}`)
 
   const socketsDir = getSocketsDir()
 
@@ -111,7 +112,7 @@ export function createSocketServer(workspaceId: string): void {
   }
 
   const socketPath = getSocketPath(workspaceId)
-  console.log(`[SocketServer] Socket path: ${socketPath}`)
+  devLog(`[SocketServer] Socket path: ${socketPath}`)
 
   // Remove existing socket file
   if (fs.existsSync(socketPath)) {
@@ -131,7 +132,7 @@ export function createSocketServer(workspaceId: string): void {
           try {
             const event = JSON.parse(line) as StopEvent
             if (event.event === 'stop') {
-              console.log(`Received stop event for workspace ${workspaceId}`)
+              devLog(`Received stop event for workspace ${workspaceId}`)
               handleStopEvent(event)
             }
           } catch (e) {
@@ -152,7 +153,7 @@ export function createSocketServer(workspaceId: string): void {
         try {
           const event = JSON.parse(buffer) as StopEvent
           if (event.event === 'stop') {
-            console.log(
+            devLog(
               `Received stop event (on close) for workspace ${workspaceId}`
             )
             handleStopEvent(event)
@@ -170,7 +171,7 @@ export function createSocketServer(workspaceId: string): void {
   })
 
   server.listen(socketPath, () => {
-    console.log(`[SocketServer] Socket server listening at ${socketPath}`)
+    devLog(`[SocketServer] Socket server listening at ${socketPath}`)
   })
 
   server.on('error', (err) => {

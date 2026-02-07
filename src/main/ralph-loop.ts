@@ -16,6 +16,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
+import { devLog } from './dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneWorktreePath,
@@ -28,7 +29,8 @@ import {
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
+import { buildProxiedToolsSection } from './prompt-templates'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -37,6 +39,7 @@ import {
   deleteLocalBranch,
   deleteRemoteBranch,
   remoteBranchExists,
+  getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
 import type {
@@ -48,7 +51,9 @@ import type {
   StreamEvent,
   StandaloneWorktreeInfo,
   HeadlessAgentStatus,
+  RalphLoopGitSummary,
 } from '../shared/types'
+import { execWithPath } from './exec-utils'
 
 // Word lists for fun random names (same as standalone-headless)
 const ADJECTIVES = [
@@ -165,6 +170,58 @@ function emitStateUpdate(): void {
 }
 
 /**
+ * Update git summary for a Ralph Loop
+ * Fetches commits since main/master and any PRs created from the worktree branch
+ */
+async function updateGitSummary(state: RalphLoopState): Promise<void> {
+  try {
+    const { worktreeInfo } = state
+    if (!worktreeInfo?.path || !worktreeInfo?.branch) {
+      return
+    }
+
+    // Get commits since the default branch
+    const defaultBranch = await getDefaultBranch(worktreeInfo.repoPath)
+    const commits = await getCommitsBetween(
+      worktreeInfo.path,
+      `origin/${defaultBranch}`,
+      'HEAD'
+    )
+
+    // Get PRs for this branch using gh CLI
+    const pullRequests: RalphLoopGitSummary['pullRequests'] = []
+    try {
+      const { stdout } = await execWithPath(
+        `gh pr list --head "${worktreeInfo.branch}" --json number,title,url,baseRefName,state --limit 10`,
+        { cwd: worktreeInfo.repoPath }
+      )
+      const prs = JSON.parse(stdout)
+      for (const pr of prs) {
+        pullRequests.push({
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          baseBranch: pr.baseRefName,
+          status: pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : 'open',
+        })
+      }
+    } catch {
+      // gh CLI may not be available or auth issues - ignore
+    }
+
+    state.gitSummary = {
+      branch: worktreeInfo.branch,
+      commits,
+      pullRequests,
+    }
+
+    console.log(`[RalphLoop] Git summary updated: ${commits.length} commits, ${pullRequests.length} PRs`)
+  } catch (error) {
+    console.error('[RalphLoop] Failed to update git summary:', error)
+  }
+}
+
+/**
  * Build the prompt for a Ralph Loop iteration
  */
 function buildRalphLoopPrompt(
@@ -173,8 +230,11 @@ function buildRalphLoopPrompt(
   branchName: string,
   iterationNumber: number,
   maxIterations: number,
-  completionPhrase: string
+  completionPhrase: string,
+  enabledTools: { git: boolean; gh: boolean; bd: boolean }
 ): string {
+  const proxiedToolsSection = buildProxiedToolsSection(enabledTools)
+
   return `[RALPH LOOP - ITERATION ${iterationNumber}/${maxIterations}]
 
 Working Directory: ${workingDir}
@@ -183,23 +243,9 @@ Branch: ${branchName}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+${proxiedToolsSection}
 
 === YOUR TASK ===
 ${userPrompt}
@@ -290,12 +336,12 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
 
   // Ensure tool proxy is running
   if (!isProxyRunning()) {
-    console.log('[RalphLoop] Starting tool proxy for container communication')
+    devLog('[RalphLoop] Starting tool proxy for container communication')
     await startToolProxy()
   }
 
   // Create the worktree (shared by ALL iterations)
-  console.log(`[RalphLoop] Creating worktree at ${worktreePath}`)
+  devLog(`[RalphLoop] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
 
   // Store worktree info
@@ -351,7 +397,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
   ) {
     // Run next iteration
     state.currentIteration++
-    console.log(`[RalphLoop] Starting iteration ${state.currentIteration}/${state.config.maxIterations}`)
+    devLog(`[RalphLoop] Starting iteration ${state.currentIteration}/${state.config.maxIterations}`)
 
     const iteration = await runIteration(state, state.currentIteration)
     // Note: iteration is already added to state.iterations inside runIteration
@@ -368,11 +414,14 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
       }
     }
 
+    // Update git summary after each iteration
+    await updateGitSummary(state)
+
     emitRalphLoopUpdate(state)
 
     // Check if completion phrase was found
     if (iteration.completionPhraseFound) {
-      console.log(`[RalphLoop] Completion phrase found in iteration ${state.currentIteration}`)
+      devLog(`[RalphLoop] Completion phrase found in iteration ${state.currentIteration}`)
       state.status = 'completed'
       state.completedAt = new Date().toISOString()
       emitRalphLoopUpdate(state)
@@ -381,7 +430,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
 
     // Check if iteration failed
     if (iteration.status === 'failed') {
-      console.log(`[RalphLoop] Iteration ${state.currentIteration} failed`)
+      devLog(`[RalphLoop] Iteration ${state.currentIteration} failed`)
       state.status = 'failed'
       state.completedAt = new Date().toISOString()
       emitRalphLoopUpdate(state)
@@ -391,7 +440,7 @@ async function executeLoop(state: RalphLoopState): Promise<void> {
 
   // Max iterations reached
   if (state.status === 'running') {
-    console.log(`[RalphLoop] Max iterations (${state.config.maxIterations}) reached`)
+    devLog(`[RalphLoop] Max iterations (${state.config.maxIterations}) reached`)
     state.status = 'max_iterations'
     state.completedAt = new Date().toISOString()
     emitRalphLoopUpdate(state)
@@ -464,15 +513,23 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       }
     })
 
-    // Build the prompt
+    // Build the prompt with enabled tools
     const selectedImage = await getSelectedDockerImage()
+    const settings = await loadSettings()
+    const proxiedTools = settings.docker.proxiedTools
+    const enabledTools = {
+      git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+      gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+      bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    }
     const enhancedPrompt = buildRalphLoopPrompt(
       state.config.prompt,
       state.worktreeInfo.path,
       state.worktreeInfo.branch,
       iterationNumber,
       state.config.maxIterations,
-      state.config.completionPhrase
+      state.config.completionPhrase,
+      enabledTools
     )
 
     const options: HeadlessAgentOptions = {
@@ -485,7 +542,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       claudeFlags: ['--model', state.config.model],
     }
 
-    console.log(`[RalphLoop] Starting iteration ${iterationNumber} agent`)
+    devLog(`[RalphLoop] Starting iteration ${iterationNumber} agent`)
 
     // Wait for agent to complete
     await new Promise<void>((resolve, reject) => {
@@ -535,7 +592,7 @@ export async function cancelRalphLoop(loopId: string): Promise<void> {
     throw new Error(`Ralph Loop not found: ${loopId}`)
   }
 
-  console.log(`[RalphLoop] Cancelling loop ${loopId}`)
+  devLog(`[RalphLoop] Cancelling loop ${loopId}`)
 
   // Stop current agent if running
   const agent = ralphLoopAgents.get(loopId)
@@ -563,7 +620,7 @@ export function pauseRalphLoop(loopId: string): void {
     throw new Error(`Cannot pause loop in status: ${state.status}`)
   }
 
-  console.log(`[RalphLoop] Pausing loop ${loopId}`)
+  devLog(`[RalphLoop] Pausing loop ${loopId}`)
   state.status = 'paused'
   emitRalphLoopUpdate(state)
 }
@@ -581,7 +638,7 @@ export function resumeRalphLoop(loopId: string): void {
     throw new Error(`Cannot resume loop in status: ${state.status}`)
   }
 
-  console.log(`[RalphLoop] Resuming loop ${loopId}`)
+  devLog(`[RalphLoop] Resuming loop ${loopId}`)
   state.status = 'running'
   emitRalphLoopUpdate(state)
 
@@ -624,7 +681,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
     throw new Error(`Ralph Loop not found: ${loopId}`)
   }
 
-  console.log(`[RalphLoop] Cleaning up loop ${loopId}`)
+  devLog(`[RalphLoop] Cleaning up loop ${loopId}`)
 
   const { path: worktreePath, branch, repoPath } = state.worktreeInfo
 
@@ -645,7 +702,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
   // Remove the worktree
   try {
     await removeWorktree(repoPath, worktreePath, true)
-    console.log(`[RalphLoop] Removed worktree at ${worktreePath}`)
+    devLog(`[RalphLoop] Removed worktree at ${worktreePath}`)
   } catch (error) {
     console.error(`[RalphLoop] Failed to remove worktree:`, error)
   }
@@ -653,16 +710,16 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
   // Delete the local branch
   try {
     await deleteLocalBranch(repoPath, branch)
-    console.log(`[RalphLoop] Deleted local branch ${branch}`)
+    devLog(`[RalphLoop] Deleted local branch ${branch}`)
   } catch (error) {
-    console.log(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
+    devLog(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
   }
 
   // Delete the remote branch if it exists
   try {
     if (await remoteBranchExists(repoPath, branch)) {
       await deleteRemoteBranch(repoPath, branch)
-      console.log(`[RalphLoop] Deleted remote branch ${branch}`)
+      devLog(`[RalphLoop] Deleted remote branch ${branch}`)
     }
   } catch (error) {
     console.error(`[RalphLoop] Failed to delete remote branch:`, error)
@@ -699,5 +756,5 @@ export function initRalphLoop(): void {
     // Note: Running loops are not resumed on restart - they stay in their current state
     // User can manually resume paused loops or clean up completed/failed ones
   }
-  console.log(`[RalphLoop] Loaded ${states.length} Ralph Loop records`)
+  devLog(`[RalphLoop] Loaded ${states.length} Ralph Loop records`)
 }
