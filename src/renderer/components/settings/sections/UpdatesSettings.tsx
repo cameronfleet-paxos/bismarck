@@ -18,7 +18,7 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
   const [showSaved, setShowSaved] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Load settings and version on mount
+  // Load settings and version on mount, and subscribe to push updates
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -36,6 +36,18 @@ export function UpdatesSettings({ onSettingsChange }: UpdatesSettingsProps) {
     }
 
     loadData()
+
+    // Subscribe to push updates so the displayed version stays current
+    // when periodic checks detect a newer release
+    const unsubscribe = window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
+      setUpdateStatus(status)
+    })
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
   }, [])
 
   const showSavedIndicator = () => {

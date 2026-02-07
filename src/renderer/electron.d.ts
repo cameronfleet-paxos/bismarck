@@ -236,7 +236,7 @@ export interface ElectronAPI {
   getUpdateSettings: () => Promise<{ autoCheck: boolean }>
   setUpdateSettings: (settings: { autoCheck?: boolean }) => Promise<{ autoCheck: boolean }>
   getAppVersion: () => Promise<string>
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void | (() => void)
   removeUpdateStatusListener: () => void
   signalRendererReady?: () => void
 
@@ -297,9 +297,9 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
 
   // Settings management (Tool Paths)
-  detectToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  getToolPaths?: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  updateToolPaths?: (paths: Partial<{ bd: string | null; gh: string | null; git: string | null }>) => Promise<void>
+  detectToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
+  getToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
+  updateToolPaths?: (paths: Partial<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>) => Promise<void>
 
   // Tray updates
   updateTray: (count: number) => void
@@ -318,6 +318,10 @@ export interface ElectronAPI {
   devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
+  devResetSettings?: () => Promise<void>
+  devStartDebugLogTail?: (numInitialLines?: number) => Promise<{ logPath: string; initialContent: string }>
+  devStopDebugLogTail?: () => Promise<void>
+  onDebugLogLines?: (callback: (lines: string) => void) => void
 }
 
 declare global {

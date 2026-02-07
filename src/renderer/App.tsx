@@ -198,6 +198,8 @@ function App() {
 
   // Tab delete confirmation dialog state
   const [deleteConfirmTabId, setDeleteConfirmTabId] = useState<string | null>(null)
+  // Track tabs currently being closed (show spinner)
+  const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set())
   const [deleteConfirmPlanInfo, setDeleteConfirmPlanInfo] = useState<{
     hasPlan: boolean
     planTitle?: string
@@ -535,8 +537,8 @@ function App() {
       }
     }, 30000)
 
-    // Also listen for push updates (for manual checks from Settings)
-    window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
+    // Also listen for push updates (for periodic checks and manual checks from Settings)
+    const unsubscribe = window.electronAPI?.onUpdateStatus?.((status: UpdateStatus) => {
       devLog('[App] Received update status push:', status.state)
       if (status.state === 'available') {
         setUpdateAvailable({ version: status.version, releaseUrl: status.releaseUrl, currentVersion: status.currentVersion, significantlyOutdated: status.significantlyOutdated })
@@ -556,7 +558,9 @@ function App() {
         clearInterval(pollInterval)
       }
       clearTimeout(maxPollTimeout)
-      window.electronAPI?.removeUpdateStatusListener?.()
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
     }
   }, [])
 
@@ -1814,24 +1818,35 @@ function App() {
   }
 
   const handleTabDelete = async (tabId: string) => {
-    const result = await window.electronAPI?.deleteTab?.(tabId)
-    if (result?.success) {
-      // Stop all agents in the deleted tab
-      for (const workspaceId of result.workspaceIds) {
-        const terminal = activeTerminals.find(
-          (t) => t.workspaceId === workspaceId
-        )
-        if (terminal) {
-          await window.electronAPI.closeTerminal(terminal.terminalId)
-          setActiveTerminals((prev) =>
-            prev.filter((t) => t.workspaceId !== workspaceId)
+    // Mark the tab as closing to show spinner
+    setClosingTabIds((prev) => new Set(prev).add(tabId))
+    try {
+      const result = await window.electronAPI?.deleteTab?.(tabId)
+      if (result?.success) {
+        // Stop all agents in the deleted tab
+        for (const workspaceId of result.workspaceIds) {
+          const terminal = activeTerminals.find(
+            (t) => t.workspaceId === workspaceId
           )
+          if (terminal) {
+            await window.electronAPI.closeTerminal(terminal.terminalId)
+            setActiveTerminals((prev) =>
+              prev.filter((t) => t.workspaceId !== workspaceId)
+            )
+          }
         }
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
       }
-      // Refresh tabs
-      const state = await window.electronAPI.getState()
-      setTabs(state.tabs || [])
-      setActiveTabId(state.activeTabId)
+    } finally {
+      // Remove from closing state (in case of failure or success)
+      setClosingTabIds((prev) => {
+        const next = new Set(prev)
+        next.delete(tabId)
+        return next
+      })
     }
   }
 
@@ -2425,6 +2440,7 @@ function App() {
         onTabDragLeave={() => setDropTargetTabId(null)}
         onTabDrop={handleDropOnTab}
         onTabReorder={handleTabReorder}
+        closingTabIds={closingTabIds}
       />
 
       {/* Main content */}

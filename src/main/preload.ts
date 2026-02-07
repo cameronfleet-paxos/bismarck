@@ -407,7 +407,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('remove-docker-image', image),
   setSelectedDockerImage: (image: string) =>
     ipcRenderer.invoke('set-selected-docker-image', image),
-  updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) =>
+  updateToolPaths: (paths: { bd?: string | null; bb?: string | null; gh?: string | null; git?: string | null }) =>
     ipcRenderer.invoke('update-tool-paths', paths),
   detectToolPaths: () =>
     ipcRenderer.invoke('detect-tool-paths'),
@@ -484,9 +484,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setUpdateSettings: (settings: { autoCheck?: boolean }) =>
     ipcRenderer.invoke('set-update-settings', settings),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): void => {
-    ipcRenderer.removeAllListeners('update-status')
-    ipcRenderer.on('update-status', (_event, status) => callback(status))
+  onUpdateStatus: (callback: (status: { state: string; version?: string; releaseUrl?: string; message?: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: { state: string; version?: string; releaseUrl?: string; message?: string }) => callback(status)
+    ipcRenderer.on('update-status', handler)
+    // Return an unsubscribe function for this specific listener
+    return () => {
+      ipcRenderer.removeListener('update-status', handler)
+    }
   },
   removeUpdateStatusListener: (): void => {
     ipcRenderer.removeAllListeners('update-status')
@@ -551,6 +555,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
     ipcRenderer.removeAllListeners('tool-auth-status')
+    ipcRenderer.removeAllListeners('debug-log-lines')
   },
 
   // Dev test harness (development mode only)
@@ -566,4 +571,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dev-get-mock-flow-options'),
   devSetVersionOverride: (version: string | null): Promise<{ version: string }> =>
     ipcRenderer.invoke('dev-set-version-override', version),
+  devResetSettings: (): Promise<void> =>
+    ipcRenderer.invoke('dev-reset-settings'),
+  devStartDebugLogTail: (numInitialLines?: number): Promise<{ logPath: string; initialContent: string }> =>
+    ipcRenderer.invoke('dev-start-debug-log-tail', numInitialLines),
+  devStopDebugLogTail: (): Promise<void> =>
+    ipcRenderer.invoke('dev-stop-debug-log-tail'),
+  onDebugLogLines: (callback: (lines: string) => void) => {
+    ipcRenderer.on('debug-log-lines', (_event, lines: string) => callback(lines))
+  },
 })
