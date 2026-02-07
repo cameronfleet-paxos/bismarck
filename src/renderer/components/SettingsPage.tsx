@@ -605,6 +605,19 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                         </div>
                       </div>
                     )}
+                    {tool.id === 'bb' && tool.enabled && (
+                      <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md space-y-2">
+                        <p className="text-sm text-blue-600 dark:text-blue-400">
+                          <strong>Setup:</strong> Export <code className="bg-muted px-1 rounded">BUILDBUDDY_API_KEY</code> in
+                          your <code className="bg-muted px-1 rounded">~/.zshrc</code> for agents to use bb.
+                          Find your key in <code className="bg-muted px-1 rounded">~/.bazelrc</code> or
+                          run <code className="bg-muted px-1 rounded">bb login</code> in any git repo.
+                        </p>
+                        <p className="text-sm text-blue-600/70 dark:text-blue-400/70">
+                          Don&apos;t have bb installed? Run: <code className="bg-muted px-1 rounded">curl -fsSL https://install.buildbuddy.io | bash</code>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )
               })}

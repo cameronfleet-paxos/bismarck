@@ -159,11 +159,6 @@ export function getDefaultSettings(): AppSettings {
           hostPath: '/usr/local/bin/bb',
           description: 'BuildBuddy CLI',
           enabled: false,
-          authCheck: {
-            command: ['bb', 'login', '--check'],
-            reauthHint: 'Run `bb login` in your terminal',
-            reauthCommand: ['bb', 'login'],
-          },
         },
       ],
       sshAgent: {
@@ -302,6 +297,12 @@ export async function loadSettings(): Promise<AppSettings> {
           needsMigration = true
         }
       }
+    }
+    // Migration: Remove authCheck from bb (now uses BUILDBUDDY_API_KEY env var)
+    const bbTool = merged.docker.proxiedTools.find(t => t.id === 'bb')
+    if (bbTool?.authCheck) {
+      delete bbTool.authCheck
+      needsMigration = true
     }
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'

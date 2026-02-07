@@ -438,7 +438,16 @@ async function handleBbRequest(
     // Log the operation
     proxyEvents.emit('bb', { args, cwd })
 
-    const result = await executeCommand('bb', args, body.stdin, { cwd })
+    // Forward BUILDBUDDY_API_KEY so bb works outside git repos (e.g., worktrees)
+    const env: Record<string, string> = {}
+    if (process.env.BUILDBUDDY_API_KEY) {
+      env.BUILDBUDDY_API_KEY = process.env.BUILDBUDDY_API_KEY
+    }
+
+    const result = await executeCommand('bb', args, body.stdin, {
+      cwd,
+      env: Object.keys(env).length > 0 ? env : undefined,
+    })
 
     logger.proxyRequest('bb', args, result.exitCode === 0, undefined, {
       exitCode: result.exitCode,
