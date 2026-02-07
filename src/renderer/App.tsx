@@ -962,9 +962,11 @@ function App() {
     // Listen for agent waiting events
     window.electronAPI?.onAgentWaiting?.((agentId: string) => {
       devLog(`[Renderer] Received agent-waiting event for ${agentId}`)
-      // Check if user is already focused on this agent using the ref
-      if (focusedAgentIdRef.current === agentId) {
-        devLog(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
+      // Check if user is already focused on this agent AND the window is focused
+      // If the window is not focused (user is in another app), we should NOT auto-acknowledge
+      // so the notification stays and the user sees the waiting state when they return
+      if (focusedAgentIdRef.current === agentId && document.hasFocus()) {
+        devLog(`[Renderer] Agent ${agentId} already focused and window active, auto-acknowledging`)
         window.electronAPI?.acknowledgeWaiting?.(agentId)
         return  // Don't add to waiting queue or trigger attention
       }
