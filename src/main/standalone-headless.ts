@@ -24,7 +24,7 @@ import {
   getRepoModCacheDir,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab } from './state-manager'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from './state-manager'
 import { getSelectedDockerImage, loadSettings } from './settings-manager'
 import {
   getMainRepoRoot,
@@ -735,8 +735,18 @@ export async function startFollowUpAgent(
   // Save the workspace
   saveWorkspace(newAgent)
 
-  // Place agent in next available grid slot
-  const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId)
+  // Clean up old workspace so its grid slot is freed
+  let preferredTabId: string | undefined
+  if (existingWorkspace) {
+    const oldTab = getTabForWorkspace(existingWorkspace.id)
+    preferredTabId = oldTab?.id
+    removeActiveWorkspace(existingWorkspace.id)
+    removeWorkspaceFromTab(existingWorkspace.id)
+    deleteWorkspace(existingWorkspace.id)
+  }
+
+  // Place new agent in the same tab/slot as old workspace (or next available)
+  const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId, preferredTabId)
   addWorkspaceToTab(workspaceId, tab.id)
   setActiveTab(tab.id)
 
