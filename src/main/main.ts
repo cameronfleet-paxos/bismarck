@@ -181,6 +181,7 @@ import {
   cancelRalphLoop,
   pauseRalphLoop,
   resumeRalphLoop,
+  retryRalphLoop,
   getRalphLoopState,
   getAllRalphLoops,
   cleanupRalphLoop,
@@ -764,6 +765,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('resume-ralph-loop', async (_event, loopId: string) => {
     return resumeRalphLoop(loopId)
+  })
+
+  ipcMain.handle('retry-ralph-loop', async (_event, loopId: string) => {
+    return retryRalphLoop(loopId)
   })
 
   ipcMain.handle('get-ralph-loop-state', (_event, loopId: string) => {

@@ -60,6 +60,7 @@ import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { runSetupToken } from './oauth-setup'
 import { startToolProxy, stopToolProxy, isProxyRunning, proxyEvents } from './tool-proxy'
 import { checkDockerAvailable, checkImageExists, stopAllContainers } from './docker-sandbox'
+import { runPlanPhase, wrapPromptWithPlan } from './plan-phase'
 import { execWithPath } from './exec-utils'
 import { getSelectedDockerImage, loadSettings } from './settings-manager'
 
@@ -2024,6 +2025,53 @@ async function startHeadlessTaskAgent(
   }
   headlessAgentInfo.set(task.id, agentInfo)
 
+  // Run plan phase for regular tasks (skip for critic and fixup tasks)
+  let executionPrompt = taskPrompt
+  if (!isCriticTask(task) && !isFixupTask(task)) {
+    agentInfo.status = 'planning'
+    emitHeadlessAgentUpdate(agentInfo)
+
+    const planResult = await runPlanPhase({
+      taskDescription: task.title,
+      worktreePath: worktree.path,
+      image: selectedImage,
+      planDir: planDir,
+      planId: planId,
+      guidance: repository.guidance,
+      sharedCacheDir: getRepoCacheDir(repository.name),
+      sharedModCacheDir: getRepoModCacheDir(repository.name),
+      onChunk: (text) => {
+        emitHeadlessAgentEvent(planId, task.id, {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text }] },
+          timestamp: new Date().toISOString(),
+        } as StreamEvent)
+      },
+    })
+
+    if (planResult.success && planResult.plan) {
+      executionPrompt = wrapPromptWithPlan(taskPrompt, planResult.plan)
+      agentInfo.originalPrompt = executionPrompt
+      emitHeadlessAgentEvent(planId, task.id, {
+        type: 'system',
+        message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      addPlanActivity(planId, 'info', `Plan phase for ${task.id} completed (${planResult.durationMs}ms)`)
+      logger.info('agent', 'Plan phase succeeded', logCtx, { durationMs: planResult.durationMs, planLength: planResult.plan.length })
+    } else if (planResult.error) {
+      emitHeadlessAgentEvent(planId, task.id, {
+        type: 'system',
+        message: `Plan phase skipped: ${planResult.error}`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      addPlanActivity(planId, 'info', `Plan phase for ${task.id} skipped/failed, proceeding without plan`)
+      logger.info('agent', 'Plan phase skipped/failed', logCtx, { error: planResult.error })
+    }
+
+    agentInfo.status = 'starting'
+  }
+
   // Emit initial state
   emitHeadlessAgentUpdate(agentInfo)
 
@@ -2132,7 +2180,7 @@ async function startHeadlessTaskAgent(
   // Start the agent
   try {
     await agent.start({
-      prompt: taskPrompt,
+      prompt: executionPrompt,
       worktreePath: worktree.path,
       planDir,
       planId,

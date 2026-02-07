@@ -65,6 +65,9 @@ export interface PromptVariables {
   // Proxied tools section (dynamically built based on enabled tools)
   proxiedToolsSection?: string
 
+  // Plan phase variables
+  taskDescription?: string         // Task description for plan phase analysis
+
   // Critic agent variables
   originalTaskId?: string
   originalTaskTitle?: string
@@ -643,6 +646,37 @@ Docker container with /workspace (same worktree as task agent) and /plan.
 Commands: git, gh, bd proxied to host.
 
 CRITICAL: Close your task with bd close to signal completion.`,
+
+  plan_phase: `[BISMARCK PLAN PHASE - READ ONLY]
+
+You are a planning agent. Your ONLY job is to analyze the codebase and produce a detailed implementation plan. You have read-only access: Read, Grep, Glob, and Task (for parallel research).
+
+DO NOT attempt to modify files. DO NOT write code. Only read and analyze.
+
+=== TASK ===
+{{taskDescription}}
+{{guidance}}
+=== INSTRUCTIONS ===
+1. Start by exploring the codebase structure (use Glob to find relevant files)
+2. Read key files to understand patterns, conventions, and architecture
+3. Identify all files that need to change
+4. Produce the plan below
+
+=== OUTPUT FORMAT ===
+Respond with ONLY this structured plan (no preamble):
+
+**Goal**: One sentence summary of what this task accomplishes
+
+**Files to modify**:
+- \`path/to/file.ts\` - what changes and why
+
+**Implementation steps**:
+1. [Specific, actionable step with file path and what to change]
+2. ...
+
+**Testing**: How to verify the changes work
+
+**Risks**: Edge cases, breaking changes, or things to watch for`,
 }
 
 /**
@@ -670,6 +704,8 @@ export function getAvailableVariables(type: PromptType): string[] {
       return ['taskId', 'originalTaskId', 'originalTaskTitle', 'criticCriteria',
               'criticIteration', 'maxCriticIterations', 'baseBranch', 'epicId',
               'repoName', 'worktreeName', 'lastIterationWarning']
+    case 'plan_phase':
+      return ['taskDescription', 'guidance']
     default:
       return []
   }

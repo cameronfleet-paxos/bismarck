@@ -121,6 +121,7 @@ export interface ElectronAPI {
   cancelRalphLoop: (loopId: string) => Promise<void>
   pauseRalphLoop: (loopId: string) => Promise<void>
   resumeRalphLoop: (loopId: string) => Promise<void>
+  retryRalphLoop: (loopId: string) => Promise<void>
   getRalphLoopState: (loopId: string) => Promise<RalphLoopState | undefined>
   getAllRalphLoops: () => Promise<RalphLoopState[]>
   cleanupRalphLoop: (loopId: string) => Promise<void>

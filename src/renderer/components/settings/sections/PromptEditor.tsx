@@ -93,6 +93,10 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{maxQuestions}}', description: 'Maximum questions to ask' },
     { name: '{{discussionOutputPath}}', description: 'Path to write discussion output' },
   ],
+  plan_phase: [
+    { name: '{{taskDescription}}', description: 'Task description for analysis' },
+    { name: '{{guidance}}', description: 'Repository-specific guidance' },
+  ],
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -105,6 +109,7 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   headless_discussion: 'Headless Discussion',
   critic: 'Critic Agent',
   ralph_loop_discussion: 'Ralph Loop Discussion',
+  plan_phase: 'Plan Phase',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {
@@ -128,7 +133,7 @@ export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProp
       ])
 
       setDefaultContent(defaultPrompt)
-      const customValue = customPrompts[type]
+      const customValue = (customPrompts as Record<string, string | null>)[type]
       setContent(customValue || defaultPrompt)
       setHasChanges(!!customValue)
     } catch (error) {

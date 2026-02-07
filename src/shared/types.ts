@@ -4,7 +4,7 @@ import type { AgentIconName } from './constants'
 export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
 
 // All prompt types (including internal/non-customizable prompts)
-export type PromptType = CustomizablePromptType | 'ralph_loop_discussion'
+export type PromptType = CustomizablePromptType | 'ralph_loop_discussion' | 'plan_phase'
 
 // Persona mode for interactive Claude sessions (injected via hooks)
 export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
@@ -362,6 +362,7 @@ export type AgentExecutionMode = 'interactive' | 'headless'
 // Headless agent status
 export type HeadlessAgentStatus =
   | 'idle'
+  | 'planning'
   | 'starting'
   | 'running'
   | 'stopping'

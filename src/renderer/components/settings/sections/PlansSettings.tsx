@@ -30,6 +30,7 @@ interface PromptStatus {
   headless_discussion: boolean
   critic: boolean
   ralph_loop_discussion: boolean
+  plan_phase: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -42,6 +43,7 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   headless_discussion: 'Headless Discussion',
   critic: 'Critic',
   ralph_loop_discussion: 'Ralph Loop Discussion',
+  plan_phase: 'Plan Phase',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
@@ -54,6 +56,7 @@ const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   headless_discussion: 'Headless discussion with agents',
   critic: 'Reviews completed task work and creates fix-up tasks',
   ralph_loop_discussion: 'Discussion phase in Ralph loop workflow',
+  plan_phase: 'Read-only planning phase before execution',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -70,6 +73,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     headless_discussion: false,
     critic: false,
     ralph_loop_discussion: false,
+    plan_phase: false,
   })
   const [criticEnabled, setCriticEnabled] = useState(true)
   const [maxCriticIterations, setMaxCriticIterations] = useState(2)
@@ -95,6 +99,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           headless_discussion: false,
           critic: !!customPrompts.critic,
           ralph_loop_discussion: !!customPrompts.ralph_loop_discussion,
+          plan_phase: false,
         })
 
         // Load critic settings

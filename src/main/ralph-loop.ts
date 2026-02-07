@@ -664,6 +664,33 @@ export function resumeRalphLoop(loopId: string): void {
 }
 
 /**
+ * Retry a failed Ralph Loop - continues from where it left off on the same worktree
+ */
+export async function retryRalphLoop(loopId: string): Promise<void> {
+  const state = ralphLoops.get(loopId)
+  if (!state) {
+    throw new Error(`Ralph Loop not found: ${loopId}`)
+  }
+
+  if (state.status !== 'failed') {
+    throw new Error(`Cannot retry loop in status: ${state.status}`)
+  }
+
+  // Ensure tool proxy is running (may have stopped since the loop failed)
+  if (!isProxyRunning()) {
+    devLog('[RalphLoop] Starting tool proxy for retry')
+    await startToolProxy()
+  }
+
+  devLog(`[RalphLoop] Retrying failed loop ${loopId} from iteration ${state.currentIteration}`)
+  state.completedAt = undefined
+  emitRalphLoopUpdate(state)
+
+  // Continue execution (executeLoop sets status to 'running' and increments currentIteration)
+  executeLoop(state)
+}
+
+/**
  * Get Ralph Loop state by ID
  */
 export function getRalphLoopState(loopId: string): RalphLoopState | undefined {

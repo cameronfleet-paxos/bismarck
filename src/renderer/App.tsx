@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2 } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -3236,6 +3236,18 @@ function App() {
                                 iteration.status === 'failed' ? 'bg-red-500/20 text-red-400' :
                                 'bg-yellow-500/20 text-yellow-400'
                               }`}>{iteration.status}</span>
+                              {iteration.status === 'failed' && iteration.iterationNumber === loopState.currentIteration && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => window.electronAPI.retryRalphLoop(loopState.id)}
+                                  className="h-6 px-2 text-xs text-orange-400 hover:text-orange-300 hover:bg-orange-500/20"
+                                  title="Retry - start a new iteration on this loop"
+                                >
+                                  <RotateCcw className="h-3 w-3 mr-1" />
+                                  Retry
+                                </Button>
+                              )}
                               {preferences.showAgentTimer !== false && (
                                 <ElapsedTime startedAt={iteration.startedAt} completedAt={iteration.completedAt} />
                               )}

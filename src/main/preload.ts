@@ -160,6 +160,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('pause-ralph-loop', loopId),
   resumeRalphLoop: (loopId: string): Promise<void> =>
     ipcRenderer.invoke('resume-ralph-loop', loopId),
+  retryRalphLoop: (loopId: string): Promise<void> =>
+    ipcRenderer.invoke('retry-ralph-loop', loopId),
   getRalphLoopState: (loopId: string): Promise<RalphLoopState | undefined> =>
     ipcRenderer.invoke('get-ralph-loop-state', loopId),
   getAllRalphLoops: (): Promise<RalphLoopState[]> =>

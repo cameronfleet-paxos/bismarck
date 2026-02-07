@@ -944,6 +944,12 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
     }
 
     switch (status) {
+      case 'planning':
+        return (
+          <div className="flex items-center gap-2 text-purple-400">
+            <span className="animate-pulse">◆</span> Planning...
+          </div>
+        )
       case 'starting':
         return (
           <div className="flex items-center gap-2 text-yellow-500">
@@ -1142,6 +1148,22 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
         ref={containerRef}
         className="flex-grow overflow-auto p-4"
       >
+        {events.length === 0 && status === 'planning' && (
+          <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-3">
+              <pre
+                className="animate-claude-bounce font-mono text-xl leading-tight select-none"
+                style={{ color: '#D97757' }}
+              >
+                {` ▐▛███▜▌\n▝▜█████▛▘\n  ▘▘ ▝▝`}
+              </pre>
+              <span className="animate-pulse text-sm" style={{ color: '#D97757' }}>
+                planning...
+              </span>
+            </div>
+          </div>
+        )}
+
         {events.length === 0 && status === 'starting' && (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-3">

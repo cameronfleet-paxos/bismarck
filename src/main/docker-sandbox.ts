@@ -34,6 +34,7 @@ export interface ContainerConfig {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
+  mode?: 'plan' // If 'plan', run in read-only plan mode (--permission-mode plan, text output)
 }
 
 export interface ContainerResult {
@@ -198,16 +199,26 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // For mock images, use the image's entrypoint instead of claude command
   if (!config.useEntrypoint) {
-    // Claude command with arguments
     args.push('claude')
-    args.push('--dangerously-skip-permissions')
-    args.push('-p', config.prompt)
-    args.push('--output-format', 'stream-json')
-    args.push('--verbose')
 
-    // Add any additional claude flags
-    if (config.claudeFlags) {
-      args.push(...config.claudeFlags)
+    if (config.mode === 'plan') {
+      // Plan mode: read-only analysis with restricted tools, text output, uses sonnet for speed
+      args.push('--dangerously-skip-permissions')
+      args.push('--allowedTools', 'Read,Grep,Glob,Task')
+      args.push('-p', config.prompt)
+      args.push('--output-format', 'text')
+      args.push('--model', 'sonnet')
+    } else {
+      // Execution mode: full permissions, stream-json output
+      args.push('--dangerously-skip-permissions')
+      args.push('-p', config.prompt)
+      args.push('--output-format', 'stream-json')
+      args.push('--verbose')
+
+      // Add any additional claude flags
+      if (config.claudeFlags) {
+        args.push(...config.claudeFlags)
+      }
     }
   }
 

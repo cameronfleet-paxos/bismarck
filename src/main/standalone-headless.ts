@@ -40,6 +40,7 @@ import { startToolProxy, isProxyRunning } from './tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
 import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
+import { runPlanPhase, wrapPromptWithPlan } from './plan-phase'
 import { queueTerminalCreation } from './terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
 import * as fsPromises from 'fs/promises'
@@ -278,7 +279,8 @@ export async function startStandaloneHeadlessAgent(
   referenceAgentId: string,
   prompt: string,
   model: 'opus' | 'sonnet' = 'sonnet',
-  targetTabId?: string
+  targetTabId?: string,
+  startOptions?: { skipPlanPhase?: boolean }
 ): Promise<{ headlessId: string; workspaceId: string; tabId: string }> {
   // Look up the reference agent to get its directory
   const referenceAgent = getWorkspaceById(referenceAgentId)
@@ -438,11 +440,53 @@ export async function startStandaloneHeadlessAgent(
   const protectedBranch = repository?.protectedBranches?.[0] || baseBranch
   const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, protectedBranch, repository?.completionCriteria, repository?.guidance)
 
+  // Run plan phase before execution (skip if caller already has a plan, e.g. from discussion)
+  let executionPrompt = enhancedPrompt
+  if (!startOptions?.skipPlanPhase) {
+    agentInfo.status = 'planning'
+    emitHeadlessAgentUpdate(agentInfo)
+
+    const planResult = await runPlanPhase({
+      taskDescription: prompt,
+      worktreePath,
+      image: selectedImage,
+      planDir: getStandaloneHeadlessDir(),
+      planId: referenceAgent.directory,
+      guidance: repository?.guidance,
+      sharedCacheDir,
+      sharedModCacheDir,
+      onChunk: (text) => {
+        emitHeadlessAgentEvent(headlessId, {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text }] },
+          timestamp: new Date().toISOString(),
+        } as StreamEvent)
+      },
+    })
+
+    if (planResult.success && planResult.plan) {
+      executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+      emitHeadlessAgentEvent(headlessId, {
+        type: 'system',
+        message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Plan phase succeeded (${planResult.durationMs}ms), injecting plan into prompt`)
+    } else if (planResult.error) {
+      emitHeadlessAgentEvent(headlessId, {
+        type: 'system',
+        message: `Plan phase skipped: ${planResult.error}`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Plan phase skipped/failed, proceeding without plan`, { error: planResult.error })
+    }
+  }
+
   // Update stored prompt to the full resolved version (for Eye modal display)
-  agentInfo.originalPrompt = enhancedPrompt
+  agentInfo.originalPrompt = executionPrompt
 
   const options: HeadlessAgentOptions = {
-    prompt: enhancedPrompt,
+    prompt: executionPrompt,
     worktreePath: worktreePath,
     planDir: getStandaloneHeadlessDir(),
     planId: referenceAgent.directory, // Use reference agent directory for bd proxy
@@ -529,7 +573,7 @@ export function initStandaloneHeadless(): void {
   for (const agent of agents) {
     if (agent.taskId) {
       // Mark non-terminal agents as interrupted (they were running when app closed)
-      if (agent.status === 'starting' || agent.status === 'running' || agent.status === 'stopping') {
+      if (agent.status === 'planning' || agent.status === 'starting' || agent.status === 'running' || agent.status === 'stopping') {
         agent.status = 'interrupted'
         modified = true
       }
@@ -659,8 +703,8 @@ export async function restartStandaloneHeadlessAgent(
   removeWorkspaceFromTab(workspace.id)
   deleteWorkspace(workspace.id)
 
-  // Start fresh agent with same prompt
-  return startStandaloneHeadlessAgent(referenceWorkspace.id, originalPrompt, model)
+  // Start fresh agent with same prompt (skip plan phase - prompt already contains the plan)
+  return startStandaloneHeadlessAgent(referenceWorkspace.id, originalPrompt, model, undefined, { skipPlanPhase: true })
 }
 
 /**
@@ -831,11 +875,51 @@ export async function startFollowUpAgent(
   const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
   const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
+  // Run plan phase before execution
+  agentInfo.status = 'planning'
+  emitHeadlessAgentUpdate(agentInfo)
+
+  const planResult = await runPlanPhase({
+    taskDescription: prompt,
+    worktreePath,
+    image: selectedImage,
+    planDir: getStandaloneHeadlessDir(),
+    planId: repoPath,
+    guidance: repository?.guidance,
+    sharedCacheDir,
+    sharedModCacheDir,
+    onChunk: (text) => {
+      emitHeadlessAgentEvent(newHeadlessId, {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text }] },
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+    },
+  })
+
+  let executionPrompt = enhancedPrompt
+  if (planResult.success && planResult.plan) {
+    executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+    emitHeadlessAgentEvent(newHeadlessId, {
+      type: 'system',
+      message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
+      timestamp: new Date().toISOString(),
+    } as StreamEvent)
+    devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
+  } else if (planResult.error) {
+    emitHeadlessAgentEvent(newHeadlessId, {
+      type: 'system',
+      message: `Plan phase skipped: ${planResult.error}`,
+      timestamp: new Date().toISOString(),
+    } as StreamEvent)
+    devLog(`[StandaloneHeadless] Follow-up plan phase skipped/failed, proceeding without plan`, { error: planResult.error })
+  }
+
   // Store the full resolved prompt (for Eye modal display)
-  agentInfo.originalPrompt = enhancedPrompt
+  agentInfo.originalPrompt = executionPrompt
 
   const options: HeadlessAgentOptions = {
-    prompt: enhancedPrompt,
+    prompt: executionPrompt,
     worktreePath: worktreePath,
     planDir: getStandaloneHeadlessDir(),
     planId: repoPath, // Use repo path for bd proxy (where .beads/ directory lives)
@@ -1066,13 +1150,14 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
     // applies the full standalone_headless template with proxied tools, completion criteria, etc.
     const headlessPrompt = `Implement the following requirements from a planning discussion:\n\n${discussionOutput}`
 
-    // Start the headless agent with the discussion context
+    // Start the headless agent with the discussion context (skip plan phase - discussion IS the plan)
     devLog(`[HeadlessDiscussion] Starting headless agent with discussion context`)
     const result = await startStandaloneHeadlessAgent(
       discussionState.referenceAgentId,
       headlessPrompt,
       'sonnet', // Default to sonnet model
-      discussionState.tabId // Reuse the same tab
+      discussionState.tabId, // Reuse the same tab
+      { skipPlanPhase: true }
     )
 
     devLog(`[HeadlessDiscussion] Headless agent started: ${result.headlessId}`)
