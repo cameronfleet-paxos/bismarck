@@ -29,6 +29,7 @@ export function TutorialTooltip({
 
   return (
     <div
+      data-testid="tutorial-tooltip"
       data-slot="tutorial-tooltip"
       className={cn(
         'relative w-[400px] rounded-lg border bg-background shadow-lg',

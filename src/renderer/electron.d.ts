@@ -1,11 +1,20 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
+
+// Tool auth status from the auth checker
+export interface ToolAuthStatus {
+  toolId: string
+  toolName: string
+  state: 'valid' | 'needs-reauth' | 'error'
+  reauthHint?: string
+  message?: string
+}
 
 // Update status types
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -39,6 +48,13 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; workspaceIds: string[] }>
   setActiveTab: (tabId: string) => Promise<void>
   getTabs: () => Promise<AgentTab[]>
+  getTabPlanStatus: (tabId: string) => Promise<{
+    hasPlan: boolean
+    planId?: string
+    planTitle?: string
+    planStatus?: string
+    isInProgress: boolean
+  }>
   reorderTabs: (tabIds: string[]) => Promise<boolean>
   reorderWorkspaceInTab: (
     tabId: string,
@@ -89,7 +105,7 @@ export interface ElectronAPI {
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
@@ -125,6 +141,14 @@ export interface ElectronAPI {
   addRepository: (path: string) => Promise<Repository | null>
   removeRepository: (id: string) => Promise<boolean>
 
+  // Git diff operations
+  getChangedFiles: (directory: string) => Promise<DiffResult>
+  getFileDiff: (directory: string, filepath: string, force?: boolean) => Promise<FileDiffContent>
+  isGitRepo: (directory: string) => Promise<boolean>
+  revertFile: (directory: string, filepath: string) => Promise<void>
+  writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
+  revertAllFiles: (directory: string) => Promise<void>
+
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>
   setupWizardGetCommonRepoPaths: () => Promise<string[]>
@@ -147,6 +171,15 @@ export interface ElectronAPI {
   onSetupTerminalExit: (callback: (terminalId: string, code: number) => void) => void
   removeSetupTerminalListeners: () => void
 
+  // Docker image pull
+  setupWizardPullDockerImage: () => Promise<{ success: boolean; output: string }>
+  onDockerPullProgress: (callback: (message: string) => void) => void
+  removeDockerPullProgressListener: () => void
+
+  // Docker image status
+  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }>
+  pullDockerImage: (imageName: string) => Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }>
+
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
   setGitHubToken: (token: string) => Promise<boolean>
@@ -160,8 +193,11 @@ export interface ElectronAPI {
   setSelectedDockerImage: (image: string) => Promise<void>
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
-  removeProxiedTool: (id: string) => Promise<boolean>
+  toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
+  getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
+  checkToolAuth: () => Promise<ToolAuthStatus[]>
+  onToolAuthStatus: (callback: (statuses: ToolAuthStatus[]) => void) => void
+  removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
@@ -270,6 +306,7 @@ export interface ElectronAPI {
   devStopMock?: () => Promise<void>
   devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
+  devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
 }
 
 declare global {

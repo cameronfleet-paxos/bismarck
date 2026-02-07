@@ -49,6 +49,7 @@ export interface PromptVariables {
   // Headless task agent variables
   gitCommands?: string           // Branch-strategy-dependent git instructions
   completionCriteria?: string    // Repository completion criteria (PR mode only)
+  guidance?: string              // Repository-specific guidance for headless agents
 
   // Standalone headless agent variables
   userPrompt?: string            // The user's task description
@@ -58,6 +59,9 @@ export interface PromptVariables {
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
+
+  // Proxied tools section (dynamically built based on enabled tools)
+  proxiedToolsSection?: string
 
   // Critic agent variables
   originalTaskId?: string
@@ -313,7 +317,7 @@ Title: {{taskTitle}}
 === FIRST STEP ===
 Read your task details to understand what you need to do:
   bd show {{taskId}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
@@ -355,27 +359,13 @@ Branch: {{branchName}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+{{proxiedToolsSection}}
 
 === YOUR TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 When you complete your work:
 
@@ -405,30 +395,16 @@ Branch: {{branchName}}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+{{proxiedToolsSection}}
 
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
 
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
-{{completionCriteria}}
+{{completionCriteria}}{{guidance}}
 === COMPLETION REQUIREMENTS ===
 1. Review the previous commits above to understand what was done
 
@@ -653,11 +629,11 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'planner':
       return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
     case 'task':
-      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria']
+      return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':
-      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria']
+      return ['userPrompt', 'workingDir', 'branchName', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath']
     case 'ralph_loop_discussion':
@@ -712,6 +688,51 @@ export async function getPromptTemplate(type: PromptType): Promise<string> {
     if (customPrompt) return customPrompt
   }
   return DEFAULT_PROMPTS[type]
+}
+
+/**
+ * Build the PROXIED COMMANDS section based on which tools are enabled
+ */
+export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
+  const sections: string[] = []
+  let num = 1
+
+  if (enabledTools.git) {
+    sections.push(`${num}. Git:
+   - git status, git add, git commit, git push
+   - IMPORTANT: For git commit, always use -m "message" inline.
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.`)
+    num++
+  }
+
+  if (enabledTools.gh) {
+    sections.push(`${num}. GitHub CLI (gh):
+   - gh api, gh pr view, gh pr create
+   - All standard gh commands work`)
+    num++
+  }
+
+  if (enabledTools.bd) {
+    sections.push(`${num}. Beads Task Management (bd):
+   - bd list, bd ready, bd show, bd close, bd update
+   - The --sandbox flag is added automatically`)
+    num++
+  }
+
+  if (enabledTools.bb) {
+    sections.push(`${num}. BuildBuddy CLI (bb):
+   - bb view, bb run, bb test, bb remote
+   - All standard bb commands work`)
+  }
+
+  if (sections.length === 0) {
+    return ''
+  }
+
+  return `=== PROXIED COMMANDS ===
+All these commands work normally (they are proxied to the host automatically):
+
+${sections.join('\n\n')}`
 }
 
 /**

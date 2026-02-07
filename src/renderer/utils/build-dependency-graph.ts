@@ -1,4 +1,5 @@
 import type { BeadTask, TaskAssignment, TaskNode, DependencyGraph, GraphStats, TaskNodeStatus } from '@/shared/types'
+import { devLog } from './dev-log'
 
 /**
  * Determine the effective status of a task node based on assignment and blockers
@@ -55,7 +56,7 @@ function calculateDepths(
     (node) => node.blockedBy.length === 0
   )
 
-  console.log('[calculateDepths] Roots (no blockers):', roots.map(n => n.id))
+  devLog('[calculateDepths] Roots (no blockers):', roots.map(n => n.id))
 
   // BFS to assign depths
   const visited = new Set<string>()
@@ -65,7 +66,7 @@ function calculateDepths(
   while (currentLevel.length > 0) {
     const nextLevel: string[] = []
 
-    console.log(`[calculateDepths] Processing depth ${depth}:`, currentLevel)
+    devLog(`[calculateDepths] Processing depth ${depth}:`, currentLevel)
 
     for (const nodeId of currentLevel) {
       if (visited.has(nodeId)) continue
@@ -86,10 +87,10 @@ function calculateDepths(
   // Check for unvisited nodes (orphans with unresolved blockers)
   const unvisited = Array.from(nodes.keys()).filter(id => !visited.has(id))
   if (unvisited.length > 0) {
-    console.log('[calculateDepths] UNVISITED NODES (bug!):', unvisited)
+    devLog('[calculateDepths] UNVISITED NODES (bug!):', unvisited)
     for (const id of unvisited) {
       const node = nodes.get(id)
-      console.log(`  ${id}: blockedBy=[${node?.blockedBy.join(',')}], blocks=[${node?.blocks.join(',')}]`)
+      devLog(`  ${id}: blockedBy=[${node?.blockedBy.join(',')}], blocks=[${node?.blocks.join(',')}]`)
     }
   }
 }
@@ -190,9 +191,9 @@ export function buildDependencyGraph(
   }
 
   // Debug: log nodes after first pass
-  console.log('[buildDependencyGraph] Nodes created:')
+  devLog('[buildDependencyGraph] Nodes created:')
   for (const [id, node] of nodes) {
-    console.log(`  ${id}: blockedBy=[${node.blockedBy.join(',')}]`)
+    devLog(`  ${id}: blockedBy=[${node.blockedBy.join(',')}]`)
   }
 
   // Second pass: populate blocks relationships and create edges
@@ -210,16 +211,16 @@ export function buildDependencyGraph(
           isOnCriticalPath: false, // Will be updated later
         })
       } else {
-        console.log(`  [buildDependencyGraph] WARNING: blocker ${blockerId} not found in nodes for task ${task.id}`)
+        devLog(`  [buildDependencyGraph] WARNING: blocker ${blockerId} not found in nodes for task ${task.id}`)
       }
     }
   }
 
   // Debug: log blocks after second pass
-  console.log('[buildDependencyGraph] Blocks populated:')
+  devLog('[buildDependencyGraph] Blocks populated:')
   for (const [id, node] of nodes) {
     if (node.blocks.length > 0) {
-      console.log(`  ${id}: blocks=[${node.blocks.join(',')}]`)
+      devLog(`  ${id}: blocks=[${node.blocks.join(',')}]`)
     }
   }
 
@@ -227,9 +228,9 @@ export function buildDependencyGraph(
   calculateDepths(nodes)
 
   // Debug: log depths after calculation
-  console.log('[buildDependencyGraph] Depths calculated:')
+  devLog('[buildDependencyGraph] Depths calculated:')
   for (const [id, node] of nodes) {
-    console.log(`  ${id}: depth=${node.depth}`)
+    devLog(`  ${id}: depth=${node.depth}`)
   }
 
   // Find critical path

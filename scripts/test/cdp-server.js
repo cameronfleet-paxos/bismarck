@@ -22,8 +22,8 @@
 const http = require('http');
 const { CDPHelper } = require('./cdp-helper');
 
-const PORT = 9333;
-const CDP_PORT = 9222;
+const PORT = parseInt(process.env.CDP_SERVER_PORT || '9333', 10);
+const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
 let cdp = null;
 let connecting = false;
@@ -133,26 +133,22 @@ async function handleRequest(req, res) {
         const state = await cdp.evaluate(`
           (function() {
             const body = document.body.innerText;
-            const header = document.querySelector('header')?.textContent?.trim() || '';
+            const header = document.querySelector('[data-testid="app-header"]')?.textContent?.trim() || '';
 
             // Detect current view based on specific UI elements
             let view = 'unknown';
 
-            // Settings view: has "General Settings" heading or "Back to Workspace" link
-            const hasSettingsHeading = !!document.querySelector('h1, h2, h3')?.textContent?.includes('General Settings');
-            const hasBackToWorkspace = body.includes('Back to Workspace');
+            // Settings view: has back to workspace button
+            const hasBackToWorkspace = !!document.querySelector('[data-testid="back-to-workspace-button"]');
 
             // Workspace view: has workspace tabs in the tab bar area
-            // Find the tab bar by looking for the second border-b element (first is header)
-            const borderBs = document.querySelectorAll('.border-b');
-            const tabBar = borderBs.length > 1 ? borderBs[1] : null;
-            const hasWorkspaceTabs = tabBar && tabBar.querySelectorAll('div.group').length > 0;
+            const tabBar = document.querySelector('[data-testid="tab-bar"]');
+            const hasWorkspaceTabs = !!tabBar;
 
-            // Plans panel: Check if plans sidebar is visible (separate from main view)
-            const plansPanelVisible = !!document.querySelector('[class*="Plans"]') ||
-                                      body.includes('COMPLETED') && body.includes('New');
+            // Plans panel: Check if plans sidebar is visible
+            const plansPanelVisible = !!document.querySelector('[data-testid="plan-sidebar"]');
 
-            if (hasSettingsHeading || hasBackToWorkspace) {
+            if (hasBackToWorkspace) {
               view = 'settings';
             } else if (hasWorkspaceTabs) {
               view = 'workspace';
@@ -161,27 +157,27 @@ async function handleRequest(req, res) {
             // Settings-specific info
             let settings = null;
             if (view === 'settings') {
-              const sections = ['General', 'Docker', 'Tool Paths', 'Proxied Tools', 'Plans', 'Repositories'];
-              // Active section has bg-primary class, inactive ones have text-muted-foreground
+              const sections = ['general', 'docker', 'tool-paths', 'proxied-tools', 'plans-prompts', 'repositories'];
+              // Find active section button (has bg-primary class)
               const activeSection = sections.find(s => {
-                const el = [...document.querySelectorAll('button')].find(
-                  b => b.textContent.includes(s) && b.classList.contains('bg-primary')
-                );
-                return el;
-              }) || 'General';
+                const el = document.querySelector(\`[data-testid="settings-section-\${s}"]\`);
+                return el && el.classList.contains('bg-primary');
+              }) || 'general';
               settings = { activeSection };
             }
 
             // Workspace-specific info
             let workspace = null;
             if (view === 'workspace') {
-              // Find workspace tabs (divs in the tab bar area with text content)
-              const tabs = tabBar ? [...tabBar.querySelectorAll('div.group')] : [];
+              // Find workspace tabs using data-testid
+              const tabs = tabBar ? [...tabBar.querySelectorAll('[data-testid^="tab-item-"]')] : [];
               // Active tab has bg-background class (not just hover:bg-muted/50)
               const activeTab = tabs.find(t => t.classList.contains('bg-background'));
+              // Count agent cards using data-testid
+              const agentCount = document.querySelectorAll('[data-testid^="agent-card-"]').length;
               workspace = {
                 activeTab: activeTab?.textContent?.trim()?.replace(/\\s+/g, ' ') || null,
-                agentCount: document.querySelectorAll('h3.font-medium').length,
+                agentCount,
                 plansPanelOpen: plansPanelVisible
               };
             }
@@ -338,11 +334,11 @@ async function handleRequest(req, res) {
             });
 
             // Agent cards in sidebar
-            const agentCards = document.querySelectorAll('h3.font-medium');
-            agentCards.forEach(h3 => {
-              const card = h3.closest('div[class*=rounded]');
-              if (!card) return;
-              const name = h3.textContent.trim();
+            const agentCards = document.querySelectorAll('[data-testid^="agent-card-"]');
+            agentCards.forEach(card => {
+              const nameEl = card.querySelector('[data-testid^="agent-card-name-"]');
+              if (!nameEl) return;
+              const name = nameEl.textContent.trim();
               const badge = card.querySelector('[class*=badge], span[class*=rounded-full]');
               const status = badge?.textContent?.trim() || '';
               const isSelected = card.classList.contains('ring-2') || card.getAttribute('aria-selected') === 'true' || card.dataset.selected === 'true';
@@ -389,11 +385,11 @@ async function handleRequest(req, res) {
         const agents = await cdp.evaluate(`
           (function() {
             const agents = [];
-            const cards = document.querySelectorAll('h3.font-medium');
-            cards.forEach((h3, idx) => {
-              const card = h3.closest('div[class*=rounded]');
-              if (!card) return;
-              const name = h3.textContent.trim();
+            const cards = document.querySelectorAll('[data-testid^="agent-card-"]');
+            cards.forEach((card, idx) => {
+              const nameEl = card.querySelector('[data-testid^="agent-card-name-"]');
+              if (!nameEl) return;
+              const name = nameEl.textContent.trim();
               const badge = card.querySelector('[class*=badge], span[class*=rounded-full]');
               const status = badge?.textContent?.trim() || 'idle';
               const isSelected = card.classList.contains('ring-2') || card.classList.contains('border-primary');
@@ -417,16 +413,15 @@ async function handleRequest(req, res) {
         const body = await parseBody(req);
         const result = await cdp.evaluate(`
           (function() {
-            const cards = document.querySelectorAll('h3.font-medium');
-            for (const [idx, h3] of cards.entries()) {
-              const name = h3.textContent.trim();
+            const cards = document.querySelectorAll('[data-testid^="agent-card-"]');
+            for (const [idx, card] of cards.entries()) {
+              const nameEl = card.querySelector('[data-testid^="agent-card-name-"]');
+              if (!nameEl) continue;
+              const name = nameEl.textContent.trim();
               const match = ${JSON.stringify(body.name)} ? name === ${JSON.stringify(body.name)} : idx === ${body.index || 0};
               if (match) {
-                const card = h3.closest('div[class*=rounded]');
-                if (card) {
-                  card.click();
-                  return { success: true, selected: name };
-                }
+                card.click();
+                return { success: true, selected: name };
               }
             }
             return { success: false, error: 'Agent not found' };

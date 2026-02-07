@@ -58,6 +58,7 @@ export interface Repository {
   purpose?: string        // Description of what repo is for
   completionCriteria?: string  // What "done" looks like
   protectedBranches?: string[]  // Branches that should not be modified
+  guidance?: string       // Custom guidance/quirks for headless agents
 }
 
 // Agent definition (stored in ~/.bismarck/config.json)
@@ -125,6 +126,14 @@ export interface KeyboardShortcuts {
   commandPalette: KeyboardShortcut    // Default: Cmd/Ctrl+K
   dismissAgent: KeyboardShortcut      // Default: Cmd/Ctrl+N
   devConsole?: KeyboardShortcut       // Default: Cmd/Ctrl+Shift+D (dev only)
+  toggleAgentSidebar?: KeyboardShortcut  // Default: Cmd/Ctrl+B
+  togglePlansSidebar?: KeyboardShortcut  // Default: Cmd/Ctrl+Shift+P
+  nextTab?: KeyboardShortcut             // Default: Cmd/Ctrl+Shift+]
+  previousTab?: KeyboardShortcut         // Default: Cmd/Ctrl+Shift+[
+  newTab?: KeyboardShortcut              // Default: Cmd/Ctrl+T
+  closeTab?: KeyboardShortcut            // Default: Cmd/Ctrl+W
+  toggleMaximizeAgent?: KeyboardShortcut // Default: Cmd/Ctrl+Shift+M
+  closeAgent?: KeyboardShortcut          // Default: Cmd/Ctrl+Shift+W
 }
 
 // App preferences (stored in ~/.bismarck/state.json)
@@ -135,6 +144,7 @@ export interface AppPreferences {
   gridSize: GridSize
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
+  showDiffView?: boolean
 }
 
 // ============================================
@@ -601,6 +611,12 @@ export interface ClaudeOAuthTokenStatus {
   configured: boolean     // true if a token is saved
 }
 
+// Docker image availability status
+export interface DockerImageStatus {
+  available: boolean
+  imageName: string
+}
+
 // Collection of all plan mode dependencies
 export interface PlanModeDependencies {
   docker: DependencyStatus
@@ -610,6 +626,7 @@ export interface PlanModeDependencies {
   claude: DependencyStatus
   githubToken: GitHubTokenStatus
   claudeOAuthToken: ClaudeOAuthTokenStatus
+  dockerImage: DockerImageStatus
   allRequiredInstalled: boolean  // true if all required deps are installed
 }
 
@@ -649,6 +666,24 @@ export interface RalphLoopIteration {
   duration_ms?: number
 }
 
+// Git summary for Ralph Loop (commits and PRs produced by the agent)
+export interface RalphLoopGitSummary {
+  branch: string              // Working branch name
+  commits: Array<{
+    sha: string
+    shortSha: string
+    message: string
+    timestamp: string
+  }>
+  pullRequests: Array<{
+    number: number
+    title: string
+    url: string
+    baseBranch: string
+    status: 'open' | 'merged' | 'closed'
+  }>
+}
+
 // Full Ralph Loop state
 export interface RalphLoopState {
   id: string
@@ -664,4 +699,38 @@ export interface RalphLoopState {
   tabId: string               // Dedicated tab for all iterations
   phrase: string              // Random phrase for naming (e.g., "plucky-otter")
   referenceAgentDirectory: string  // Reference agent's directory (for bd proxy planId)
+  gitSummary?: RalphLoopGitSummary  // Git info: branch, commits, PRs
+}
+
+// ============================================
+// Git Diff Types
+// ============================================
+
+// Individual file in a diff result
+export interface DiffFile {
+  path: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed'
+  additions: number
+  deletions: number
+  isBinary: boolean
+}
+
+// Complete diff result with files and summary
+export interface DiffResult {
+  files: DiffFile[]
+  summary: {
+    filesChanged: number
+    additions: number
+    deletions: number
+  }
+}
+
+// Content and metadata for viewing a specific file's diff
+export interface FileDiffContent {
+  oldContent: string
+  newContent: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  error?: string
 }
