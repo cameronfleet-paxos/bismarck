@@ -26,3 +26,76 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start Electron with xvfb
+        run: |
+          xvfb-run -a ./node_modules/.bin/electron --remote-debugging-port=9222 --no-sandbox . > /tmp/electron.log 2>&1 &
+          echo "Waiting for Electron CDP endpoint..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:9222/json > /dev/null 2>&1; then
+              echo "Electron CDP ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -s http://localhost:9222/json > /dev/null 2>&1; then
+            echo "Electron failed to start"
+            cat /tmp/electron.log
+            exit 1
+          fi
+
+      - name: Start CDP server
+        run: |
+          node scripts/test/cdp-server.js > /tmp/cdp-server.log 2>&1 &
+          echo "Waiting for CDP server..."
+          for i in $(seq 1 15); do
+            if curl -s http://localhost:9333/health > /dev/null 2>&1; then
+              echo "CDP server ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -s http://localhost:9333/health > /dev/null 2>&1; then
+            echo "CDP server failed to start"
+            cat /tmp/cdp-server.log
+            exit 1
+          fi
+
+      - name: Bypass onboarding
+        run: curl -s -X POST localhost:9333/setup-test-env
+
+      - name: Run CDP integration tests
+        run: npm run test:core
+
+      - name: Upload Electron logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-logs
+          path: /tmp/electron.log
+
+      - name: Cleanup
+        if: always()
+        run: pkill -f "electron|cdp-server" 2>/dev/null || true
