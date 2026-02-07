@@ -1455,8 +1455,15 @@ function App() {
   }
 
   // Open follow-up modal for a standalone headless agent
-  const handleStandaloneStartFollowup = (headlessId: string) => {
-    // Find the agent info from headlessAgents map
+  const handleStandaloneStartFollowup = async (headlessId: string) => {
+    // Fetch fresh info from main process (has complete events array in memory)
+    const allAgents = await window.electronAPI?.getStandaloneHeadlessAgents?.()
+    const freshInfo = allAgents?.find(a => a.taskId === headlessId)
+    if (freshInfo) {
+      setFollowUpInfo(freshInfo)
+      return
+    }
+    // Fall back to renderer state
     const info = headlessAgents.get(headlessId)
     if (info) {
       setFollowUpInfo(info)

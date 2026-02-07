@@ -10,7 +10,7 @@ import {
 import { Button } from '@/renderer/components/ui/button'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import type { HeadlessAgentInfo, AgentModel } from '@/shared/types'
-import { extractPRUrl } from '@/shared/pr-utils'
+import { extractPRUrls } from '@/shared/pr-utils'
 
 interface FollowUpModalProps {
   info: HeadlessAgentInfo | null
@@ -25,7 +25,14 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
   const [model, setModel] = useState<AgentModel>(defaultModel)
 
   const userPrompt = info?.userPrompt || info?.originalPrompt
-  const prUrl = info ? extractPRUrl(info.events) : null
+  // Extract PR URLs from events first, fall back to scanning the original prompt text
+  let prUrls = info ? extractPRUrls(info.events) : []
+  if (prUrls.length === 0 && info?.originalPrompt) {
+    const prMatches = info.originalPrompt.match(/https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(?![/\w])/g)
+    if (prMatches) {
+      prUrls = [...new Set(prMatches)]
+    }
+  }
 
   const handleSubmit = () => {
     if (!prompt.trim()) return
@@ -62,26 +69,33 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
               </div>
             )}
 
-            {/* PR URL */}
-            {prUrl && (
+            {/* PR URLs */}
+            {prUrls.length > 0 && (
               <div className="rounded-md border bg-muted/30 p-3">
-                <div className="text-xs font-medium text-muted-foreground mb-1">Pull Request Created</div>
-                <a
-                  href={prUrl}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    window.electronAPI?.openExternal?.(prUrl)
-                  }}
-                  className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300"
-                >
-                  <GitPullRequest className="h-4 w-4" />
-                  <span className="underline">{prUrl}</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                <div className="text-xs font-medium text-muted-foreground mb-1">
+                  {prUrls.length === 1 ? 'Pull Request Created' : `Pull Requests Created (${prUrls.length})`}
+                </div>
+                <div className="space-y-1">
+                  {prUrls.map((url) => (
+                    <a
+                      key={url}
+                      href={url}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        window.electronAPI?.openExternal?.(url)
+                      }}
+                      className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300"
+                    >
+                      <GitPullRequest className="h-4 w-4 shrink-0" />
+                      <span className="underline truncate">{url}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
-            {!userPrompt && !prUrl && (
+            {!userPrompt && prUrls.length === 0 && (
               <p className="text-sm text-muted-foreground italic">No previous context available</p>
             )}
           </div>
