@@ -134,8 +134,7 @@ import {
   removeDockerImage,
   setSelectedDockerImage,
   updateToolPaths,
-  addProxiedTool,
-  removeProxiedTool,
+  updateProxiedTool,
   updateDockerSshSettings,
   updateDockerSocketSettings,
   getCustomPrompts,
@@ -286,7 +285,8 @@ function createWindow() {
 
   startTimer('window:loadURL', 'window')
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173')
+    const vitePort = process.env.VITE_PORT || '5173'
+    mainWindow.loadURL(`http://localhost:${vitePort}`)
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'))
@@ -708,8 +708,8 @@ function registerIpcHandlers() {
     return confirmStandaloneAgentDone(headlessId)
   })
 
-  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string) => {
-    return startFollowUpAgent(headlessId, prompt)
+  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => {
+    return startFollowUpAgent(headlessId, prompt, model)
   })
 
   ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
@@ -1013,12 +1013,8 @@ function registerIpcHandlers() {
     return setSelectedDockerImage(image)
   })
 
-  ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string }) => {
-    return addProxiedTool(tool)
-  })
-
-  ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
-    return removeProxiedTool(id)
+  ipcMain.handle('toggle-proxied-tool', async (_event, id: string, enabled: boolean) => {
+    return updateProxiedTool(id, { enabled })
   })
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {

@@ -22,8 +22,8 @@
 const http = require('http');
 const { CDPHelper } = require('./cdp-helper');
 
-const PORT = 9333;
-const CDP_PORT = 9222;
+const PORT = parseInt(process.env.CDP_SERVER_PORT || '9333', 10);
+const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
 let cdp = null;
 let connecting = false;

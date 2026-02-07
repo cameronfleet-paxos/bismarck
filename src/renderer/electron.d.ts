@@ -5,7 +5,7 @@ import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -96,7 +96,7 @@ export interface ElectronAPI {
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string) => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
@@ -184,8 +184,7 @@ export interface ElectronAPI {
   setSelectedDockerImage: (image: string) => Promise<void>
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
-  removeProxiedTool: (id: string) => Promise<boolean>
+  toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
@@ -294,6 +293,7 @@ export interface ElectronAPI {
   devStopMock?: () => Promise<void>
   devSetMockFlowOptions?: (options: { eventIntervalMs?: number; startDelayMs?: number }) => Promise<{ eventIntervalMs: number; startDelayMs: number }>
   devGetMockFlowOptions?: () => Promise<{ eventIntervalMs: number; startDelayMs: number }>
+  devSetVersionOverride?: (version: string | null) => Promise<{ version: string }>
 }
 
 declare global {
