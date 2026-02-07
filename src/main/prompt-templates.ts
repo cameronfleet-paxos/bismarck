@@ -729,6 +729,7 @@ export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boole
   if (enabledTools.bb) {
     sections.push(`${num}. BuildBuddy CLI (bb):
    - bb view, bb run, bb test, bb remote
+   - IMPORTANT: Always use \`bb remote --os=linux --arch=amd64\` for remote commands (e.g. \`bb remote --os=linux --arch=amd64 test //...\`). The host is macOS ARM but remote executors are Linux x86.
    - All standard bb commands work`)
   }
 
