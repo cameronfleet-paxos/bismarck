@@ -1779,6 +1779,32 @@ function App() {
     }
   }
 
+  // Add terminal handler (CMD-K "Add Terminal")
+  const handleAddTerminal = async () => {
+    // Use focused agent's directory as default, or home directory
+    const focusedAgent = agents.find(a => a.id === focusedAgentId)
+    const directory = focusedAgent?.directory || '~'
+    const name = 'Terminal'
+
+    try {
+      const result = await window.electronAPI.createTerminalAgent(name, directory)
+      if (result) {
+        // Reload agents to pick up the new terminal agent
+        await loadAgents()
+        // Add to active terminals
+        setActiveTerminals(prev => [...prev, { terminalId: result.terminalId, workspaceId: result.agentId }])
+        setFocusedAgentId(result.agentId)
+        window.electronAPI?.setFocusedWorkspace?.(result.agentId)
+        // Refresh tabs
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (error) {
+      console.error('Failed to create terminal agent:', error)
+    }
+  }
+
   // Tab handlers
   const handleTabSelect = async (tabId: string) => {
     if (activeTabId && activeTabId !== tabId) {
@@ -2702,7 +2728,7 @@ function App() {
                           >
                             <option value="">Select reference agent...</option>
                             {agents
-                              .filter(a => !a.isOrchestrator && !a.isPlanAgent && !a.parentPlanId)
+                              .filter(a => !a.isOrchestrator && !a.isPlanAgent && !a.parentPlanId && !a.isTerminal)
                               .map(agent => (
                                 <option key={agent.id} value={agent.id}>
                                   {agent.name}
@@ -3896,6 +3922,7 @@ function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
+        onAddTerminal={handleAddTerminal}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}

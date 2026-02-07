@@ -35,6 +35,7 @@ import {
   closeTerminal,
   closeAllTerminals,
   getTerminalForWorkspace,
+  createPlainTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -414,12 +415,66 @@ function registerIpcHandlers() {
   ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
     devLog('[Main] create-terminal called for workspace:', workspaceId)
     try {
+      // Check if this is a terminal-only agent (plain shell, no Claude)
+      const workspace = getWorkspaces().find(w => w.id === workspaceId)
+      if (workspace?.isTerminal) {
+        // Setup workspace in state/tabs but use plain terminal
+        createSocketServer(workspaceId)
+        addActiveWorkspace(workspaceId)
+        const tab = getOrCreateTabForWorkspace(workspaceId)
+        addWorkspaceToTab(workspaceId, tab.id)
+        setActiveTab(tab.id)
+        const terminalId = createPlainTerminal(workspaceId, mainWindow)
+        devLog('[Main] create-terminal (plain) succeeded:', terminalId)
+        return terminalId
+      }
+
       // Use the queue for terminal creation with full setup
       const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
       devLog('[Main] create-terminal succeeded:', terminalId)
       return terminalId
     } catch (err) {
       console.error('[Main] create-terminal FAILED for workspace', workspaceId, ':', err)
+      throw err
+    }
+  })
+
+  // Create a terminal-only agent (plain shell, no Claude)
+  ipcMain.handle('create-terminal-agent', async (_event, name: string, directory: string) => {
+    devLog('[Main] create-terminal-agent called:', name, directory)
+    try {
+      const agentId = randomUUID()
+      const agent: Workspace = {
+        id: agentId,
+        name,
+        directory,
+        purpose: 'Terminal',
+        theme: 'gray',
+        icon: 'kraftwerk',
+        isTerminal: true,
+      }
+
+      // Save the agent
+      saveWorkspace(agent)
+
+      // Create socket server for this workspace
+      createSocketServer(agentId)
+
+      // Add to active workspaces
+      addActiveWorkspace(agentId)
+
+      // Auto-place workspace in a tab with space (or create new tab)
+      const tab = getOrCreateTabForWorkspace(agentId)
+      addWorkspaceToTab(agentId, tab.id)
+      setActiveTab(tab.id)
+
+      // Create plain terminal (no Claude)
+      const terminalId = createPlainTerminal(agentId, mainWindow)
+
+      devLog('[Main] create-terminal-agent succeeded:', { agentId, terminalId })
+      return { agentId, terminalId }
+    } catch (err) {
+      console.error('[Main] create-terminal-agent FAILED:', err)
       throw err
     }
   })

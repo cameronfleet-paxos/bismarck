@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('close-terminal', terminalId),
   stopWorkspace: (workspaceId: string): Promise<void> =>
     ipcRenderer.invoke('stop-workspace', workspaceId),
+  createTerminalAgent: (name: string, directory: string): Promise<{ agentId: string; terminalId: string }> =>
+    ipcRenderer.invoke('create-terminal-agent', name, directory),
 
   // State management
   getState: (): Promise<AppState> => ipcRenderer.invoke('get-state'),
