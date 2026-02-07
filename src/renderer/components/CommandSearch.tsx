@@ -95,14 +95,15 @@ export function CommandSearch({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Filter agents for selection (exclude orchestrators, plan agents, and headless agents)
+  // Filter agents for selection (exclude orchestrators, plan agents, headless agents, and non-git agents)
   const selectableAgents = useMemo(() => {
     return agents.filter(agent =>
       !agent.isOrchestrator &&
       !agent.isPlanAgent &&
       !agent.parentPlanId &&
       !agent.isHeadless &&
-      !agent.isStandaloneHeadless
+      !agent.isStandaloneHeadless &&
+      agent.repositoryId // Only include agents with a git repository
     )
   }, [agents])
 
