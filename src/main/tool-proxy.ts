@@ -196,10 +196,6 @@ async function handleGhRequest(
 
     logger.debug('proxy', `gh request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined, { subpath })
 
-    // DEBUG: Log git-related env vars and cwd
-    const gitEnvVars = Object.entries(process.env).filter(([k]) => k.startsWith('GIT_')).map(([k, v]) => `${k}=${v}`)
-    logger.info('proxy', `DEBUG gh env - cwd: ${cwd}, GIT vars: ${gitEnvVars.join(', ') || 'none'}`)
-
     // Log the operation
     proxyEvents.emit('gh', { subpath, args, cwd })
 

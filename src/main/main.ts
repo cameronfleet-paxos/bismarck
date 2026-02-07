@@ -141,6 +141,7 @@ import {
   setCustomPrompt,
   hasGitHubToken,
   setGitHubToken,
+  checkGitHubTokenScopes,
   updatePlayboxSettings,
   loadSettings,
   getRalphLoopPresets,
@@ -151,6 +152,7 @@ import {
   updateDebugSettings,
   getPreventSleepSettings,
   updatePreventSleepSettings,
+  updateDockerSharedBuildCacheSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -1012,6 +1014,10 @@ function registerIpcHandlers() {
     return true
   })
 
+  ipcMain.handle('check-github-token-scopes', async () => {
+    return checkGitHubTokenScopes()
+  })
+
   // Settings management
   ipcMain.handle('get-settings', async () => {
     return getSettings()
@@ -1063,7 +1069,7 @@ function registerIpcHandlers() {
     devLog('[Main] run-tool-reauth: executing', command)
     // Fire and forget - don't await, let the process open the browser
     execWithPath(command).then(
-      (result) => devLog('[Main] run-tool-reauth completed:', result.stdout?.slice(0, 200)),
+      () => devLog('[Main] run-tool-reauth completed'),
       (err) => console.error('[Main] run-tool-reauth failed:', err)
     )
   })
@@ -1074,6 +1080,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-socket-settings', async (_event, settings: { enabled?: boolean; path?: string }) => {
     return updateDockerSocketSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-shared-build-cache-settings', async (_event, settings: { enabled?: boolean }) => {
+    return updateDockerSharedBuildCacheSettings(settings)
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {

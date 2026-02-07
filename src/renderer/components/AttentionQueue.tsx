@@ -31,9 +31,9 @@ export function AttentionQueue({ waitingQueue, agents, onFocusAgent }: Attention
             <button
               key={agent.id}
               onClick={() => onFocusAgent(agent.id)}
-              className="w-8 h-8 rounded-md hover:brightness-125 transition-all ring-2 ring-yellow-500 hover:ring-yellow-400 flex items-center justify-center"
+              className="w-8 h-8 rounded-md cursor-pointer hover:brightness-125 transition-all ring-2 ring-yellow-500 hover:ring-yellow-400 flex items-center justify-center"
               style={{ backgroundColor: themeColors.bg }}
-              title={agent.name}
+              title={`Go to ${agent.name}`}
             >
               <AgentIcon icon={agent.icon} className="w-5 h-5" />
             </button>
