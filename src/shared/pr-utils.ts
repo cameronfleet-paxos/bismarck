@@ -5,14 +5,15 @@
 import type { StreamEvent } from './types'
 
 /**
- * Extract PR URL from stream events
+ * Extract all unique PR URLs from stream events
  * Looks for github.com/.../pull/NUMBER patterns in text content
- * Returns the most recent PR URL found, or null if none found
+ * Returns deduplicated URLs in order of first appearance
  */
-export function extractPRUrl(events: StreamEvent[]): string | null {
-  // Search through all text content in events in reverse order (most recent first)
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i]
+export function extractPRUrls(events: StreamEvent[]): string[] {
+  const seen = new Set<string>()
+  const urls: string[] = []
+
+  for (const event of events) {
     let text = ''
 
     if (event.type === 'message') {
@@ -28,13 +29,25 @@ export function extractPRUrl(events: StreamEvent[]): string | null {
       text = delta.delta?.text || ''
     }
 
-    // Look for PR URLs - match github.com/owner/repo/pull/NUMBER (not /pull/new/)
-    // Must have a number at the end, not "new" or other paths
-    const prMatch = text.match(/https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(?![/\w])/g)
-    if (prMatch) {
-      // Return the last PR URL found in this event (most recent in text)
-      return prMatch[prMatch.length - 1]
+    const prMatches = text.match(/https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(?![/\w])/g)
+    if (prMatches) {
+      for (const url of prMatches) {
+        if (!seen.has(url)) {
+          seen.add(url)
+          urls.push(url)
+        }
+      }
     }
   }
-  return null
+
+  return urls
+}
+
+/**
+ * Extract PR URL from stream events (convenience wrapper)
+ * Returns the most recent PR URL found, or null if none found
+ */
+export function extractPRUrl(events: StreamEvent[]): string | null {
+  const urls = extractPRUrls(events)
+  return urls.length > 0 ? urls[urls.length - 1] : null
 }
