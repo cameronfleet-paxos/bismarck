@@ -21,9 +21,16 @@ export function sendMilestone(name: string): void {
 const importEndTime = performance.now()
 sendTiming('renderer:imports', 0, importEndTime - rendererStartTime)
 
-// Time createRoot
+// Reuse existing root on HMR to avoid "createRoot() on a container that has
+// already been passed to createRoot()" warning.
+const container = document.getElementById('root')!
+const existingRoot = (container as any).__reactRoot
+
 const createRootStart = performance.now()
-const root = ReactDOM.createRoot(document.getElementById('root')!)
+const root = existingRoot ?? ReactDOM.createRoot(container)
+if (!existingRoot) {
+  ;(container as any).__reactRoot = root
+}
 sendTiming('renderer:createRoot', createRootStart - rendererStartTime, performance.now() - createRootStart)
 
 // Time render
