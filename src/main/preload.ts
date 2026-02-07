@@ -134,8 +134,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string): Promise<{ headlessId: string; workspaceId: string }> =>
-    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt),
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
+    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model),
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
@@ -386,10 +386,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-tool-paths', paths),
   detectToolPaths: () =>
     ipcRenderer.invoke('detect-tool-paths'),
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) =>
-    ipcRenderer.invoke('add-proxied-tool', tool),
-  removeProxiedTool: (id: string) =>
-    ipcRenderer.invoke('remove-proxied-tool', id),
+  toggleProxiedTool: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>

@@ -29,7 +29,8 @@ import {
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
+import { buildProxiedToolsSection } from './prompt-templates'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -229,8 +230,11 @@ function buildRalphLoopPrompt(
   branchName: string,
   iterationNumber: number,
   maxIterations: number,
-  completionPhrase: string
+  completionPhrase: string,
+  enabledTools: { git: boolean; gh: boolean; bd: boolean }
 ): string {
+  const proxiedToolsSection = buildProxiedToolsSection(enabledTools)
+
   return `[RALPH LOOP - ITERATION ${iterationNumber}/${maxIterations}]
 
 Working Directory: ${workingDir}
@@ -239,23 +243,9 @@ Branch: ${branchName}
 === ENVIRONMENT ===
 You are running in a Docker container with:
 - Working directory: /workspace (your git worktree for this task)
-- Tool proxy: git, gh, and bd commands are transparently proxied to the host
+- Tool proxy: commands are transparently proxied to the host
 
-=== PROXIED COMMANDS ===
-All these commands work normally (they are proxied to the host automatically):
-
-1. Git:
-   - git status, git add, git commit, git push
-   - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.
-
-2. GitHub CLI (gh):
-   - gh api, gh pr view, gh pr create
-   - All standard gh commands work
-
-3. Beads Task Management (bd):
-   - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically
+${proxiedToolsSection}
 
 === YOUR TASK ===
 ${userPrompt}
@@ -523,15 +513,23 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       }
     })
 
-    // Build the prompt
+    // Build the prompt with enabled tools
     const selectedImage = await getSelectedDockerImage()
+    const settings = await loadSettings()
+    const proxiedTools = settings.docker.proxiedTools
+    const enabledTools = {
+      git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+      gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+      bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    }
     const enhancedPrompt = buildRalphLoopPrompt(
       state.config.prompt,
       state.worktreeInfo.path,
       state.worktreeInfo.branch,
       iterationNumber,
       state.config.maxIterations,
-      state.config.completionPhrase
+      state.config.completionPhrase,
+      enabledTools
     )
 
     const options: HeadlessAgentOptions = {

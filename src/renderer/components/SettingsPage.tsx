@@ -4,6 +4,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Label } from '@/renderer/components/ui/label'
+import { Switch } from '@/renderer/components/ui/switch'
 import { Logo } from '@/renderer/components/Logo'
 import { GeneralSettings } from '@/renderer/components/settings/sections/GeneralSettings'
 import { PlansSettings } from '@/renderer/components/settings/sections/PlansSettings'
@@ -124,6 +125,7 @@ interface ProxiedTool {
   name: string
   hostPath: string
   description?: string
+  enabled: boolean
 }
 
 interface SettingsPageProps {
@@ -146,11 +148,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [ghPath, setGhPath] = useState('')
   const [gitPath, setGitPath] = useState('')
   const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; gh: string | null; git: string | null } | null>(null)
-
-  // Proxied tools local state
-  const [newToolName, setNewToolName] = useState('')
-  const [newToolPath, setNewToolPath] = useState('')
-  const [newToolDescription, setNewToolDescription] = useState('')
 
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -219,30 +216,12 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
     }
   }
 
-  const handleAddProxiedTool = async () => {
-    if (!newToolName.trim() || !newToolPath.trim()) return
-
+  const handleToggleProxiedTool = async (id: string, enabled: boolean) => {
     try {
-      await window.electronAPI.addProxiedTool({
-        name: newToolName.trim(),
-        hostPath: newToolPath.trim(),
-        description: newToolDescription.trim() || undefined,
-      })
-      setNewToolName('')
-      setNewToolPath('')
-      setNewToolDescription('')
+      await window.electronAPI.toggleProxiedTool(id, enabled)
       await loadSettings()
     } catch (error) {
-      console.error('Failed to add proxied tool:', error)
-    }
-  }
-
-  const handleRemoveProxiedTool = async (id: string) => {
-    try {
-      await window.electronAPI.removeProxiedTool(id)
-      await loadSettings()
-    } catch (error) {
-      console.error('Failed to remove proxied tool:', error)
+      console.error('Failed to toggle proxied tool:', error)
     }
   }
 
@@ -504,14 +483,15 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
             <div className="bg-card border rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-2">Configured Tools</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                These tools are available to headless agents running in Docker containers.
+                Enable or disable tools available to headless agents running in Docker containers.
+                Disabled tools will not appear in agent prompts and the proxy will reject requests for them.
               </p>
 
-              <div className="space-y-3 mb-4">
+              <div className="space-y-3">
               {settings.docker.proxiedTools.map((tool) => (
                 <div
                   key={tool.id}
-                  className="flex items-start justify-between p-4 bg-muted/50 rounded-md"
+                  className={`flex items-center justify-between p-4 bg-muted/50 rounded-md ${!tool.enabled ? 'opacity-50' : ''}`}
                 >
                   <div className="flex-1">
                     <div className="font-medium">{tool.name}</div>
@@ -524,64 +504,13 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                       </div>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRemoveProxiedTool(tool.id)}
-                    className="h-7 w-7 p-0 ml-2"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <Switch
+                    checked={tool.enabled}
+                    onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
+                  />
                 </div>
               ))}
             </div>
-            </div>
-
-            {/* Add Proxied Tool Form */}
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Add Proxied Tool</h3>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-name">Tool Name</Label>
-                <Input
-                  id="tool-name"
-                  placeholder="e.g., npm"
-                  value={newToolName}
-                  onChange={(e) => setNewToolName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-path">Host Path</Label>
-                <Input
-                  id="tool-path"
-                  placeholder="e.g., /usr/local/bin/npm"
-                  value={newToolPath}
-                  onChange={(e) => setNewToolPath(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tool-description">Description (optional)</Label>
-                <Input
-                  id="tool-description"
-                  placeholder="e.g., Node package manager"
-                  value={newToolDescription}
-                  onChange={(e) => setNewToolDescription(e.target.value)}
-                />
-              </div>
-
-              <Button
-                onClick={handleAddProxiedTool}
-                disabled={!newToolName.trim() || !newToolPath.trim()}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Tool
-              </Button>
-
-              <p className="text-xs text-muted-foreground mt-4">
-                <strong>Tip:</strong> Find tool paths using <code className="bg-muted px-1 rounded">which tool-name</code> in your terminal (e.g., <code className="bg-muted px-1 rounded">which npm</code>).
-              </p>
             </div>
           </div>
         )

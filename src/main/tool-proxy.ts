@@ -18,7 +18,7 @@ import { EventEmitter } from 'events'
 import { logger } from './logger'
 import { spawnWithPath, getEnvWithPath } from './exec-utils'
 import { getConfigDir } from './config'
-import { getGitHubToken } from './settings-manager'
+import { getGitHubToken, loadSettings } from './settings-manager'
 import { getGitUserConfig } from './git-utils'
 
 export interface ToolProxyConfig {
@@ -465,9 +465,18 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     return
   }
 
+  // Read enabled state from settings for each tool
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const toolsConfig = {
+    gh: { enabled: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true },
+    bd: { enabled: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true },
+    git: { enabled: proxiedTools.find(t => t.name === 'git')?.enabled ?? true },
+  }
+
   // Find available port if not explicitly specified
   const port = config.port ?? (await findAvailablePort())
-  currentConfig = { ...DEFAULT_CONFIG, ...config, port }
+  currentConfig = { ...DEFAULT_CONFIG, ...config, port, tools: { ...toolsConfig, ...config.tools } }
 
   return new Promise((resolve, reject) => {
     server = http.createServer((req, res) => {
