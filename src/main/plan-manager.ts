@@ -1765,7 +1765,7 @@ IMPORTANT: Create tasks that match the structure in this file.
   let featureBranchGuidance = ''
   if (plan.branchStrategy === 'feature_branch') {
     const criteriaSection = repository?.completionCriteria
-      ? `\n   - Verify repository completion criteria: ${repository.completionCriteria}`
+      ? `\n   - Verify repository completion criteria:\n${repository.completionCriteria}`
       : ''
     featureBranchGuidance = `
 === FEATURE BRANCH MODE ===
