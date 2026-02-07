@@ -22,6 +22,7 @@ export interface ProxiedTool {
   authCheck?: {
     command: string[]        // e.g. ['bb', 'login', '--check'] — exit 0=valid, 1=needs reauth
     reauthHint: string       // e.g. 'Run `bb login --browser` in your terminal'
+    reauthCommand?: string[] // e.g. ['bb', 'login', '--browser'] — spawned fire-and-forget
   }
 }
 
@@ -160,7 +161,8 @@ export function getDefaultSettings(): AppSettings {
           enabled: false,
           authCheck: {
             command: ['bb', 'login', '--check'],
-            reauthHint: 'Run `bb login --browser` in your terminal',
+            reauthHint: 'Run `bb login` in your terminal',
+            reauthCommand: ['bb', 'login'],
           },
         },
       ],
@@ -283,6 +285,22 @@ export async function loadSettings(): Promise<AppSettings> {
       if (!merged.docker.proxiedTools.some(t => t.name === defaultTool.name)) {
         merged.docker.proxiedTools.push({ ...defaultTool })
         needsMigration = true
+      }
+    }
+
+    // Migration: Sync authCheck fields from defaults (reauthHint, reauthCommand)
+    for (const defaultTool of defaults.docker.proxiedTools) {
+      if (!defaultTool.authCheck) continue
+      const existing = merged.docker.proxiedTools.find(t => t.name === defaultTool.name)
+      if (existing?.authCheck) {
+        if (JSON.stringify(existing.authCheck.reauthCommand) !== JSON.stringify(defaultTool.authCheck.reauthCommand)) {
+          existing.authCheck.reauthCommand = defaultTool.authCheck.reauthCommand
+          needsMigration = true
+        }
+        if (existing.authCheck.reauthHint !== defaultTool.authCheck.reauthHint) {
+          existing.authCheck.reauthHint = defaultTool.authCheck.reauthHint
+          needsMigration = true
+        }
       }
     }
     if (oldPlaybox?.bismarckMode === true) {

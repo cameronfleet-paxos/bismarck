@@ -200,6 +200,7 @@ export interface ElectronAPI {
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
   getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
   checkToolAuth: () => Promise<ToolAuthStatus[]>
+  runToolReauth: (toolId: string) => Promise<void>
   onToolAuthStatus: (callback: (statuses: ToolAuthStatus[]) => void) => void
   removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>

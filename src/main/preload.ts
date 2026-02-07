@@ -415,6 +415,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-tool-auth-statuses'),
   checkToolAuth: () =>
     ipcRenderer.invoke('check-tool-auth'),
+  runToolReauth: (toolId: string) =>
+    ipcRenderer.invoke('run-tool-reauth', toolId),
   onToolAuthStatus: (callback: (statuses: Array<{ toolId: string; toolName: string; state: string; reauthHint?: string; message?: string }>) => void): void => {
     ipcRenderer.removeAllListeners('tool-auth-status')
     ipcRenderer.on('tool-auth-status', (_event, statuses) => callback(statuses))

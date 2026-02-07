@@ -1049,6 +1049,25 @@ function registerIpcHandlers() {
     return checkAllToolAuth()
   })
 
+  ipcMain.handle('run-tool-reauth', async (_event, toolId: string) => {
+    const settings = await getSettings()
+    const tool = settings.docker.proxiedTools.find(t => t.id === toolId)
+    if (!tool?.authCheck?.reauthCommand) {
+      throw new Error(`No reauth command configured for tool ${toolId}`)
+    }
+    const { execWithPath } = await import('./exec-utils')
+    const [cmd, ...args] = tool.authCheck.reauthCommand
+    // Use hostPath if the command matches the tool name (e.g., 'bb' -> '/usr/local/bin/bb')
+    const resolvedCmd = cmd === tool.name ? tool.hostPath : cmd
+    const command = `"${resolvedCmd}" ${args.map(a => `"${a}"`).join(' ')}`
+    devLog('[Main] run-tool-reauth: executing', command)
+    // Fire and forget - don't await, let the process open the browser
+    execWithPath(command).then(
+      (result) => devLog('[Main] run-tool-reauth completed:', result.stdout?.slice(0, 200)),
+      (err) => console.error('[Main] run-tool-reauth failed:', err)
+    )
+  })
+
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSshSettings(settings)
   })

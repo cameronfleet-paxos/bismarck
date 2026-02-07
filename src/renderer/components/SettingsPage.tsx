@@ -129,6 +129,7 @@ interface ProxiedTool {
   authCheck?: {
     command: string[]
     reauthHint: string
+    reauthCommand?: string[]
   }
 }
 
@@ -164,6 +165,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   // Tool auth status
   const [toolAuthStatuses, setToolAuthStatuses] = useState<ToolAuthStatus[]>([])
   const [checkingAuth, setCheckingAuth] = useState(false)
+  const [reauthingToolId, setReauthingToolId] = useState<string | null>(null)
 
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -572,15 +574,35 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
                         <p className="text-sm text-yellow-600 dark:text-yellow-400">
                           {authStatus.reauthHint}
                         </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2 text-xs"
-                          onClick={handleCheckAuth}
-                          disabled={checkingAuth}
-                        >
-                          {checkingAuth ? 'Checking...' : 'Check Now'}
-                        </Button>
+                        <div className="flex gap-2 mt-2">
+                          {tool.authCheck?.reauthCommand && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs cursor-pointer"
+                              disabled={reauthingToolId === tool.id}
+                              onClick={async () => {
+                                setReauthingToolId(tool.id)
+                                try {
+                                  await window.electronAPI.runToolReauth(tool.id)
+                                } finally {
+                                  setTimeout(() => setReauthingToolId(null), 2000)
+                                }
+                              }}
+                            >
+                              {reauthingToolId === tool.id ? 'Opening browser...' : 'Re-auth Now'}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs cursor-pointer"
+                            onClick={handleCheckAuth}
+                            disabled={checkingAuth}
+                          >
+                            {checkingAuth ? 'Checking...' : 'Check Now'}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
