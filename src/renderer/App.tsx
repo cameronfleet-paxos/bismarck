@@ -346,6 +346,9 @@ function App() {
   const updatePopupShownRef = useRef(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined)
 
+  // Tool auth status (for tools like bb that need SSO re-auth)
+  const [toolsNeedingReauth, setToolsNeedingReauth] = useState<Array<{ toolId: string; toolName: string; state: string; reauthHint?: string }>>([])
+
   // Central registry of terminal writers - Map of terminalId -> write function
   const terminalWritersRef = useRef<Map<string, TerminalWriter>>(new Map())
 
@@ -543,6 +546,25 @@ function App() {
       }
       clearTimeout(maxPollTimeout)
       window.electronAPI?.removeUpdateStatusListener?.()
+    }
+  }, [])
+
+  // Listen for tool auth status updates (e.g., bb SSO expiry)
+  useEffect(() => {
+    // Get initial statuses
+    window.electronAPI?.getToolAuthStatuses?.().then((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    // Listen for push updates
+    window.electronAPI?.onToolAuthStatus?.((statuses) => {
+      const needsReauth = statuses?.filter((s: { state: string }) => s.state === 'needs-reauth') || []
+      setToolsNeedingReauth(needsReauth)
+    })
+
+    return () => {
+      window.electronAPI?.removeToolAuthStatusListener?.()
     }
   }, [])
 
@@ -2201,6 +2223,20 @@ function App() {
           {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
         </span>
         <div className="flex items-center gap-2">
+          {toolsNeedingReauth.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className="text-yellow-600/70 cursor-pointer hover:text-yellow-500 transition-colors"
+                onClick={() => {
+                  setSettingsInitialSection('tools')
+                  setCurrentView('settings')
+                }}
+                title="Click to view tool auth details"
+              >
+                {toolsNeedingReauth.map(t => t.toolName).join(', ')}: re-auth required
+              </span>
+            </div>
+          )}
           {updateAvailable && (
             <div className="flex items-center gap-1.5 text-xs">
               <span

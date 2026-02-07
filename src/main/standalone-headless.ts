@@ -177,6 +177,7 @@ Keep iterating until all criteria are satisfied.
     git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
     gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
     bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
   })
 
   const variables: PromptVariables = {
@@ -226,6 +227,7 @@ Keep iterating until all criteria are satisfied.
     git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
     gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
     bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
   })
 
   const variables: PromptVariables = {

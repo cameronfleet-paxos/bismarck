@@ -79,6 +79,11 @@ RUN chmod +x /usr/local/bin/bd
 COPY git-proxy-wrapper.sh /usr/local/bin/git
 RUN chmod +x /usr/local/bin/git
 
+# Copy bb CLI wrapper that calls the tool proxy
+# This proxies bb (BuildBuddy) commands to the host where SSO auth lives
+COPY bb-proxy-wrapper.sh /usr/local/bin/bb
+RUN chmod +x /usr/local/bin/bb
+
 # Create non-root user (Claude refuses --dangerously-skip-permissions as root)
 RUN useradd -m -s /bin/bash agent && \
     mkdir -p /workspace /plan && \

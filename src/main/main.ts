@@ -205,6 +205,13 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import {
+  setAuthCheckerWindow,
+  startToolAuthChecks,
+  stopToolAuthChecks,
+  getToolAuthStatuses,
+  checkAllToolAuth,
+} from './tool-auth-checker'
 import { isGitRepo } from './git-utils'
 import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, PromptType } from '../shared/types'
 import type { AppSettings } from './settings-manager'
@@ -282,6 +289,7 @@ function createWindow() {
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
   setAutoUpdaterWindow(mainWindow)
+  setAuthCheckerWindow(mainWindow)
 
   startTimer('window:loadURL', 'window')
   if (process.env.NODE_ENV === 'development') {
@@ -299,6 +307,7 @@ function createWindow() {
     setDevHarnessWindow(null)
     setQueueMainWindow(null)
     setAutoUpdaterWindow(null)
+    setAuthCheckerWindow(null)
   })
 
   // Create system tray
@@ -1014,7 +1023,19 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('toggle-proxied-tool', async (_event, id: string, enabled: boolean) => {
-    return updateProxiedTool(id, { enabled })
+    const result = updateProxiedTool(id, { enabled })
+    // Re-check auth statuses when a tool is toggled (async, don't block)
+    checkAllToolAuth().catch(() => {})
+    return result
+  })
+
+  // Tool auth status handlers
+  ipcMain.handle('get-tool-auth-statuses', () => {
+    return getToolAuthStatuses()
+  })
+
+  ipcMain.handle('check-tool-auth', async () => {
+    return checkAllToolAuth()
   })
 
   ipcMain.handle('update-docker-ssh-settings', async (_event, settings: { enabled?: boolean }) => {
@@ -1227,6 +1248,9 @@ app.whenReady().then(async () => {
     startPeriodicChecks()
   })
 
+  // Start periodic tool auth checks (for tools like bb with SSO auth)
+  startToolAuthChecks()
+
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
   startTimer('main:initializeDockerEnvironment', 'main')
@@ -1253,6 +1277,7 @@ app.on('window-all-closed', async () => {
   closeAllTerminals()
   closeAllSocketServers()
   stopPeriodicChecks()
+  stopToolAuthChecks()
   cleanupPowerSave()
   await cleanupPlanManager()
   await cleanupDevHarness()

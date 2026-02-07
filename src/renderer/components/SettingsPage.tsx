@@ -126,6 +126,18 @@ interface ProxiedTool {
   hostPath: string
   description?: string
   enabled: boolean
+  authCheck?: {
+    command: string[]
+    reauthHint: string
+  }
+}
+
+interface ToolAuthStatus {
+  toolId: string
+  toolName: string
+  state: 'valid' | 'needs-reauth' | 'error'
+  reauthHint?: string
+  message?: string
 }
 
 interface SettingsPageProps {
@@ -149,6 +161,10 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const [gitPath, setGitPath] = useState('')
   const [autoDetectedPaths, setAutoDetectedPaths] = useState<{ bd: string | null; gh: string | null; git: string | null } | null>(null)
 
+  // Tool auth status
+  const [toolAuthStatuses, setToolAuthStatuses] = useState<ToolAuthStatus[]>([])
+  const [checkingAuth, setCheckingAuth] = useState(false)
+
   // Repositories state
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [expandedRepoId, setExpandedRepoId] = useState<string | null>(null)
@@ -162,6 +178,14 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
   useEffect(() => {
     loadSettings()
+
+    // Listen for tool auth status push updates
+    window.electronAPI?.onToolAuthStatus?.((statuses) => {
+      setToolAuthStatuses(statuses)
+    })
+    return () => {
+      window.electronAPI?.removeToolAuthStatusListener?.()
+    }
   }, [])
 
   // Handle navigation from external sources (e.g., header notification)
@@ -175,12 +199,14 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [loaded, detectedPaths] = await Promise.all([
+      const [loaded, detectedPaths, authStatuses] = await Promise.all([
         window.electronAPI.getSettings(),
         window.electronAPI.detectToolPaths(),
+        window.electronAPI.getToolAuthStatuses?.() ?? Promise.resolve([]),
       ])
       setSettings(loaded)
       setAutoDetectedPaths(detectedPaths)
+      setToolAuthStatuses(authStatuses)
 
       // Initialize local state from loaded settings
       setBdPath(loaded.paths.bd || '')
@@ -213,6 +239,18 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       console.error('Failed to save paths:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleCheckAuth = async () => {
+    setCheckingAuth(true)
+    try {
+      const statuses = await window.electronAPI.checkToolAuth?.() ?? []
+      setToolAuthStatuses(statuses)
+    } catch (error) {
+      console.error('Failed to check tool auth:', error)
+    } finally {
+      setCheckingAuth(false)
     }
   }
 
@@ -488,28 +526,62 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
               </p>
 
               <div className="space-y-3">
-              {settings.docker.proxiedTools.map((tool) => (
-                <div
-                  key={tool.id}
-                  className={`flex items-center justify-between p-4 bg-muted/50 rounded-md ${!tool.enabled ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex-1">
-                    <div className="font-medium">{tool.name}</div>
-                    <div className="font-mono text-xs text-muted-foreground mt-1">
-                      {tool.hostPath}
+              {settings.docker.proxiedTools.map((tool) => {
+                const authStatus = toolAuthStatuses.find(s => s.toolId === tool.id)
+                return (
+                  <div
+                    key={tool.id}
+                    className={`p-4 bg-muted/50 rounded-md ${!tool.enabled ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{tool.name}</span>
+                          {tool.authCheck && tool.enabled && authStatus && (
+                            <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded-full ${
+                              authStatus.state === 'valid'
+                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                : authStatus.state === 'needs-reauth'
+                                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                                : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {authStatus.state === 'valid' ? 'Authenticated' : authStatus.state === 'needs-reauth' ? 'Re-auth needed' : 'Auth error'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-mono text-xs text-muted-foreground mt-1">
+                          {tool.hostPath}
+                        </div>
+                        {tool.description && (
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {tool.description}
+                          </div>
+                        )}
+                      </div>
+                      <Switch
+                        checked={tool.enabled}
+                        onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
+                      />
                     </div>
-                    {tool.description && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {tool.description}
+                    {tool.authCheck && tool.enabled && authStatus?.state === 'needs-reauth' && authStatus.reauthHint && (
+                      <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          {authStatus.reauthHint}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 text-xs"
+                          onClick={handleCheckAuth}
+                          disabled={checkingAuth}
+                        >
+                          {checkingAuth ? 'Checking...' : 'Check Now'}
+                        </Button>
                       </div>
                     )}
                   </div>
-                  <Switch
-                    checked={tool.enabled}
-                    onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
-                  />
-                </div>
-              ))}
+                )
+              })}
             </div>
             </div>
           </div>
