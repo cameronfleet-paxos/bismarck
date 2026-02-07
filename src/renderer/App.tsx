@@ -40,7 +40,7 @@ import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -1577,7 +1577,7 @@ function App() {
   }
 
   // Execute the follow-up after user submits from modal
-  const executeFollowUp = async (prompt: string, model: 'opus' | 'sonnet') => {
+  const executeFollowUp = async (prompt: string, model: AgentModel) => {
     const headlessId = followUpInfo?.taskId
     if (!headlessId) return
 
@@ -3850,7 +3850,7 @@ function App() {
       {/* Follow-up Modal */}
       <FollowUpModal
         info={followUpInfo}
-        defaultModel={preferences.agentModel === 'opus' ? 'opus' : 'sonnet'}
+        defaultModel={preferences.agentModel}
         onClose={() => setFollowUpInfo(null)}
         onSubmit={executeFollowUp}
         isSubmitting={followUpInfo?.taskId ? startingFollowUpIds.has(followUpInfo.taskId) : false}

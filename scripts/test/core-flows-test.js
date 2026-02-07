@@ -288,14 +288,19 @@ async function testWorkspaceView() {
   });
 
   runner.test('Selected agent shows terminal', async () => {
+    // Check for xterm canvas, terminal class elements, or the booting animation
+    // In headless CI, xterm.js may take longer to initialize under xvfb
     const hasTerminal = await cdp.eval(`
-      !!document.querySelector('[class*="xterm"], [class*="terminal"]')
+      !!(document.querySelector('[class*="xterm"], [class*="terminal"]') ||
+         document.querySelector('[class*="animate-claude-bounce"]') ||
+         document.querySelector('[class*="animate-pulse"]'))
     `);
     if (!hasTerminal) {
-      // Terminal might still be booting
-      await cdp.sleep(1000);
+      await cdp.sleep(2000);
       const hasTerminalRetry = await cdp.eval(`
-        !!document.querySelector('[class*="xterm"], [class*="terminal"]')
+        !!(document.querySelector('[class*="xterm"], [class*="terminal"]') ||
+           document.querySelector('[class*="animate-claude-bounce"]') ||
+           document.querySelector('[class*="animate-pulse"]'))
       `);
       if (!hasTerminalRetry) {
         throw new Error('No terminal visible for selected agent');

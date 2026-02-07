@@ -41,6 +41,7 @@ export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
+  const lastSearchQueryRef = useRef<string>('')
   const initializedRef = useRef(false)
   const [internalSearchOpen, setInternalSearchOpen] = useState(false)
 
@@ -218,6 +219,8 @@ export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal
       return { found: false }
     }
 
+    lastSearchQueryRef.current = query
+
     const found = searchAddonRef.current.findNext(query, {
       caseSensitive: options.caseSensitive,
       wholeWord: options.wholeWord,
@@ -229,20 +232,20 @@ export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal
   }, [])
 
   const handleFindNext = useCallback((): SearchResult => {
-    if (!searchAddonRef.current) {
+    if (!searchAddonRef.current || !lastSearchQueryRef.current) {
       return { found: false }
     }
 
-    const found = searchAddonRef.current.findNext()
+    const found = searchAddonRef.current.findNext(lastSearchQueryRef.current)
     return { found }
   }, [])
 
   const handleFindPrevious = useCallback((): SearchResult => {
-    if (!searchAddonRef.current) {
+    if (!searchAddonRef.current || !lastSearchQueryRef.current) {
       return { found: false }
     }
 
-    const found = searchAddonRef.current.findPrevious()
+    const found = searchAddonRef.current.findPrevious(lastSearchQueryRef.current)
     return { found }
   }, [])
 
