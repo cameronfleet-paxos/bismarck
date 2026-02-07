@@ -273,9 +273,9 @@ IMPORTANT:
 - Each commit provides context for subsequent iterations
 
 === GIT WORKFLOW ===
-1. Commit your changes using multiple -m flags:
+1. Commit your changes:
    git add <files>
-   git commit -m "Title line" -m "Detail 1" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 2. Push your branch periodically:
    git push -u origin ${branchName}

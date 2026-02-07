@@ -160,15 +160,14 @@ function emitStateUpdate(): void {
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string, guidance?: string): Promise<string> {
-  // Format completion criteria section if provided
+async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, protectedBranch: string, completionCriteria?: string, guidance?: string): Promise<string> {
+  // Format completion criteria (folded into COMPLETION REQUIREMENTS via template)
   const completionCriteriaSection = completionCriteria
     ? `
-=== COMPLETION CRITERIA ===
-Before marking your work complete, ensure these pass:
+Before creating your PR, ensure these acceptance criteria pass:
 ${completionCriteria}
-
 Keep iterating until all criteria are satisfied.
+
 `
     : ''
 
@@ -195,6 +194,7 @@ ${guidance}
     userPrompt,
     workingDir,
     branchName,
+    protectedBranch,
     completionCriteria: completionCriteriaSection,
     guidance: guidanceSection,
     proxiedToolsSection,
@@ -213,6 +213,7 @@ async function buildFollowUpPrompt(
   userPrompt: string,
   workingDir: string,
   branchName: string,
+  protectedBranch: string,
   recentCommits: Array<{ shortSha: string; message: string }>,
   completionCriteria?: string,
   guidance?: string
@@ -222,14 +223,13 @@ async function buildFollowUpPrompt(
     ? recentCommits.map(c => `  - ${c.shortSha}: ${c.message}`).join('\n')
     : '(No prior commits on this branch)'
 
-  // Format completion criteria section if provided
+  // Format completion criteria (folded into COMPLETION REQUIREMENTS via template)
   const completionCriteriaSection = completionCriteria
     ? `
-=== COMPLETION CRITERIA ===
-Before marking your work complete, ensure these pass:
+Before creating your PR, ensure these acceptance criteria pass:
 ${completionCriteria}
-
 Keep iterating until all criteria are satisfied.
+
 `
     : ''
 
@@ -256,6 +256,7 @@ ${guidance}
     userPrompt,
     workingDir,
     branchName,
+    protectedBranch,
     commitHistory,
     completionCriteria: completionCriteriaSection,
     guidance: guidanceSection,
@@ -434,7 +435,8 @@ export async function startStandaloneHeadlessAgent(
   const repository = referenceAgent.repositoryId
     ? await getRepositoryById(referenceAgent.repositoryId)
     : await getRepositoryByPath(referenceAgent.directory)
-  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, repository?.completionCriteria, repository?.guidance)
+  const protectedBranch = repository?.protectedBranches?.[0] || baseBranch
+  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, protectedBranch, repository?.completionCriteria, repository?.guidance)
 
   // Update stored prompt to the full resolved version (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
@@ -816,7 +818,8 @@ export async function startFollowUpAgent(
 
   // Look up repository for completion criteria and guidance
   const repository = await getRepositoryByPath(repoPath)
-  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, recentCommits, repository?.completionCriteria, repository?.guidance)
+  const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
   // Store the full resolved prompt (for Eye modal display)
   agentInfo.originalPrompt = enhancedPrompt
