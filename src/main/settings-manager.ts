@@ -766,7 +766,12 @@ const REQUIRED_SCOPES = ['repo']
 const RECOMMENDED_SCOPES = ['read:packages']
 
 export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> {
-  const token = await getGitHubToken()
+  // Check the configured token first (what the user set in settings),
+  // falling back to env var. This ensures we verify what the user just saved,
+  // not an env var that may hold a different token.
+  const settings = await loadSettings()
+  const configuredToken = settings.tools?.githubToken
+  const token = (configuredToken && configuredToken.length > 0) ? configuredToken : await getGitHubToken()
   if (!token) {
     return {
       valid: false,

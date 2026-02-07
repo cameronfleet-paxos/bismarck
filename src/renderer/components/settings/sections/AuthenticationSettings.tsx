@@ -113,6 +113,8 @@ export function AuthenticationSettings() {
       setGitHubTokenDetectResult(null)
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
+      // Always re-check scopes after saving (hasGitHubToken may already be true)
+      checkScopes()
     } catch (error) {
       console.error('Failed to save GitHub token:', error)
     } finally {
@@ -142,6 +144,8 @@ export function AuthenticationSettings() {
         setHasGitHubToken(true)
         setShowSaved(true)
         setTimeout(() => setShowSaved(false), 2000)
+        // Always re-check scopes after detect (hasGitHubToken may already be true)
+        checkScopes()
       }
     } catch (error) {
       console.error('Failed to detect GitHub token:', error)
