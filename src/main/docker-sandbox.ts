@@ -147,7 +147,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription
   const oauthToken = getClaudeOAuthToken()
-  devLog('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length}, ${oauthToken.slice(0, 20)}...)` : '')
+  devLog('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length})` : '')
   if (oauthToken) {
     // Validate token length - valid tokens are ~108 chars, truncated tokens are shorter
     if (oauthToken.length < 100) {
@@ -217,7 +217,20 @@ export async function spawnContainerAgent(
     workingDir: config.workingDir,
     envVars: envVarsForLog,
   })
-  logger.debug('docker', `Docker command: docker ${args.join(' ')}`, logContext)
+
+  // Redact sensitive env var values from full docker command log
+  const SENSITIVE_ENV_PATTERNS = ['TOKEN', 'SECRET', 'KEY', 'OAUTH', 'PASSWORD', 'CREDENTIAL']
+  const redactedArgs = args.map((arg, i) => {
+    if (args[i - 1] === '-e' && arg.includes('=')) {
+      const eqIdx = arg.indexOf('=')
+      const varName = arg.substring(0, eqIdx)
+      if (SENSITIVE_ENV_PATTERNS.some(p => varName.toUpperCase().includes(p))) {
+        return `${varName}=[REDACTED]`
+      }
+    }
+    return arg
+  })
+  logger.debug('docker', `Docker command: docker ${redactedArgs.join(' ')}`, logContext)
 
   const dockerProcess = spawnWithPath('docker', args, {
     stdio: ['pipe', 'pipe', 'pipe'],

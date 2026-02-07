@@ -1063,7 +1063,7 @@ function registerIpcHandlers() {
     devLog('[Main] run-tool-reauth: executing', command)
     // Fire and forget - don't await, let the process open the browser
     execWithPath(command).then(
-      (result) => devLog('[Main] run-tool-reauth completed:', result.stdout?.slice(0, 200)),
+      () => devLog('[Main] run-tool-reauth completed'),
       (err) => console.error('[Main] run-tool-reauth failed:', err)
     )
   })

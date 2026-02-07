@@ -67,7 +67,6 @@ export async function runSetupToken(): Promise<string> {
         tokenFound = true
         const token = match[0]
         devLog('[OAuthSetup] Token found, length:', token.length)
-        devLog('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
         setClaudeOAuthToken(token)
         // Kill the process since we have the token
         proc.kill()
@@ -94,7 +93,6 @@ export async function runSetupToken(): Promise<string> {
       if (match) {
         const token = match[0]
         devLog('[OAuthSetup] Token found on close, length:', token.length)
-        devLog('[OAuthSetup] Token prefix:', token.substring(0, 40) + '...')
         setClaudeOAuthToken(token)
         resolve(token)
         return

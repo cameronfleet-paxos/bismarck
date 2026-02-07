@@ -89,6 +89,9 @@ export interface AppSettings {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
   }
+  _internal: {
+    lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
+  }
 }
 
 /**
@@ -206,6 +209,9 @@ export function getDefaultSettings(): AppSettings {
       enabled: true,
       maxIterations: 2,
     },
+    _internal: {
+      lastLogPurgeVersion: null,
+    },
   }
 }
 
@@ -258,6 +264,7 @@ export async function loadSettings(): Promise<AppSettings> {
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
       critic: { ...defaults.critic, ...(loaded.critic || {}) },
+      _internal: { ...defaults._internal, ...(loaded._internal || {}) },
     }
 
     // Migration: Convert old boolean flags to new personaMode enum
@@ -329,6 +336,18 @@ export async function loadSettings(): Promise<AppSettings> {
     if (merged.docker.selectedImage === OLD_IMAGE_NAME) {
       merged.docker.selectedImage = NEW_IMAGE_NAME
       needsMigration = true
+    }
+
+    // Migration: One-time purge of debug logs that may contain leaked secrets (v0.6.3)
+    // Triggers for any user upgrading from before 0.6.3, regardless of which version they land on.
+    // Uses semver-style comparison: null (never purged) or any version < '0.6.3' triggers purge.
+    const LOG_PURGE_VERSION = '0.6.3'
+    const priorPurge = merged._internal.lastLogPurgeVersion
+    if (!priorPurge || priorPurge < LOG_PURGE_VERSION) {
+      merged._internal.lastLogPurgeVersion = LOG_PURGE_VERSION
+      needsMigration = true
+      // Fire-and-forget: purge global debug logs and per-plan debug logs
+      purgeDebugLogs().catch(() => {})
     }
 
     settingsCache = merged
@@ -419,6 +438,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     critic: {
       ...(currentSettings.critic || defaults.critic),
       ...(updates.critic || {}),
+    },
+    _internal: {
+      ...(currentSettings._internal || defaults._internal),
+      ...(updates._internal || {}),
     },
   }
   await saveSettings(updatedSettings)
@@ -850,4 +873,36 @@ export async function updatePreventSleepSettings(preventSleepSettings: Partial<A
     ...preventSleepSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Purge all debug log files (global and per-plan).
+ * Called once on upgrade to clean up logs that may have contained leaked secrets.
+ */
+async function purgeDebugLogs(): Promise<void> {
+  const configDir = getConfigDir()
+
+  // Purge global debug logs (debug-YYYY-MM-DD.log)
+  try {
+    const files = await fs.readdir(configDir)
+    for (const file of files) {
+      if (file.startsWith('debug') && file.endsWith('.log')) {
+        await fs.unlink(path.join(configDir, file)).catch(() => {})
+      }
+    }
+  } catch {
+    // Config dir may not exist yet
+  }
+
+  // Purge per-plan debug logs
+  const plansDir = path.join(configDir, 'plans')
+  try {
+    const planIds = await fs.readdir(plansDir)
+    for (const planId of planIds) {
+      const logPath = path.join(plansDir, planId, 'debug.log')
+      await fs.unlink(logPath).catch(() => {})
+    }
+  } catch {
+    // Plans dir may not exist
+  }
 }
