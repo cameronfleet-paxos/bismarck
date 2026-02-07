@@ -184,8 +184,7 @@ export interface ElectronAPI {
   setSelectedDockerImage: (image: string) => Promise<void>
   updateToolPaths: (paths: { bd?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; gh: string | null; git: string | null }>
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) => Promise<ProxiedTool>
-  removeProxiedTool: (id: string) => Promise<boolean>
+  toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>

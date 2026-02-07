@@ -386,10 +386,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-tool-paths', paths),
   detectToolPaths: () =>
     ipcRenderer.invoke('detect-tool-paths'),
-  addProxiedTool: (tool: { name: string; hostPath: string; description?: string }) =>
-    ipcRenderer.invoke('add-proxied-tool', tool),
-  removeProxiedTool: (id: string) =>
-    ipcRenderer.invoke('remove-proxied-tool', id),
+  toggleProxiedTool: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
   updateDockerSshSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>

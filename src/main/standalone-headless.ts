@@ -23,7 +23,7 @@ import {
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab } from './state-manager'
-import { getSelectedDockerImage } from './settings-manager'
+import { getSelectedDockerImage, loadSettings } from './settings-manager'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -37,7 +37,7 @@ import {
 import { startToolProxy, isProxyRunning } from './tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from './repository-manager'
 import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
-import { buildPrompt, type PromptVariables } from './prompt-templates'
+import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
 import { queueTerminalCreation } from './terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
 import * as fsPromises from 'fs/promises'
@@ -158,7 +158,7 @@ function emitStateUpdate(): void {
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
+async function buildStandaloneHeadlessPrompt(userPrompt: string, workingDir: string, branchName: string, completionCriteria?: string): Promise<string> {
   // Format completion criteria section if provided
   const completionCriteriaSection = completionCriteria
     ? `
@@ -170,11 +170,21 @@ Keep iterating until all criteria are satisfied.
 `
     : ''
 
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+  })
+
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
     completionCriteria: completionCriteriaSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_headless', variables)
@@ -186,7 +196,7 @@ Keep iterating until all criteria are satisfied.
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
  * Persona prompts are only injected via hooks for interactive Claude Code sessions.
  */
-function buildFollowUpPrompt(
+async function buildFollowUpPrompt(
   userPrompt: string,
   workingDir: string,
   branchName: string,
@@ -209,12 +219,22 @@ Keep iterating until all criteria are satisfied.
 `
     : ''
 
+  // Build proxied tools section based on enabled tools
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  const proxiedToolsSection = buildProxiedToolsSection({
+    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
+    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
+    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
+  })
+
   const variables: PromptVariables = {
     userPrompt,
     workingDir,
     branchName,
     commitHistory,
     completionCriteria: completionCriteriaSection,
+    proxiedToolsSection,
   }
 
   return buildPrompt('standalone_followup', variables)
