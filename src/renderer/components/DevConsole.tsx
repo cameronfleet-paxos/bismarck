@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus, Download } from 'lucide-react'
+import { X, Play, Square, Loader2, CheckCircle, XCircle, Terminal, Trash2, UserPlus, Download, RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
 import type { HeadlessAgentInfo, StreamEvent } from '@/shared/types'
 
@@ -260,6 +260,29 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Sets app version to 0.1.0 and triggers update check
+            </p>
+          </div>
+
+          {/* Reset Settings */}
+          <div>
+            <h3 className="text-sm font-medium mb-2">Settings</h3>
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={async () => {
+                try {
+                  await window.electronAPI?.devResetSettings?.()
+                  log('All settings reset to defaults', 'success')
+                } catch (error) {
+                  log(`Error resetting settings: ${error}`, 'error')
+                }
+              }}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset All Settings to Defaults
+            </Button>
+            <p className="text-xs text-muted-foreground mt-1">
+              Resets settings.json to factory defaults. Does not affect agents or plans.
             </p>
           </div>
 
