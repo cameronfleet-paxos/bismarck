@@ -428,6 +428,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-ssh-settings', settings),
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) =>
     ipcRenderer.invoke('update-docker-socket-settings', settings),
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
+    ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 

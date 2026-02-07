@@ -51,6 +51,9 @@ export interface AppSettings {
       enabled: boolean     // Enable Docker socket mounting for testcontainers support
       path: string         // Socket path (default: /var/run/docker.sock)
     }
+    sharedBuildCache: {
+      enabled: boolean     // Enable shared Go build cache across agents (per-repo)
+    }
   }
   prompts: {
     orchestrator: string | null  // null = use default
@@ -171,6 +174,9 @@ export function getDefaultSettings(): AppSettings {
         enabled: true,   // Enabled by default for testcontainers support
         path: '/var/run/docker.sock',
       },
+      sharedBuildCache: {
+        enabled: true,   // Share Go build cache across agents per-repo
+      },
     },
     prompts: {
       orchestrator: null,
@@ -253,6 +259,10 @@ export async function loadSettings(): Promise<AppSettings> {
         dockerSocket: {
           ...defaults.docker.dockerSocket,
           ...(loaded.docker?.dockerSocket || {}),
+        },
+        sharedBuildCache: {
+          ...defaults.docker.sharedBuildCache,
+          ...(loaded.docker?.sharedBuildCache || {}),
         },
       },
       prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
@@ -401,6 +411,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
       dockerSocket: {
         ...(currentSettings.docker.dockerSocket || defaults.docker.dockerSocket),
         ...(updates.docker?.dockerSocket || {}),
+      },
+      sharedBuildCache: {
+        ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+        ...(updates.docker?.sharedBuildCache || {}),
       },
     },
     prompts: {
@@ -614,6 +628,19 @@ export async function updateDockerSocketSettings(socketSettings: { enabled?: boo
   settings.docker.dockerSocket = {
     ...(settings.docker.dockerSocket || defaults.docker.dockerSocket),
     ...socketSettings,
+  }
+  await saveSettings(settings)
+}
+
+/**
+ * Update Docker shared build cache settings
+ */
+export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enabled?: boolean }): Promise<void> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  settings.docker.sharedBuildCache = {
+    ...(settings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
+    ...cacheSettings,
   }
   await saveSettings(settings)
 }

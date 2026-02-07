@@ -32,6 +32,8 @@ export interface ContainerConfig {
   prompt: string // The prompt to send to Claude
   claudeFlags?: string[] // Additional claude CLI flags
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
+  sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
+  sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
 }
 
 export interface ContainerResult {
@@ -102,6 +104,26 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // Pass host worktree path for git proxy commands
   // The git wrapper needs to know the host path to execute commands
   args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${config.workingDir}`)
+
+  // Redirect Go temp dir to workspace volume to avoid filling container overlay fs
+  // GOTMPDIR must be per-worktree (scratch files can collide between concurrent builds)
+  args.push('-e', 'GOTMPDIR=/workspace/.tmp')
+
+  // Redirect Go build cache: use shared per-repo cache if enabled, otherwise per-worktree
+  if (settings.docker.sharedBuildCache?.enabled && config.sharedCacheDir) {
+    args.push('-v', `${config.sharedCacheDir}:/shared-cache`)
+    args.push('-e', 'GOCACHE=/shared-cache')
+  } else {
+    args.push('-e', 'GOCACHE=/workspace/.tmp/go-build')
+  }
+
+  // Redirect Go module cache: use shared per-repo cache if enabled, otherwise per-worktree
+  if (settings.docker.sharedBuildCache?.enabled && config.sharedModCacheDir) {
+    args.push('-v', `${config.sharedModCacheDir}:/shared-modcache`)
+    args.push('-e', 'GOMODCACHE=/shared-modcache')
+  } else {
+    args.push('-e', 'GOMODCACHE=/workspace/.tmp/go-mod')
+  }
 
   // Forward SSH agent for private repo access (Bazel, Go modules)
   // This allows real git (used outside /workspace) to authenticate with GitHub

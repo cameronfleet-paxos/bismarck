@@ -205,6 +205,7 @@ export interface ElectronAPI {
   removeToolAuthStatusListener: () => void
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
+  updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management

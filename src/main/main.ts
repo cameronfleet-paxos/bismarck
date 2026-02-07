@@ -151,6 +151,7 @@ import {
   updateDebugSettings,
   getPreventSleepSettings,
   updatePreventSleepSettings,
+  updateDockerSharedBuildCacheSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -1074,6 +1075,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-socket-settings', async (_event, settings: { enabled?: boolean; path?: string }) => {
     return updateDockerSocketSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-shared-build-cache-settings', async (_event, settings: { enabled?: boolean }) => {
+    return updateDockerSharedBuildCacheSettings(settings)
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {

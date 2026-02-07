@@ -20,6 +20,8 @@ import {
   writeConfigAtomic,
   getRandomUniqueIcon,
   getWorkspaces,
+  getRepoCacheDir,
+  getRepoModCacheDir,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab } from './state-manager'
@@ -321,6 +323,16 @@ export async function startStandaloneHeadlessAgent(
   devLog(`[StandaloneHeadless] Creating worktree at ${worktreePath}`)
   await createWorktree(repoPath, worktreePath, branchName, baseBranch)
 
+  // Create temp directory for builds (Go, etc.) to avoid filling container overlay fs
+  const tmpDir = path.join(worktreePath, '.tmp')
+  await fsPromises.mkdir(tmpDir, { recursive: true })
+
+  // Create shared Go build cache and module cache directories for this repo
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fsPromises.mkdir(sharedCacheDir, { recursive: true })
+  await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
+
   // Store worktree info for cleanup
   const worktreeInfo: StandaloneWorktreeInfo = {
     path: worktreePath,
@@ -435,6 +447,8 @@ export async function startStandaloneHeadlessAgent(
     taskId: headlessId,
     image: selectedImage,
     claudeFlags: ['--model', model],
+    sharedCacheDir,
+    sharedModCacheDir,
   }
 
   devLog(`[StandaloneHeadless] Starting agent with config:`, {
@@ -676,8 +690,18 @@ export async function startFollowUpAgent(
 
   const { path: worktreePath, branch, repoPath } = existingInfo.worktreeInfo
 
-  // Extract repo name and phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "bismarck", "plucky-otter")
+  // Ensure temp directory exists for builds (Go, etc.) to avoid filling container overlay fs
+  const tmpDir = path.join(worktreePath, '.tmp')
+  await fsPromises.mkdir(tmpDir, { recursive: true })
+
+  // Extract repo name and create shared Go build cache and module cache directories
   const repoName = path.basename(repoPath)
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fsPromises.mkdir(sharedCacheDir, { recursive: true })
+  await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
+
+  // Extract phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "plucky-otter")
   const branchSuffix = branch.replace('standalone/', '') // e.g., "bismarck-plucky-otter"
   const phrase = branchSuffix.replace(`${repoName}-`, '') // e.g., "plucky-otter"
 
@@ -805,6 +829,8 @@ export async function startFollowUpAgent(
     taskId: newHeadlessId,
     image: selectedImage,
     claudeFlags: model ? ['--model', model] : undefined,
+    sharedCacheDir,
+    sharedModCacheDir,
   }
 
   // Store model in agent info

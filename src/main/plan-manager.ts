@@ -24,6 +24,8 @@ import {
   saveHeadlessAgentInfo,
   withPlanLock,
   withGitPushLock,
+  getRepoCacheDir,
+  getRepoModCacheDir,
 } from './config'
 import { bdCreate, bdList, bdUpdate, bdClose, bdAddDependency, bdGetDependents, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
 import { injectTextToTerminal, injectPromptToTerminal, getTerminalForWorkspace, waitForTerminalOutput, closeTerminal, getTerminalEmitter } from './terminal'
@@ -2120,6 +2122,13 @@ async function startHeadlessTaskAgent(
     addPlanActivity(planId, 'error', `Task ${task.id} container error`, error.message)
   })
 
+  // Create shared Go build cache and module cache directories for this repo
+  const repoName = repository.name
+  const sharedCacheDir = getRepoCacheDir(repoName)
+  const sharedModCacheDir = getRepoModCacheDir(repoName)
+  await fs.mkdir(sharedCacheDir, { recursive: true })
+  await fs.mkdir(sharedModCacheDir, { recursive: true })
+
   // Start the agent
   try {
     await agent.start({
@@ -2130,6 +2139,8 @@ async function startHeadlessTaskAgent(
       taskId: task.id,
       image: selectedImage,
       claudeFlags: ['--model', agentModel],
+      sharedCacheDir,
+      sharedModCacheDir,
     })
 
     addPlanActivity(planId, 'info', `Task ${task.id} started (headless container)`)

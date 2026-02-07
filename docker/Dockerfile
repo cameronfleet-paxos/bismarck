@@ -62,6 +62,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
+# Install common Go tools (goimports for formatting)
+RUN GOPATH=/tmp/gotools /usr/local/go/bin/go install golang.org/x/tools/cmd/goimports@latest \
+    && mv /tmp/gotools/bin/goimports /usr/local/bin/goimports \
+    && rm -rf /tmp/gotools
+
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 

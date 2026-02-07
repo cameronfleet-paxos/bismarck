@@ -135,6 +135,14 @@ export function getStandaloneWorktreePath(repoName: string, branchName: string):
   return path.join(getStandaloneWorktreesPath(), repoName, branchName)
 }
 
+export function getRepoCacheDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.gocache')
+}
+
+export function getRepoModCacheDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.gomodcache')
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [
