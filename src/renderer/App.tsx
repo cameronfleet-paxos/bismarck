@@ -579,27 +579,26 @@ function App() {
     }
   }, [])
 
-  const handleFocusAgent = useCallback((agentId: string, options?: { skipAcknowledge?: boolean }) => {
-    const shouldAcknowledge = !options?.skipAcknowledge
-    // If switching away from a waiting agent we were focused on, acknowledge it (unless skipped)
-    if (shouldAcknowledge && focusedAgentId && focusedAgentId !== agentId && waitingQueue.includes(focusedAgentId)) {
+  const handleFocusAgent = useCallback((agentId: string) => {
+    // If switching away from a waiting agent we were focused on, acknowledge it
+    if (focusedAgentId && focusedAgentId !== agentId && waitingQueue.includes(focusedAgentId)) {
       window.electronAPI?.acknowledgeWaiting?.(focusedAgentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== focusedAgentId))
     }
+    // Switch to the tab containing this agent
+    const tab = tabs.find((t) => t.workspaceIds.includes(agentId))
+    if (tab && tab.id !== activeTabId) {
+      window.electronAPI?.setActiveTab?.(tab.id)
+      setActiveTabId(tab.id)
+    }
     setFocusedAgentId(agentId)
     window.electronAPI?.setFocusedWorkspace?.(agentId)
-    // Acknowledge if this agent was waiting (unless skipped)
-    if (shouldAcknowledge && waitingQueue.includes(agentId)) {
+    // Acknowledge if this agent was waiting
+    if (waitingQueue.includes(agentId)) {
       window.electronAPI?.acknowledgeWaiting?.(agentId)
       setWaitingQueue((prev) => prev.filter((id) => id !== agentId))
     }
-  }, [focusedAgentId, waitingQueue])
-
-  // Dismiss (acknowledge) a waiting agent without navigating to it
-  const handleDismissAgent = useCallback((agentId: string) => {
-    window.electronAPI?.acknowledgeWaiting?.(agentId)
-    setWaitingQueue((prev) => prev.filter((id) => id !== agentId))
-  }, [])
+  }, [focusedAgentId, waitingQueue, tabs, activeTabId])
 
   // Close diff overlay and restore agent expansion state
   const closeDiffAndRestore = useCallback((tabId: string) => {
@@ -3854,7 +3853,6 @@ function App() {
           waitingQueue={waitingQueue}
           agents={agents}
           onFocusAgent={handleFocusAgent}
-          onDismissAgent={handleDismissAgent}
         />
       )}
 
