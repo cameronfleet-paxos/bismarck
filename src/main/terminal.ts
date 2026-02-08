@@ -66,6 +66,72 @@ interface TerminalProcess {
 
 const terminals: Map<string, TerminalProcess> = new Map()
 
+/**
+ * Create a plain terminal session without Claude
+ * Just spawns a shell in the workspace directory
+ */
+export function createPlainTerminal(
+  workspaceId: string,
+  mainWindow: BrowserWindow | null
+): string {
+  const workspace = getWorkspaceById(workspaceId)
+  if (!workspace) {
+    throw new Error(`Workspace not found: ${workspaceId}`)
+  }
+
+  const terminalId = `terminal-${workspaceId}-${Date.now()}`
+  const shell = process.env.SHELL || '/bin/zsh'
+
+  // Validate directory exists, fall back to home if not
+  let cwd = workspace.directory
+  if (!fs.existsSync(cwd)) {
+    console.warn(`Directory ${cwd} does not exist, using home directory`)
+    cwd = os.homedir()
+  }
+
+  // Spawn interactive shell without Claude
+  const ptyProcess = pty.spawn(shell, ['-l'], {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      BISMARCK_WORKSPACE_ID: workspaceId,
+      BISMARCK_INSTANCE_ID: getInstanceId(),
+    },
+  })
+
+  // Create emitter for terminal output listening
+  const emitter = new EventEmitter()
+
+  terminals.set(terminalId, {
+    pty: ptyProcess,
+    workspaceId,
+    emitter,
+  })
+
+  // Forward data to renderer and emit for listeners
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', terminalId, data)
+    }
+  })
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
+    }
+    terminals.delete(terminalId)
+  })
+
+  return terminalId
+}
+
 export function createTerminal(
   workspaceId: string,
   mainWindow: BrowserWindow | null,

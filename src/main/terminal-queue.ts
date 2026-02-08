@@ -4,7 +4,7 @@
  */
 
 import { BrowserWindow } from 'electron'
-import { createTerminal } from './terminal'
+import { createTerminal, createPlainTerminal } from './terminal'
 import { createSocketServer } from './socket-server'
 import { addActiveWorkspace, getOrCreateTabForWorkspace, addWorkspaceToTab, setActiveTab } from './state-manager'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
@@ -15,6 +15,7 @@ const SPAWN_DELAY_MS = 100
 interface QueuedTerminal {
   workspaceId: string
   mainWindow: BrowserWindow | null
+  terminalOnly?: boolean
   options?: {
     initialPrompt?: string
     claudeFlags?: string
@@ -94,13 +95,15 @@ async function spawnTerminal(item: QueuedTerminal): Promise<void> {
   startTimer(`agent:spawn-terminal:${item.workspaceId}`, 'agent')
 
   try {
-    const terminalId = createTerminal(
-      item.workspaceId,
-      item.mainWindow,
-      item.options?.initialPrompt,
-      item.options?.claudeFlags,
-      item.options?.autoAcceptMode
-    )
+    const terminalId = item.terminalOnly
+      ? createPlainTerminal(item.workspaceId, item.mainWindow)
+      : createTerminal(
+          item.workspaceId,
+          item.mainWindow,
+          item.options?.initialPrompt,
+          item.options?.claudeFlags,
+          item.options?.autoAcceptMode
+        )
     endTimer(`agent:spawn-terminal:${item.workspaceId}`)
     item.resolve(terminalId)
   } catch (error) {
@@ -144,7 +147,8 @@ export function queueTerminalCreation(
  */
 export async function queueTerminalCreationWithSetup(
   workspaceId: string,
-  mainWindow: BrowserWindow | null
+  mainWindow: BrowserWindow | null,
+  terminalOnly?: boolean
 ): Promise<string> {
   // Create socket server for this workspace
   createSocketServer(workspaceId)
@@ -158,7 +162,19 @@ export async function queueTerminalCreationWithSetup(
   setActiveTab(tab.id)
 
   // Queue the terminal creation
-  return queueTerminalCreation(workspaceId, mainWindow)
+  return new Promise((resolve, reject) => {
+    startTimer(`agent:queue-terminal:${workspaceId}`, 'agent')
+    queue.push({
+      workspaceId,
+      mainWindow,
+      terminalOnly,
+      resolve,
+      reject,
+    })
+
+    emitQueueStatus()
+    processQueue()
+  })
 }
 
 /**

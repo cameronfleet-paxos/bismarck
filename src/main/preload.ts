@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Terminal management
   createTerminal: (workspaceId: string): Promise<string> =>
     ipcRenderer.invoke('create-terminal', workspaceId),
+  createTerminalOnly: (): Promise<Workspace> =>
+    ipcRenderer.invoke('create-terminal-only'),
   writeTerminal: (terminalId: string, data: string): Promise<void> =>
     ipcRenderer.invoke('write-terminal', terminalId, data),
   resizeTerminal: (

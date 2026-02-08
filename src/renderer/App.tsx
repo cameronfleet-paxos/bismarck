@@ -1738,6 +1738,19 @@ function App() {
     }
   }
 
+  // Create terminal-only handler
+  const handleCreateTerminalOnly = async () => {
+    try {
+      const agent = await window.electronAPI?.createTerminalOnly?.()
+      if (agent) {
+        // Reload agents to pick up the new terminal-only agent
+        await loadAgents()
+      }
+    } catch (error) {
+      console.error('Failed to create terminal-only agent:', error)
+    }
+  }
+
   // Start headless discussion handler
   const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string) => {
     try {
@@ -3908,6 +3921,7 @@ function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
+        onCreateTerminalOnly={handleCreateTerminalOnly}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}

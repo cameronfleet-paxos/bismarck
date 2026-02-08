@@ -1,4 +1,4 @@
-import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical, Copy } from 'lucide-react'
+import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical, Copy, Terminal } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
   DropdownMenu,
@@ -120,6 +120,12 @@ export function AgentCard({
           <AgentIcon icon={agent.icon} className="w-4 h-4" />
         </div>
         <h3 className="font-medium truncate flex-1" data-testid={`agent-card-name-${agent.id}`}>{agent.name}</h3>
+        {agent.isTerminalOnly && (
+          <span className="text-xs bg-gray-600 text-white px-1.5 py-0.5 rounded flex-shrink-0 flex items-center gap-1">
+            <Terminal className="w-3 h-3" />
+            Terminal
+          </span>
+        )}
         {agent.isHeadless && (
           <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded flex-shrink-0 flex items-center gap-1">
             <Container className="w-3 h-3" />

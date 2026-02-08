@@ -27,6 +27,7 @@ export interface ElectronAPI {
 
   // Terminal management
   createTerminal: (workspaceId: string) => Promise<string>
+  createTerminalOnly: () => Promise<Workspace>
   writeTerminal: (terminalId: string, data: string) => Promise<void>
   resizeTerminal: (
     terminalId: string,

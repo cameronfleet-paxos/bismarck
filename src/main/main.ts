@@ -425,6 +425,34 @@ function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('create-terminal-only', async (_event) => {
+    devLog('[Main] create-terminal-only called')
+    try {
+      // Create a temporary agent for terminal-only mode
+      const agent: Workspace = {
+        id: randomUUID(),
+        name: 'Terminal',
+        directory: process.cwd(),
+        purpose: '',
+        theme: 'gray',
+        icon: 'kraftwerk',
+        isTerminalOnly: true,
+      }
+
+      // Save the workspace
+      saveWorkspace(agent)
+
+      // Use the queue for terminal creation with terminalOnly flag
+      const terminalId = await queueTerminalCreationWithSetup(agent.id, mainWindow, true)
+      devLog('[Main] create-terminal-only succeeded:', terminalId)
+
+      return agent
+    } catch (err) {
+      console.error('[Main] create-terminal-only FAILED:', err)
+      throw err
+    }
+  })
+
   ipcMain.handle('write-terminal', (_event, terminalId: string, data: string) => {
     writeTerminal(terminalId, data)
   })
