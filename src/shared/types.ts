@@ -146,6 +146,8 @@ export interface AppPreferences {
   keyboardShortcuts?: KeyboardShortcuts
   showDiffView?: boolean
   showAgentTimer?: boolean
+  diffFileViewType?: 'flat' | 'tree'
+  diffViewMode?: 'unified' | 'split'
 }
 
 // ============================================

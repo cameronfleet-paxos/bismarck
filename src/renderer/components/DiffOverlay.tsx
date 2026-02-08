@@ -33,6 +33,15 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
   const [editedContent, setEditedContent] = useState<Map<string, string>>(new Map())
   const [revertConfirm, setRevertConfirm] = useState<{ type: 'file'; path: string } | { type: 'all' } | null>(null)
 
+  // Load persisted view mode preference on mount
+  useEffect(() => {
+    window.electronAPI?.getPreferences?.().then(prefs => {
+      if (prefs?.diffViewMode) {
+        setViewMode(prefs.diffViewMode)
+      }
+    })
+  }, [])
+
   // Load file list on mount
   useEffect(() => {
     loadFileList()
@@ -99,7 +108,11 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
       if (e.key === 's' && e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
         e.stopPropagation()
-        setViewMode(prev => prev === 'unified' ? 'split' : 'unified')
+        setViewMode(prev => {
+          const next = prev === 'unified' ? 'split' : 'unified'
+          window.electronAPI?.setPreferences?.({ diffViewMode: next })
+          return next
+        })
         return
       }
 
@@ -330,7 +343,10 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
           </Button>
           <div className="flex items-center border border-border rounded-md overflow-hidden">
             <button
-              onClick={() => setViewMode('unified')}
+              onClick={() => {
+                setViewMode('unified')
+                window.electronAPI?.setPreferences?.({ diffViewMode: 'unified' })
+              }}
               className={`px-3 py-1 text-xs font-medium transition-colors ${
                 viewMode === 'unified'
                   ? 'bg-primary text-primary-foreground'
@@ -341,7 +357,10 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
               <FileText className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={() => setViewMode('split')}
+              onClick={() => {
+                setViewMode('split')
+                window.electronAPI?.setPreferences?.({ diffViewMode: 'split' })
+              }}
               className={`px-3 py-1 text-xs font-medium transition-colors ${
                 viewMode === 'split'
                   ? 'bg-primary text-primary-foreground'

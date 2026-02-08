@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft, Undo2, List, FolderTree, ChevronRight, ChevronDown, Folder } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DiffFile } from '@/shared/types'
@@ -327,6 +327,24 @@ export function DiffFileList({
   const tree = buildFileTree(files)
   const collapsedTree = collapseTree(tree)
 
+  // Load persisted view type preference on mount
+  useEffect(() => {
+    window.electronAPI?.getPreferences?.().then(prefs => {
+      if (prefs?.diffFileViewType) {
+        setViewType(prefs.diffFileViewType)
+      }
+    })
+  }, [])
+
+  // Auto-initialize tree when view type is 'tree' and not yet initialized
+  useEffect(() => {
+    if (viewType === 'tree' && !treeInitialized && files.length > 0) {
+      const allDirs = getAllDirPaths(collapsedTree)
+      setExpandedDirs(new Set(allDirs))
+      setTreeInitialized(true)
+    }
+  }, [viewType, treeInitialized, files.length, collapsedTree])
+
   // Initialize expanded dirs to all when first switching to tree view
   const initializeTreeExpanded = () => {
     if (!treeInitialized) {
@@ -388,7 +406,10 @@ export function DiffFileList({
           {/* View toggle */}
           <div className="flex items-center border border-border rounded-md overflow-hidden">
             <button
-              onClick={() => setViewType('flat')}
+              onClick={() => {
+                setViewType('flat')
+                window.electronAPI?.setPreferences?.({ diffFileViewType: 'flat' })
+              }}
               className={cn(
                 'p-1 transition-colors',
                 viewType === 'flat'
@@ -404,6 +425,7 @@ export function DiffFileList({
               onClick={() => {
                 setViewType('tree')
                 initializeTreeExpanded()
+                window.electronAPI?.setPreferences?.({ diffFileViewType: 'tree' })
               }}
               className={cn(
                 'p-1 transition-colors',
