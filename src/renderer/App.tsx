@@ -1343,6 +1343,15 @@ function App() {
     setActiveTabId(state.activeTabId)
   }
 
+  const handleAddTerminal = async (agent: Agent) => {
+    // Save the new terminal-only agent
+    await window.electronAPI.saveWorkspace(agent)
+    await loadAgents()
+
+    // Launch the terminal
+    await handleLaunchAgent(agent.id)
+  }
+
   const handleStopAgent = async (agentId: string) => {
     const activeTerminal = activeTerminals.find(
       (t) => t.workspaceId === agentId
@@ -3913,6 +3922,7 @@ function App() {
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onStartRalphLoop={handleStartRalphLoop}
+        onAddTerminal={handleAddTerminal}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 

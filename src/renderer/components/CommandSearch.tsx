@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, Terminal } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from '@/renderer/components/ui/dialog'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
-import { themes } from '@/shared/constants'
+import { themes, agentIcons } from '@/shared/constants'
 import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
 import { RALPH_LOOP_PRESETS, type RalphLoopPreset } from '@/shared/ralph-loop-presets'
 import { useTutorial } from '@/renderer/components/tutorial'
@@ -28,6 +28,7 @@ interface Command {
 }
 
 const commands: Command[] = [
+  { id: 'add-terminal', label: 'Add Terminal', icon: Terminal },
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
@@ -49,6 +50,7 @@ interface CommandSearchProps {
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
+  onAddTerminal?: (agent: Agent) => void
   prefillRalphLoopConfig?: {
     referenceAgentId: string
     prompt: string
@@ -71,6 +73,7 @@ export function CommandSearch({
   onStartRalphLoopDiscussion,
   onStartPlan,
   onStartRalphLoop,
+  onAddTerminal,
   prefillRalphLoopConfig,
 }: CommandSearchProps) {
   const { isActive: tutorialActive } = useTutorial()
@@ -102,7 +105,8 @@ export function CommandSearch({
       !agent.isPlanAgent &&
       !agent.parentPlanId &&
       !agent.isHeadless &&
-      !agent.isStandaloneHeadless
+      !agent.isStandaloneHeadless &&
+      !agent.isTerminalOnly
     )
   }, [agents])
 
@@ -349,6 +353,33 @@ export function CommandSearch({
         } else if (command.id === 'start-plan') {
           onStartPlan?.()
           onOpenChange(false)
+        } else if (command.id === 'add-terminal') {
+          // Create a new terminal-only agent
+          ;(async () => {
+            const terminalAgents = agents.filter(a => a.isTerminalOnly)
+            const terminalNumber = terminalAgents.length + 1
+            const name = `Terminal ${terminalNumber}`
+
+            // Pick random theme and icon
+            const themeNames = Object.keys(themes) as Array<keyof typeof themes>
+            const randomTheme = themeNames[Math.floor(Math.random() * themeNames.length)]
+            const randomIcon = agentIcons[Math.floor(Math.random() * agentIcons.length)]
+
+            const directory = await window.electronAPI.getCurrentWorkingDirectory()
+
+            const newAgent: Agent = {
+              id: `terminal-${Date.now()}`,
+              name,
+              directory,
+              purpose: 'Plain shell terminal',
+              theme: randomTheme,
+              icon: randomIcon,
+              isTerminalOnly: true,
+            }
+
+            onAddTerminal?.(newAgent)
+            onOpenChange(false)
+          })()
         }
       } else {
         // Selected an agent directly
