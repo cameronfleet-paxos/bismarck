@@ -34,7 +34,8 @@ export interface ContainerConfig {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
-  mode?: 'plan' // If 'plan', run in read-only plan mode (--permission-mode plan, text output)
+  mode?: 'plan' // If 'plan', run in plan mode (stream-json output)
+  planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
 }
 
 export interface ContainerResult {
@@ -88,6 +89,11 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // Mount plan directory if provided
   if (config.planDir) {
     args.push('-v', `${config.planDir}:/plan:ro`)
+  }
+
+  // Mount plan output directory if provided (writable, for plan file capture)
+  if (config.planOutputDir) {
+    args.push('-v', `${config.planOutputDir}:/plan-output`)
   }
 
   // Set working directory
@@ -210,17 +216,19 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // For mock images, use the image's entrypoint instead of claude command
   if (!config.useEntrypoint) {
-    args.push('claude')
-
     if (config.mode === 'plan') {
-      // Plan mode: read-only analysis with restricted tools, text output, uses sonnet for speed
+      // Plan mode: read-only analysis with restricted tools, stream-json output, uses sonnet for speed
+      // Write is included so Claude can write the plan to .bismarck-plan.md for file-based capture
+      args.push('claude')
       args.push('--dangerously-skip-permissions')
-      args.push('--allowedTools', 'Read,Grep,Glob,Task')
+      args.push('--allowedTools', 'Read,Grep,Glob,Task,Write')
       args.push('-p', config.prompt)
-      args.push('--output-format', 'text')
+      args.push('--output-format', 'stream-json')
+      args.push('--verbose')
       args.push('--model', 'sonnet')
     } else {
       // Execution mode: full permissions, stream-json output
+      args.push('claude')
       args.push('--dangerously-skip-permissions')
       args.push('-p', config.prompt)
       args.push('--output-format', 'stream-json')

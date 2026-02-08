@@ -2040,13 +2040,9 @@ async function startHeadlessTaskAgent(
       guidance: repository.guidance,
       sharedCacheDir: getRepoCacheDir(repository.name),
       sharedModCacheDir: getRepoModCacheDir(repository.name),
-      onChunk: (text) => {
-        logger.debug('agent', 'Plan phase onChunk called', logCtx, { textLength: text.length, preview: text.substring(0, 80) })
-        emitHeadlessAgentEvent(planId, task.id, {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text }] },
-          timestamp: new Date().toISOString(),
-        } as StreamEvent)
+      enabled: true,
+      onEvent: (event) => {
+        emitHeadlessAgentEvent(planId, task.id, event)
       },
     })
 
@@ -2055,6 +2051,7 @@ async function startHeadlessTaskAgent(
     if (planResult.success && planResult.plan) {
       executionPrompt = wrapPromptWithPlan(taskPrompt, planResult.plan)
       agentInfo.originalPrompt = executionPrompt
+      agentInfo.planText = planResult.plan
       emitHeadlessAgentEvent(planId, task.id, {
         type: 'system',
         message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
@@ -2062,14 +2059,14 @@ async function startHeadlessTaskAgent(
       } as StreamEvent)
       addPlanActivity(planId, 'info', `Plan phase for ${task.id} completed (${planResult.durationMs}ms)`)
       logger.info('agent', 'Plan phase succeeded', logCtx, { durationMs: planResult.durationMs, planLength: planResult.plan.length })
-    } else if (planResult.error) {
+    } else {
       emitHeadlessAgentEvent(planId, task.id, {
         type: 'system',
-        message: `Plan phase skipped: ${planResult.error}`,
+        message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
         timestamp: new Date().toISOString(),
       } as StreamEvent)
-      addPlanActivity(planId, 'info', `Plan phase for ${task.id} skipped/failed, proceeding without plan`)
-      logger.info('agent', 'Plan phase skipped/failed', logCtx, { error: planResult.error })
+      addPlanActivity(planId, 'warning', `Plan phase for ${task.id} failed, proceeding with original prompt`)
+      logger.warn('agent', 'Plan phase failed, proceeding with original prompt', logCtx, { error: planResult.error })
     }
 
     agentInfo.status = 'starting'

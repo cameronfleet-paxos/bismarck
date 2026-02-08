@@ -447,6 +447,7 @@ export async function startStandaloneHeadlessAgent(
     agentInfo.status = 'planning'
     emitHeadlessAgentUpdate(agentInfo)
 
+    const planOutputDir = path.join(getStandaloneHeadlessDir(), headlessId)
     const planResult = await runPlanPhase({
       taskDescription: prompt,
       worktreePath,
@@ -456,13 +457,10 @@ export async function startStandaloneHeadlessAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
-      onChunk: (text) => {
-        devLog(`[StandaloneHeadless] Plan phase onChunk called`, { headlessId, textLength: text.length, preview: text.substring(0, 80) })
-        emitHeadlessAgentEvent(headlessId, {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text }] },
-          timestamp: new Date().toISOString(),
-        } as StreamEvent)
+      planOutputDir,
+      enabled: true,
+      onEvent: (event) => {
+        emitHeadlessAgentEvent(headlessId, event)
       },
     })
 
@@ -470,19 +468,20 @@ export async function startStandaloneHeadlessAgent(
 
     if (planResult.success && planResult.plan) {
       executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+      agentInfo.planText = planResult.plan
       emitHeadlessAgentEvent(headlessId, {
         type: 'system',
         message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
         timestamp: new Date().toISOString(),
       } as StreamEvent)
       devLog(`[StandaloneHeadless] Plan phase succeeded (${planResult.durationMs}ms), injecting plan into prompt`)
-    } else if (planResult.error) {
+    } else {
       emitHeadlessAgentEvent(headlessId, {
         type: 'system',
-        message: `Plan phase skipped: ${planResult.error}`,
+        message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
         timestamp: new Date().toISOString(),
       } as StreamEvent)
-      devLog(`[StandaloneHeadless] Plan phase skipped/failed, proceeding without plan`, { error: planResult.error })
+      devLog(`[StandaloneHeadless] Plan phase failed, proceeding with original prompt`, { error: planResult.error })
     }
   }
 
@@ -883,6 +882,7 @@ export async function startFollowUpAgent(
   agentInfo.status = 'planning'
   emitHeadlessAgentUpdate(agentInfo)
 
+  const followUpPlanOutputDir = path.join(getStandaloneHeadlessDir(), newHeadlessId)
   const planResult = await runPlanPhase({
     taskDescription: prompt,
     worktreePath,
@@ -892,31 +892,30 @@ export async function startFollowUpAgent(
     guidance: repository?.guidance,
     sharedCacheDir,
     sharedModCacheDir,
-    onChunk: (text) => {
-      emitHeadlessAgentEvent(newHeadlessId, {
-        type: 'assistant',
-        message: { content: [{ type: 'text', text }] },
-        timestamp: new Date().toISOString(),
-      } as StreamEvent)
+    planOutputDir: followUpPlanOutputDir,
+    enabled: true,
+    onEvent: (event) => {
+      emitHeadlessAgentEvent(newHeadlessId, event)
     },
   })
 
   let executionPrompt = enhancedPrompt
   if (planResult.success && planResult.plan) {
     executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+    agentInfo.planText = planResult.plan
     emitHeadlessAgentEvent(newHeadlessId, {
       type: 'system',
       message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
       timestamp: new Date().toISOString(),
     } as StreamEvent)
     devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
-  } else if (planResult.error) {
+  } else {
     emitHeadlessAgentEvent(newHeadlessId, {
       type: 'system',
-      message: `Plan phase skipped: ${planResult.error}`,
+      message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
       timestamp: new Date().toISOString(),
     } as StreamEvent)
-    devLog(`[StandaloneHeadless] Follow-up plan phase skipped/failed, proceeding without plan`, { error: planResult.error })
+    devLog(`[StandaloneHeadless] Follow-up plan phase failed, proceeding with original prompt`, { error: planResult.error })
   }
 
   // Store the full resolved prompt (for Eye modal display)
