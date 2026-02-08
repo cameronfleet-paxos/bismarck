@@ -12,7 +12,6 @@ interface AppSettings {
     resourceLimits: {
       cpu: string
       memory: string
-      gomaxprocs: string
     }
     proxiedTools: { id: string; name: string; hostPath: string; description?: string }[]
     sshAgent?: {
@@ -21,9 +20,6 @@ interface AppSettings {
     dockerSocket?: {
       enabled: boolean
       path: string
-    }
-    sharedBuildCache?: {
-      enabled: boolean
     }
   }
 }
@@ -66,7 +62,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [newImage, setNewImage] = useState('')
   const [cpuLimit, setCpuLimit] = useState(settings.docker.resourceLimits.cpu)
   const [memoryLimit, setMemoryLimit] = useState(settings.docker.resourceLimits.memory)
-  const [gomaxprocsLimit, setGomaxprocsLimit] = useState(settings.docker.resourceLimits.gomaxprocs)
   const [saving, setSaving] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [imageStatuses, setImageStatuses] = useState<Record<string, ImageStatusState>>({})
@@ -119,8 +114,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   useEffect(() => {
     setCpuLimit(settings.docker.resourceLimits.cpu)
     setMemoryLimit(settings.docker.resourceLimits.memory)
-    setGomaxprocsLimit(settings.docker.resourceLimits.gomaxprocs)
-  }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory, settings.docker.resourceLimits.gomaxprocs])
+  }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory])
 
   const handlePullImage = async (imageName: string) => {
     if (pullingImage) return // Only one pull at a time
@@ -214,7 +208,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       await window.electronAPI.updateDockerResourceLimits({
         cpu: cpuLimit,
         memory: memoryLimit,
-        gomaxprocs: gomaxprocsLimit,
       })
       await onSettingsChange()
       setShowSaved(true)
@@ -245,17 +238,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update Docker socket settings:', error)
-    }
-  }
-
-  const handleSharedBuildCacheToggle = async (enabled: boolean) => {
-    try {
-      await window.electronAPI.updateDockerSharedBuildCacheSettings({ enabled })
-      await onSettingsChange()
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
-    } catch (error) {
-      console.error('Failed to update shared build cache settings:', error)
     }
   }
 
@@ -467,22 +449,9 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="gomaxprocs-limit">GOMAXPROCS</Label>
-            <Input
-              id="gomaxprocs-limit"
-              placeholder="e.g., 4"
-              value={gomaxprocsLimit}
-              onChange={(e) => setGomaxprocsLimit(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Limits Go parallelism inside containers. Prevents OOM from too many concurrent test suites.
-            </p>
-          </div>
-
           <Button
             onClick={handleSaveResourceLimits}
-            disabled={saving || !cpuLimit || !memoryLimit || !gomaxprocsLimit}
+            disabled={saving || !cpuLimit || !memoryLimit}
           >
             <Save className="h-4 w-4 mr-2" />
             {saving ? 'Saving...' : 'Save Resource Limits'}
@@ -562,34 +531,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         )}
       </div>
 
-      {/* Shared Build Cache */}
-      <div className="bg-card border rounded-lg p-6">
-        <h3 className="text-lg font-semibold mb-2">Shared Build Cache</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Share Go build and module caches across agents working on the same repository. Reduces compilation time and avoids re-downloading modules for parallel agents.
-        </p>
-
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <Label htmlFor="shared-build-cache-enabled">Enable Shared Build Cache</Label>
-            <p className="text-xs text-muted-foreground">
-              Agents on the same repo share Go build and module caches instead of each building from scratch
-            </p>
-          </div>
-          <Switch
-            id="shared-build-cache-enabled"
-            checked={settings.docker.sharedBuildCache?.enabled ?? true}
-            onCheckedChange={handleSharedBuildCacheToggle}
-          />
-        </div>
-
-        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-          <p className="text-xs text-blue-600 dark:text-blue-400">
-            Caches are stored per-repo at <code className="bg-muted px-1 rounded">~/.bismarck/repos/&lt;repo&gt;/.gocache/</code> and <code className="bg-muted px-1 rounded">.gomodcache/</code>.
-            Go's caches are safe for concurrent access using OS file locks.
-          </p>
-        </div>
-      </div>
     </div>
   )
 }

@@ -15,9 +15,9 @@ import { UpdatesSettings } from '@/renderer/components/settings/sections/Updates
 import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
 import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
 import { RepositoriesSettings } from '@/renderer/components/settings/sections/RepositoriesSettings'
-import { HeadlessSettings } from '@/renderer/components/settings/sections/HeadlessSettings'
+import { LanguagesSettings } from '@/renderer/components/settings/sections/LanguagesSettings'
 
-type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'paths' | 'tools' | 'headless' | 'plans' | 'ralph-presets' | 'repositories' | 'playbox' | 'advanced'
+type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'languages' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'repositories' | 'playbox' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -52,14 +52,14 @@ const sidebarItems: SidebarItem[] = [
     description: 'Container images and resource limits',
   },
   {
+    id: 'languages',
+    label: 'Languages',
+    description: 'Language-specific agent settings',
+  },
+  {
     id: 'tools',
     label: 'Tools',
     description: 'Tool paths and proxied tools',
-  },
-  {
-    id: 'headless',
-    label: 'Headless',
-    description: 'Plan phase settings',
   },
   {
     id: 'plans',
@@ -100,7 +100,6 @@ interface AppSettings {
     resourceLimits: {
       cpu: string
       memory: string
-      gomaxprocs: string
     }
     proxiedTools: ProxiedTool[]
     sshAgent?: {
@@ -295,6 +294,13 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
       case 'docker':
         return <DockerSettings settings={settings} onSettingsChange={loadSettings} />
+
+      case 'languages':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <LanguagesSettings settings={settings} onSettingsChange={loadSettings} />
+          </div>
+        )
 
       case 'tools':
         return (
@@ -564,13 +570,6 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
           </div>
         )
 
-      case 'headless':
-        return (
-          <div className="bg-card border rounded-lg p-6">
-            <HeadlessSettings />
-          </div>
-        )
-
       case 'plans':
         return (
           <div className="bg-card border rounded-lg p-6">
@@ -655,7 +654,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
         {/* Content area */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className={activeSection === 'repositories' ? 'max-w-5xl' : 'max-w-3xl'}>{renderContent()}</div>
+          <div className={activeSection === 'repositories' || activeSection === 'languages' ? 'max-w-5xl' : 'max-w-3xl'}>{renderContent()}</div>
         </main>
       </div>
     </div>

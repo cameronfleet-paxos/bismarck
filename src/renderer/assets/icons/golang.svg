@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Body -->
+  <ellipse cx="50" cy="58" rx="30" ry="35" fill="#00ADD8"/>
+  <!-- Left ear -->
+  <circle cx="30" cy="22" r="8" fill="#00ADD8"/>
+  <circle cx="30" cy="22" r="4" fill="#333"/>
+  <!-- Right ear -->
+  <circle cx="70" cy="22" r="8" fill="#00ADD8"/>
+  <circle cx="70" cy="22" r="4" fill="#333"/>
+  <!-- Left eye white -->
+  <ellipse cx="38" cy="38" rx="10" ry="12" fill="white"/>
+  <!-- Right eye white -->
+  <ellipse cx="62" cy="38" rx="10" ry="12" fill="white"/>
+  <!-- Left pupil -->
+  <circle cx="40" cy="39" r="4.5" fill="#333"/>
+  <!-- Right pupil -->
+  <circle cx="64" cy="39" r="4.5" fill="#333"/>
+  <!-- Nose -->
+  <ellipse cx="50" cy="52" rx="5" ry="3.5" fill="#333"/>
+  <!-- Mouth/teeth -->
+  <rect x="46" y="56" width="8" height="6" rx="1" fill="white"/>
+  <line x1="50" y1="56" x2="50" y2="62" stroke="#ddd" stroke-width="0.5"/>
+  <!-- Left hand -->
+  <ellipse cx="22" cy="68" rx="6" ry="5" fill="#F9C56A"/>
+  <!-- Right hand -->
+  <ellipse cx="78" cy="68" rx="6" ry="5" fill="#F9C56A"/>
+  <!-- Left foot -->
+  <ellipse cx="38" cy="92" rx="7" ry="4" fill="#F9C56A"/>
+  <!-- Right foot -->
+  <ellipse cx="62" cy="92" rx="7" ry="4" fill="#F9C56A"/>
+</svg>
