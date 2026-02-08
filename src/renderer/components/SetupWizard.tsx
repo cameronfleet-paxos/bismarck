@@ -390,6 +390,12 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
       }
 
+      // Auto-enable bb proxied tool if detected during setup
+      if (dependencies?.bb.installed) {
+        devLog('[SetupWizard] bb detected, enabling in settings...')
+        await window.electronAPI.toggleProxiedTool('bb', true)
+      }
+
       // Build repos with all details
       const reposToCreate = discoveredRepos
         .filter(r => selectedRepos.has(r.path))
