@@ -100,6 +100,7 @@ interface AppSettings {
     resourceLimits: {
       cpu: string
       memory: string
+      gomaxprocs: string
     }
     proxiedTools: ProxiedTool[]
     sshAgent?: {
@@ -108,6 +109,9 @@ interface AppSettings {
     dockerSocket?: {
       enabled: boolean
       path: string
+    }
+    sharedBuildCache?: {
+      enabled: boolean
     }
   }
 }

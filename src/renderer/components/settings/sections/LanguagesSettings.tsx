@@ -5,20 +5,17 @@ import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Switch } from '@/renderer/components/ui/switch'
 import golangIcon from '@/renderer/assets/icons/golang.svg'
-
-interface AppSettings {
-  docker: {
-    resourceLimits: {
-      gomaxprocs: string
-    }
-    sharedBuildCache?: {
-      enabled: boolean
+interface LanguagesSettingsProps {
+  settings: {
+    docker: {
+      resourceLimits: {
+        gomaxprocs: string
+      }
+      sharedBuildCache?: {
+        enabled: boolean
+      }
     }
   }
-}
-
-interface LanguagesSettingsProps {
-  settings: AppSettings
   onSettingsChange: () => void
 }
 
