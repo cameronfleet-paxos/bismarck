@@ -94,10 +94,6 @@ export interface AppSettings {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
   }
-  planPhase: {
-    enabled: boolean              // Enable read-only planning phase before execution
-    timeoutMs: number             // Timeout for plan phase container (default: 120000 = 2 minutes)
-  }
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
@@ -223,10 +219,6 @@ export function getDefaultSettings(): AppSettings {
       enabled: true,
       maxIterations: 2,
     },
-    planPhase: {
-      enabled: false,
-      timeoutMs: 120000,
-    },
     _internal: {
       lastLogPurgeVersion: null,
     },
@@ -286,7 +278,6 @@ export async function loadSettings(): Promise<AppSettings> {
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
       critic: { ...defaults.critic, ...(loaded.critic || {}) },
-      planPhase: { ...defaults.planPhase, ...(loaded.planPhase || {}) },
       _internal: { ...defaults._internal, ...(loaded._internal || {}) },
     }
 
@@ -465,10 +456,6 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     critic: {
       ...(currentSettings.critic || defaults.critic),
       ...(updates.critic || {}),
-    },
-    planPhase: {
-      ...(currentSettings.planPhase || defaults.planPhase),
-      ...(updates.planPhase || {}),
     },
     _internal: {
       ...(currentSettings._internal || defaults._internal),
