@@ -1160,6 +1160,8 @@ function App() {
       devLog('[Renderer] Received headless-agent-started', data)
       // Clear discussion completing spinner - the handoff agent has started
       setDiscussionCompletingWorkspaceId(null)
+      // Clear spawning placeholders - the real workspace is now visible
+      setSpawningHeadless(new Map())
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
         devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
@@ -1714,7 +1716,7 @@ function App() {
   }
 
   // Start standalone headless agent handler
-  const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet') => {
+  const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => {
     // Generate a unique spawning ID for this placeholder
     const spawningId = `spawning-${Date.now()}`
     const referenceAgent = agents.find(a => a.id === agentId)
@@ -1740,7 +1742,7 @@ function App() {
     setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
 
     try {
-      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, tabId)
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, tabId, { planPhase: options?.planPhase })
       if (result) {
         // Update skeleton's tabId if the actual tab differs from what we predicted
         // Note: The main process already navigates to the correct tab via setActiveTab(),
