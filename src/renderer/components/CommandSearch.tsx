@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, HelpCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from '@/renderer/components/ui/dialog'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
+import { Switch } from '@/renderer/components/ui/switch'
+import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { themes } from '@/shared/constants'
 import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
 import { RALPH_LOOP_PRESETS, type RalphLoopPreset } from '@/shared/ralph-loop-presets'
@@ -44,7 +46,7 @@ interface CommandSearchProps {
   tabs: AgentTab[]
   activeTabId: string | null
   onSelectAgent: (agentId: string) => void
-  onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
+  onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => void
   onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
@@ -79,6 +81,7 @@ export function CommandSearch({
   const [mode, setMode] = useState<CommandMode>('commands')
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [prompt, setPrompt] = useState('')
+  const [planPhase, setPlanPhase] = useState(true)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null)
 
   // Ralph Loop config state
@@ -185,6 +188,7 @@ export function CommandSearch({
           setSelectedAgent(agent)
           setMode('ralph-loop-config')
           setPendingCommand('ralph-loop')
+          setPlanPhase(true)
           setPrompt(prefillRalphLoopConfig.prompt)
           setCompletionPhrase(prefillRalphLoopConfig.completionPhrase)
           setMaxIterations(prefillRalphLoopConfig.maxIterations)
@@ -196,6 +200,7 @@ export function CommandSearch({
           setMode('commands')
           setSelectedAgent(null)
           setPrompt('')
+          setPlanPhase(true)
           setPendingCommand(null)
           setCompletionPhrase('<promise>COMPLETE</promise>')
           setMaxIterations(50)
@@ -208,6 +213,7 @@ export function CommandSearch({
         setMode('commands')
         setSelectedAgent(null)
         setPrompt('')
+        setPlanPhase(true)
         setPendingCommand(null)
         setCompletionPhrase('<promise>COMPLETE</promise>')
         setMaxIterations(50)
@@ -396,7 +402,7 @@ export function CommandSearch({
         onStartRalphLoopDiscussion?.(selectedAgent.id, prompt.trim())
         onOpenChange(false)
       } else if (onStartHeadless) {
-        onStartHeadless(selectedAgent.id, prompt.trim(), model)
+        onStartHeadless(selectedAgent.id, prompt.trim(), model, { planPhase })
         onOpenChange(false)
       }
     }
@@ -505,14 +511,35 @@ export function CommandSearch({
               className="w-full h-32 p-3 text-sm border rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <div className="flex items-center justify-between mt-3">
-              <span className="text-xs text-muted-foreground">
-                Working directory: {selectedAgent?.directory}
+              <span className="text-xs text-muted-foreground truncate">
+                {selectedAgent?.directory}
               </span>
+              {pendingCommand !== 'headless-discussion' && pendingCommand !== 'ralph-loop-discussion' && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <Tooltip
+                    content="Agent will create a read-only plan before coding. You cannot interact with it — use discussion mode to collaborate on a plan."
+                    side="top"
+                    className="!whitespace-normal w-72 right-0 left-auto translate-x-0"
+                  >
+                    <label
+                      htmlFor="plan-toggle"
+                      className="text-xs text-muted-foreground cursor-pointer flex items-center gap-0.5"
+                    >Plan <HelpCircle className="h-3 w-3" /></label>
+                  </Tooltip>
+                  <Switch
+                    id="plan-toggle"
+                    checked={planPhase}
+                    onCheckedChange={setPlanPhase}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end mt-2">
               {pendingCommand === 'headless-discussion' || pendingCommand === 'ralph-loop-discussion' ? (
                 <button
                   onClick={() => handleSubmitPrompt('sonnet')}
                   disabled={!prompt.trim()}
-                  className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Start Discussion
                 </button>
@@ -521,14 +548,14 @@ export function CommandSearch({
                   <button
                     onClick={() => handleSubmitPrompt('sonnet')}
                     disabled={!prompt.trim()}
-                    className="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Launch Sonnet
                   </button>
                   <button
                     onClick={() => handleSubmitPrompt('opus')}
                     disabled={!prompt.trim()}
-                    className="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Launch Opus
                   </button>

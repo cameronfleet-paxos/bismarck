@@ -482,6 +482,7 @@ export interface HeadlessAgentInfo {
   worktreeInfo?: StandaloneWorktreeInfo  // For standalone headless agents
   originalPrompt?: string  // Full resolved prompt (for Eye modal display)
   userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
+  planText?: string  // Plan generated during planning phase (for Eye modal display)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
   agentType?: 'task' | 'critic' | 'merge'  // Type of headless agent (default: task)
 }

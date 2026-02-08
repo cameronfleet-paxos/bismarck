@@ -14,16 +14,20 @@ interface PromptViewerModalProps {
   onClose: () => void
 }
 
+type ViewMode = 'user' | 'plan' | 'full'
+
 export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
   const [copied, setCopied] = useState(false)
-  const [showFullPrompt, setShowFullPrompt] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('user')
 
-  // Use userPrompt if available, otherwise fall back to originalPrompt
   const userPrompt = info?.userPrompt || info?.originalPrompt
+  const planText = info?.planText
   const fullPrompt = info?.originalPrompt
   const hasFullPrompt = fullPrompt && fullPrompt !== userPrompt
 
-  const displayedPrompt = showFullPrompt ? fullPrompt : userPrompt
+  const displayedPrompt = viewMode === 'full' ? fullPrompt
+    : viewMode === 'plan' ? planText
+    : userPrompt
 
   const handleCopy = async () => {
     if (!displayedPrompt) return
@@ -63,26 +67,36 @@ export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
             {displayedPrompt || 'No prompt available'}
           </pre>
         </div>
-        {hasFullPrompt && (
-          <div className="pt-2 border-t">
+        {(planText || hasFullPrompt) && (
+          <div className="pt-2 border-t flex gap-1">
             <Button
               size="sm"
-              variant="ghost"
-              onClick={() => setShowFullPrompt(!showFullPrompt)}
-              className="flex items-center gap-1.5 text-muted-foreground"
+              variant={viewMode === 'user' ? 'secondary' : 'ghost'}
+              onClick={() => setViewMode('user')}
+              className="text-muted-foreground"
             >
-              {showFullPrompt ? (
-                <>
-                  <ChevronUp className="h-3.5 w-3.5" />
-                  <span>Show User Prompt</span>
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-3.5 w-3.5" />
-                  <span>View Full Prompt</span>
-                </>
-              )}
+              User Prompt
             </Button>
+            {planText && (
+              <Button
+                size="sm"
+                variant={viewMode === 'plan' ? 'secondary' : 'ghost'}
+                onClick={() => setViewMode('plan')}
+                className="text-muted-foreground"
+              >
+                Plan
+              </Button>
+            )}
+            {hasFullPrompt && (
+              <Button
+                size="sm"
+                variant={viewMode === 'full' ? 'secondary' : 'ghost'}
+                onClick={() => setViewMode('full')}
+                className="text-muted-foreground"
+              >
+                Full Prompt
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>
