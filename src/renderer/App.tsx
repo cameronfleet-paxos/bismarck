@@ -1164,7 +1164,12 @@ function App() {
         devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
           setHeadlessAgents((prev) => {
-            const newMap = new Map(prev).set(data.taskId, info)
+            const existing = prev.get(data.taskId)
+            // Preserve events that arrived before this info fetch if the info has none
+            const events = existing && existing.events.length > 0 && info.events.length === 0
+              ? existing.events
+              : info.events
+            const newMap = new Map(prev).set(data.taskId, { ...info, events })
             devLog('[Renderer] Updated headlessAgents map, size:', newMap.size)
             return newMap
           })
@@ -1177,7 +1182,12 @@ function App() {
       const taskId = info.taskId
       if (taskId) {
         setHeadlessAgents((prev) => {
-          const newMap = new Map(prev).set(taskId, info)
+          const existing = prev.get(taskId)
+          // Preserve events that arrived before this update if the update has none
+          const events = existing && existing.events.length > 0 && info.events.length === 0
+            ? existing.events
+            : info.events
+          const newMap = new Map(prev).set(taskId, { ...info, events })
           devLog('[Renderer] Updated headlessAgents via update event, size:', newMap.size)
           return newMap
         })
@@ -1189,9 +1199,31 @@ function App() {
         const updated = new Map(prev)
         const existing = updated.get(data.taskId)
         if (existing) {
+          devLog('[Renderer] Received headless event', {
+            taskId: data.taskId,
+            eventType: data.event?.type,
+            status: existing.status,
+            existingEventCount: existing.events.length,
+          })
           updated.set(data.taskId, {
             ...existing,
             events: [...existing.events, data.event],
+          })
+        } else {
+          // Create placeholder entry for events that arrive before the agent-started/update message
+          devLog('[Renderer] Received headless event (no existing agent, creating placeholder)', {
+            taskId: data.taskId,
+            eventType: data.event?.type,
+            planId: data.planId,
+          })
+          updated.set(data.taskId, {
+            id: `headless-${data.taskId}`,
+            taskId: data.taskId,
+            planId: data.planId,
+            status: 'planning',
+            worktreePath: '',
+            events: [data.event],
+            startedAt: new Date().toISOString(),
           })
         }
         return updated

@@ -138,6 +138,7 @@ function emitHeadlessAgentUpdate(info: HeadlessAgentInfo): void {
  * Emit headless agent event to renderer
  */
 function emitHeadlessAgentEvent(headlessId: string, event: StreamEvent): void {
+  devLog('[StandaloneHeadless] emitHeadlessAgentEvent', { headlessId, eventType: event.type, windowAvailable: !!(mainWindow && !mainWindow.isDestroyed()) })
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Use 'standalone' as planId for standalone agents
     mainWindow.webContents.send('headless-agent-event', { planId: 'standalone', taskId: headlessId, event })
@@ -456,6 +457,7 @@ export async function startStandaloneHeadlessAgent(
       sharedCacheDir,
       sharedModCacheDir,
       onChunk: (text) => {
+        devLog(`[StandaloneHeadless] Plan phase onChunk called`, { headlessId, textLength: text.length, preview: text.substring(0, 80) })
         emitHeadlessAgentEvent(headlessId, {
           type: 'assistant',
           message: { content: [{ type: 'text', text }] },
@@ -463,6 +465,8 @@ export async function startStandaloneHeadlessAgent(
         } as StreamEvent)
       },
     })
+
+    devLog(`[StandaloneHeadless] Plan phase returned`, { headlessId, success: planResult.success, durationMs: planResult.durationMs, error: planResult.error })
 
     if (planResult.success && planResult.plan) {
       executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)

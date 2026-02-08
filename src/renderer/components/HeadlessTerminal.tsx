@@ -1148,22 +1148,6 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
         ref={containerRef}
         className="flex-grow overflow-auto p-4"
       >
-        {events.length === 0 && status === 'planning' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-3">
-              <pre
-                className="animate-claude-bounce font-mono text-xl leading-tight select-none"
-                style={{ color: '#D97757' }}
-              >
-                {` ▐▛███▜▌\n▝▜█████▛▘\n  ▘▘ ▝▝`}
-              </pre>
-              <span className="animate-pulse text-sm" style={{ color: '#D97757' }}>
-                planning...
-              </span>
-            </div>
-          </div>
-        )}
-
         {events.length === 0 && status === 'starting' && (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-3">
@@ -1194,6 +1178,14 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
               return null
           }
         })}
+
+        {/* Planning streaming indicator */}
+        {status === 'planning' && (
+          <div className="mt-4 flex items-center gap-2 text-sm font-mono">
+            <span className="text-purple-400 animate-pulse">◆</span>
+            <span className="text-zinc-500 animate-pulse">Planning...</span>
+          </div>
+        )}
 
         {/* Running indicator at bottom */}
         {status === 'running' && events.length > 0 && (

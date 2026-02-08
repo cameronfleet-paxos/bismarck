@@ -2041,6 +2041,7 @@ async function startHeadlessTaskAgent(
       sharedCacheDir: getRepoCacheDir(repository.name),
       sharedModCacheDir: getRepoModCacheDir(repository.name),
       onChunk: (text) => {
+        logger.debug('agent', 'Plan phase onChunk called', logCtx, { textLength: text.length, preview: text.substring(0, 80) })
         emitHeadlessAgentEvent(planId, task.id, {
           type: 'assistant',
           message: { content: [{ type: 'text', text }] },
@@ -2048,6 +2049,8 @@ async function startHeadlessTaskAgent(
         } as StreamEvent)
       },
     })
+
+    logger.info('agent', 'Plan phase returned', logCtx, { success: planResult.success, durationMs: planResult.durationMs, error: planResult.error })
 
     if (planResult.success && planResult.plan) {
       executionPrompt = wrapPromptWithPlan(taskPrompt, planResult.plan)
@@ -2514,6 +2517,7 @@ function emitHeadlessAgentUpdate(info: HeadlessAgentInfo): void {
  * Emit headless agent event to renderer
  */
 function emitHeadlessAgentEvent(planId: string, taskId: string, event: StreamEvent): void {
+  devLog('[PlanManager] emitHeadlessAgentEvent', { planId, taskId, eventType: event.type, windowAvailable: !!(mainWindow && !mainWindow.isDestroyed()) })
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('headless-agent-event', { planId, taskId, event })
   }

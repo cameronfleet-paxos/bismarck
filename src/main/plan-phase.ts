@@ -10,6 +10,7 @@ import { spawnContainerAgent } from './docker-sandbox'
 import { buildPrompt } from './prompt-templates'
 import { loadSettings } from './settings-manager'
 import { devLog } from './dev-log'
+import { logger, LogContext } from './logger'
 
 export interface PlanPhaseConfig {
   taskDescription: string
@@ -37,16 +38,20 @@ export interface PlanPhaseResult {
  */
 export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseResult> {
   const startTime = Date.now()
+  const logCtx: LogContext = {
+    planId: config.planId,
+    worktreePath: config.worktreePath,
+  }
 
   try {
     const settings = await loadSettings()
 
     if (!settings.planPhase?.enabled) {
-      devLog('[PlanPhase] Plan phase disabled in settings, skipping')
+      logger.info('agent', 'Plan phase disabled in settings, skipping', logCtx)
       return { success: false, plan: null, durationMs: 0 }
     }
 
-    const timeoutMs = settings.planPhase.timeoutMs || 120000
+    const timeoutMs = settings.planPhase.timeoutMs || 300000
 
     // Build the plan-mode prompt
     const guidanceSection = config.guidance
@@ -58,10 +63,10 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
       guidance: guidanceSection,
     })
 
-    devLog('[PlanPhase] Starting plan phase container', {
-      worktreePath: config.worktreePath,
+    logger.info('agent', 'Starting plan phase container', logCtx, {
       timeoutMs,
       promptLength: planPrompt.length,
+      hasOnChunk: !!config.onChunk,
     })
 
     // Spawn a plan-mode container (read-only, text output)
@@ -76,18 +81,43 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
       sharedModCacheDir: config.sharedModCacheDir,
     })
 
+    logger.info('agent', 'Plan phase container spawned, waiting for stdout', logCtx)
+
     // Collect stdout text and stream to UI
     let planText = ''
+    let chunkCount = 0
+    let firstChunkTime: number | null = null
     container.stdout.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       planText += text
+      chunkCount++
+      if (!firstChunkTime) {
+        firstChunkTime = Date.now()
+        logger.info('agent', 'Plan phase first stdout chunk received', logCtx, {
+          timeSinceStartMs: firstChunkTime - startTime,
+          chunkLength: text.length,
+          preview: text.substring(0, 200),
+        })
+      } else {
+        logger.debug('agent', 'Plan phase stdout chunk', logCtx, {
+          chunkNumber: chunkCount,
+          chunkLength: text.length,
+          totalLength: planText.length,
+          preview: text.substring(0, 100),
+        })
+      }
       config.onChunk?.(text)
     })
 
     // Collect stderr for debugging
     let stderrText = ''
     container.stderr.on('data', (chunk: Buffer) => {
-      stderrText += chunk.toString()
+      const text = chunk.toString()
+      stderrText += text
+      logger.debug('agent', 'Plan phase stderr chunk', logCtx, {
+        length: text.length,
+        preview: text.substring(0, 200),
+      })
     })
 
     // Wait for exit with timeout
@@ -95,7 +125,11 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
       container.wait(),
       new Promise<number>((_, reject) => {
         setTimeout(async () => {
-          devLog('[PlanPhase] Plan phase timed out, stopping container')
+          logger.warn('agent', 'Plan phase timed out, stopping container', logCtx, {
+            timeoutMs,
+            chunksReceived: chunkCount,
+            bytesReceived: planText.length,
+          })
           await container.stop()
           reject(new Error('Plan phase timed out'))
         }, timeoutMs)
@@ -105,10 +139,13 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
     const durationMs = Date.now() - startTime
 
     if (exitCode !== 0) {
-      devLog('[PlanPhase] Plan phase container exited with non-zero code', {
+      logger.warn('agent', 'Plan phase container exited with non-zero code', logCtx, {
         exitCode,
         durationMs,
+        chunksReceived: chunkCount,
+        stdoutLength: planText.length,
         stderrLength: stderrText.length,
+        stderrPreview: stderrText.substring(0, 500),
       })
       return {
         success: false,
@@ -120,7 +157,13 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
 
     const trimmedPlan = planText.trim()
     if (!trimmedPlan) {
-      devLog('[PlanPhase] Plan phase produced empty output')
+      logger.warn('agent', 'Plan phase produced empty output', logCtx, {
+        durationMs,
+        chunksReceived: chunkCount,
+        rawLength: planText.length,
+        stderrLength: stderrText.length,
+        stderrPreview: stderrText.substring(0, 500),
+      })
       return {
         success: false,
         plan: null,
@@ -129,9 +172,11 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
       }
     }
 
-    devLog('[PlanPhase] Plan phase completed successfully', {
+    logger.info('agent', 'Plan phase completed successfully', logCtx, {
       durationMs,
       planLength: trimmedPlan.length,
+      chunksReceived: chunkCount,
+      firstChunkDelayMs: firstChunkTime ? firstChunkTime - startTime : null,
     })
 
     return {
@@ -142,7 +187,7 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
   } catch (error) {
     const durationMs = Date.now() - startTime
     const errorMessage = error instanceof Error ? error.message : String(error)
-    devLog('[PlanPhase] Plan phase failed', { error: errorMessage, durationMs })
+    logger.error('agent', 'Plan phase failed with exception', logCtx, { error: errorMessage, durationMs })
     return {
       success: false,
       plan: null,
