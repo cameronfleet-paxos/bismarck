@@ -64,6 +64,7 @@ export interface PlanModeDependencies {
   gh: DependencyStatus
   git: DependencyStatus
   claude: DependencyStatus
+  bb: DependencyStatus
   githubToken: GitHubTokenStatus
   claudeOAuthToken: ClaudeOAuthTokenStatus
   dockerImage: DockerImageStatus
@@ -409,12 +410,13 @@ export async function detectAndSaveGitHubToken(): Promise<{
  */
 export async function checkPlanModeDependencies(): Promise<PlanModeDependencies> {
   // Check all dependencies in parallel
-  const [dockerResult, bdResult, ghResult, gitResult, claudeResult, githubTokenStatus] = await Promise.all([
+  const [dockerResult, bdResult, ghResult, gitResult, claudeResult, bbResult, githubTokenStatus] = await Promise.all([
     checkDocker(),
     checkCommand('bd'),
     checkCommand('gh'),
     checkCommand('git'),
     checkCommand('claude'),
+    checkCommand('bb'),
     detectGitHubTokenStatus(),
   ])
 
@@ -469,6 +471,15 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     installCommand: 'npm install -g @anthropic-ai/claude-code',
   }
 
+  const bb: DependencyStatus = {
+    name: 'BuildBuddy CLI (bb)',
+    required: false,
+    installed: bbResult.path !== null,
+    path: bbResult.path,
+    version: bbResult.version,
+    installCommand: 'curl -fsSL https://install.buildbuddy.io | bash',
+  }
+
   // Check Docker image availability (only if Docker is installed)
   let dockerImageAvailable = false
   if (dockerResult.path !== null) {
@@ -490,6 +501,7 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
     gh,
     git,
     claude,
+    bb,
     githubToken: githubTokenStatus,
     claudeOAuthToken: claudeOAuthTokenStatus,
     dockerImage,
@@ -527,6 +539,7 @@ export function generateInstallationPrompt(deps: PlanModeDependencies): string {
   if (!deps.docker.installed) missingDeps.push(deps.docker)
   if (!deps.bd.installed) missingDeps.push(deps.bd)
   if (!deps.gh.installed) missingDeps.push(deps.gh)
+  if (!deps.bb.installed) missingDeps.push(deps.bb)
 
   if (missingDeps.length === 0) {
     return 'All dependencies are already installed. You can close this terminal.'

@@ -3,7 +3,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles } from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles, Info } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 import { SetupTerminal } from './SetupTerminal'
 import { devLog } from '../utils/dev-log'
@@ -43,7 +43,7 @@ interface SetupWizardProps {
   onSkip: () => void
 }
 
-type WizardStep = 'deps' | 'path' | 'repos' | 'descriptions' | 'plan-mode'
+type WizardStep = 'deps' | 'tools' | 'path' | 'repos' | 'descriptions' | 'plan-mode'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('deps')
@@ -543,6 +543,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     } else if (step === 'repos') {
       setStep('path')
     } else if (step === 'path') {
+      setStep('tools')
+    } else if (step === 'tools') {
       setStep('deps')
     }
     setError(null)
@@ -687,7 +689,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   Skip Setup
                 </Button>
                 <Button
-                  onClick={() => setStep('path')}
+                  onClick={() => setStep('tools')}
                   disabled={isCheckingDeps || (dependencies !== null && !dependencies.allRequiredInstalled)}
                 >
                   Continue
@@ -697,7 +699,94 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Path Selection */}
+          {/* Step 2: Additional Tools */}
+          {step === 'tools' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Additional Tools
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Optional tools that enhance headless agent capabilities
+                </p>
+              </div>
+
+              {/* bb tool card */}
+              {dependencies && (
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">
+                      {dependencies.bb.installed ? (
+                        <Check className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <X className="h-5 w-5 text-red-500" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">BuildBuddy CLI (bb)</span>
+                        <span className="text-xs text-muted-foreground">(optional)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enables remote builds with BuildBuddy
+                      </p>
+                      {dependencies.bb.installed ? (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {dependencies.bb.path}
+                          {dependencies.bb.version && ` (v${dependencies.bb.version})`}
+                        </p>
+                      ) : dependencies.bb.installCommand ? (
+                        <div className="flex items-center gap-2 mt-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                            {dependencies.bb.installCommand}
+                          </code>
+                          <button
+                            onClick={() => handleCopyCommand(dependencies.bb.installCommand!)}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                            title="Copy to clipboard"
+                          >
+                            {copiedCommand === dependencies.bb.installCommand ? (
+                              <Check className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <Copy className="h-3 w-3 text-muted-foreground" />
+                            )}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {/* Setup advice info box */}
+                      <div className="flex items-start gap-2 mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                        <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p>Export <code className="text-[10px] bg-muted px-1 py-0.5 rounded">BUILDBUDDY_API_KEY</code> in <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.zshrc</code> for agents to use bb.</p>
+                          <p>Find your key in <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.bazelrc</code> or run <code className="text-[10px] bg-muted px-1 py-0.5 rounded">bb login</code> in any git repo.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
+                  onClick={() => setStep('path')}
+                >
+                  Continue
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Path Selection */}
           {step === 'path' && (
             <div className="space-y-6">
               <div>
@@ -1451,7 +1540,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         </div>
 
         {/* Skip link at bottom */}
-        {(step === 'deps' || step === 'path') && (
+        {(step === 'deps' || step === 'tools' || step === 'path') && (
           <div className="text-center mt-4">
             <button
               onClick={onSkip}

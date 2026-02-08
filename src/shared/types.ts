@@ -626,6 +626,7 @@ export interface PlanModeDependencies {
   gh: DependencyStatus
   git: DependencyStatus
   claude: DependencyStatus
+  bb: DependencyStatus
   githubToken: GitHubTokenStatus
   claudeOAuthToken: ClaudeOAuthTokenStatus
   dockerImage: DockerImageStatus
