@@ -194,6 +194,17 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     args.push('--add-host', 'host.docker.internal:host-gateway')
   }
 
+  // Resource limits
+  if (settings.docker.resourceLimits?.memory) {
+    args.push('--memory', settings.docker.resourceLimits.memory)
+  }
+  if (settings.docker.resourceLimits?.cpu) {
+    args.push('--cpus', settings.docker.resourceLimits.cpu)
+  }
+  if (settings.docker.resourceLimits?.gomaxprocs) {
+    args.push('-e', `GOMAXPROCS=${settings.docker.resourceLimits.gomaxprocs}`)
+  }
+
   // Image name
   args.push(config.image || DEFAULT_IMAGE)
 

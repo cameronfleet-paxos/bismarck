@@ -41,8 +41,9 @@ export interface AppSettings {
     images: string[]
     selectedImage: string  // The active image to use for headless agents
     resourceLimits: {
-      cpu: string          // e.g., "2"
-      memory: string       // e.g., "4g"
+      cpu: string          // e.g., "4"
+      memory: string       // e.g., "8g"
+      gomaxprocs: string   // e.g., "4" - limits Go parallelism via GOMAXPROCS env var
     }
     proxiedTools: ProxiedTool[]
     sshAgent: {
@@ -140,8 +141,9 @@ export function getDefaultSettings(): AppSettings {
       images: ['bismarckapp/bismarck-agent:latest'],
       selectedImage: 'bismarckapp/bismarck-agent:latest',
       resourceLimits: {
-        cpu: '2',
-        memory: '4g',
+        cpu: '4',
+        memory: '8g',
+        gomaxprocs: '4',
       },
       proxiedTools: [
         {

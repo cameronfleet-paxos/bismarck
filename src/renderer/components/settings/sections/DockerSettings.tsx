@@ -12,6 +12,7 @@ interface AppSettings {
     resourceLimits: {
       cpu: string
       memory: string
+      gomaxprocs: string
     }
     proxiedTools: { id: string; name: string; hostPath: string; description?: string }[]
     sshAgent?: {
@@ -65,6 +66,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [newImage, setNewImage] = useState('')
   const [cpuLimit, setCpuLimit] = useState(settings.docker.resourceLimits.cpu)
   const [memoryLimit, setMemoryLimit] = useState(settings.docker.resourceLimits.memory)
+  const [gomaxprocsLimit, setGomaxprocsLimit] = useState(settings.docker.resourceLimits.gomaxprocs)
   const [saving, setSaving] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [imageStatuses, setImageStatuses] = useState<Record<string, ImageStatusState>>({})
@@ -117,7 +119,8 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   useEffect(() => {
     setCpuLimit(settings.docker.resourceLimits.cpu)
     setMemoryLimit(settings.docker.resourceLimits.memory)
-  }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory])
+    setGomaxprocsLimit(settings.docker.resourceLimits.gomaxprocs)
+  }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory, settings.docker.resourceLimits.gomaxprocs])
 
   const handlePullImage = async (imageName: string) => {
     if (pullingImage) return // Only one pull at a time
@@ -211,6 +214,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       await window.electronAPI.updateDockerResourceLimits({
         cpu: cpuLimit,
         memory: memoryLimit,
+        gomaxprocs: gomaxprocsLimit,
       })
       await onSettingsChange()
       setShowSaved(true)
@@ -454,7 +458,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             <Label htmlFor="memory-limit">Memory</Label>
             <Input
               id="memory-limit"
-              placeholder="e.g., 4g"
+              placeholder="e.g., 8g"
               value={memoryLimit}
               onChange={(e) => setMemoryLimit(e.target.value)}
             />
@@ -463,9 +467,22 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="gomaxprocs-limit">GOMAXPROCS</Label>
+            <Input
+              id="gomaxprocs-limit"
+              placeholder="e.g., 4"
+              value={gomaxprocsLimit}
+              onChange={(e) => setGomaxprocsLimit(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Limits Go parallelism inside containers. Prevents OOM from too many concurrent test suites.
+            </p>
+          </div>
+
           <Button
             onClick={handleSaveResourceLimits}
-            disabled={saving || !cpuLimit || !memoryLimit}
+            disabled={saving || !cpuLimit || !memoryLimit || !gomaxprocsLimit}
           >
             <Save className="h-4 w-4 mr-2" />
             {saving ? 'Saving...' : 'Save Resource Limits'}
