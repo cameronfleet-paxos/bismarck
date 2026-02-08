@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, Terminal } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ interface Command {
 }
 
 const commands: Command[] = [
+  { id: 'add-terminal', label: 'Add Terminal', icon: Terminal },
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
@@ -44,6 +45,7 @@ interface CommandSearchProps {
   tabs: AgentTab[]
   activeTabId: string | null
   onSelectAgent: (agentId: string) => void
+  onAddTerminal?: () => void
   onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet') => void
   onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
@@ -66,6 +68,7 @@ export function CommandSearch({
   waitingQueue,
   tabs,
   onSelectAgent,
+  onAddTerminal,
   onStartHeadless,
   onStartHeadlessDiscussion,
   onStartRalphLoopDiscussion,
@@ -95,14 +98,15 @@ export function CommandSearch({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Filter agents for selection (exclude orchestrators, plan agents, and headless agents)
+  // Filter agents for selection (exclude orchestrators, plan agents, headless agents, and plain terminals)
   const selectableAgents = useMemo(() => {
     return agents.filter(agent =>
       !agent.isOrchestrator &&
       !agent.isPlanAgent &&
       !agent.parentPlanId &&
       !agent.isHeadless &&
-      !agent.isStandaloneHeadless
+      !agent.isStandaloneHeadless &&
+      !agent.isPlainTerminal
     )
   }, [agents])
 
@@ -348,6 +352,9 @@ export function CommandSearch({
           setSelectedIndex(0)
         } else if (command.id === 'start-plan') {
           onStartPlan?.()
+          onOpenChange(false)
+        } else if (command.id === 'add-terminal') {
+          onAddTerminal?.()
           onOpenChange(false)
         }
       } else {

@@ -1640,6 +1640,37 @@ function App() {
     setModalOpen(true)
   }
 
+  const handleAddTerminal = async () => {
+    // Generate a unique name for the terminal
+    const existingTerminals = agents.filter(a => a.isPlainTerminal)
+    const terminalNumber = existingTerminals.length + 1
+    const name = `Terminal ${terminalNumber}`
+
+    // Use focused agent's directory or first agent's directory as fallback
+    let directory = process.env.HOME || '/tmp'
+    const focusedAgent = agents.find(a => a.id === focusedAgentId)
+    if (focusedAgent) {
+      directory = focusedAgent.directory
+    } else if (agents.length > 0) {
+      directory = agents[0].directory
+    }
+
+    // Create a new plain terminal agent
+    const newAgent: Agent = {
+      id: crypto.randomUUID(),
+      name,
+      directory,
+      purpose: 'Plain terminal',
+      theme: 'gray',
+      icon: 'hasselhoff', // Using an icon that exists
+      isPlainTerminal: true,
+    }
+
+    // Save and launch the terminal
+    await handleSaveAgent(newAgent)
+    await handleLaunchAgent(newAgent.id)
+  }
+
   const handleNextWaiting = () => {
     if (waitingQueue.length > 1) {
       const currentAgentId = waitingQueue[0]
@@ -3908,6 +3939,7 @@ function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         onSelectAgent={handleCommandSearchSelect}
+        onAddTerminal={handleAddTerminal}
         onStartHeadless={handleStartStandaloneHeadless}
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}

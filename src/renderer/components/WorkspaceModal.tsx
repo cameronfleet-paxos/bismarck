@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/renderer/components/ui/select'
+import { Switch } from '@/renderer/components/ui/switch'
 import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, ThemeName, Repository } from '@/shared/types'
@@ -42,6 +43,7 @@ export function AgentModal({
   const [directory, setDirectory] = useState('')
   const [theme, setTheme] = useState<ThemeName>('gray')
   const [icon, setIcon] = useState<AgentIconName>('beethoven')
+  const [isPlainTerminal, setIsPlainTerminal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Git repository detection state
@@ -81,12 +83,14 @@ export function AgentModal({
       setDirectory(agent.directory)
       setTheme(agent.theme)
       setIcon(agent.icon || 'beethoven')
+      setIsPlainTerminal(agent.isPlainTerminal || false)
     } else {
       setName('')
       setDirectory('')
       setTheme('gray')
       // Random icon for new agents
       setIcon(agentIcons[Math.floor(Math.random() * agentIcons.length)])
+      setIsPlainTerminal(false)
     }
     setError(null)
     setDetectedRepo(null)
@@ -126,6 +130,7 @@ export function AgentModal({
       theme,
       icon,
       repositoryId: detectedRepo?.id,
+      isPlainTerminal: isPlainTerminal || undefined,
     }
 
     onSave(newAgent)
@@ -188,6 +193,19 @@ export function AgentModal({
                 )}
               </div>
             )}
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="plain-terminal">Plain Terminal</Label>
+              <span className="text-xs text-muted-foreground">
+                Spawn a shell without Claude integration
+              </span>
+            </div>
+            <Switch
+              id="plain-terminal"
+              checked={isPlainTerminal}
+              onCheckedChange={setIsPlainTerminal}
+            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="theme">Theme</Label>

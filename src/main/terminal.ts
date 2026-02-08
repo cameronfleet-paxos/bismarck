@@ -89,39 +89,42 @@ export function createTerminal(
   }
 
   // Get or generate session ID for Claude session persistence
+  // Skip Claude session management for plain terminals
   let sessionId = workspace.sessionId
-  let claudeCmd: string
+  let claudeCmd: string | null = null
 
-  if (sessionId && claudeSessionExists(sessionId)) {
-    // Session exists with content - resume it
-    // Put flags BEFORE --resume so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
+  if (!workspace.isPlainTerminal) {
+    if (sessionId && claudeSessionExists(sessionId)) {
+      // Session exists with content - resume it
+      // Put flags BEFORE --resume so prompt isn't confused with flag arguments
+      claudeCmd = `claude`
+      if (claudeFlags) {
+        claudeCmd += ` ${claudeFlags}`
+      }
+      claudeCmd += ` --resume ${sessionId}`
+    } else {
+      // No session or empty session - generate ID and start new session
+      if (!sessionId) {
+        sessionId = crypto.randomUUID()
+        saveWorkspace({ ...workspace, sessionId })
+      }
+      // Put flags BEFORE --session-id so prompt isn't confused with flag arguments
+      claudeCmd = `claude`
+      if (claudeFlags) {
+        claudeCmd += ` ${claudeFlags}`
+      }
+      claudeCmd += ` --session-id ${sessionId}`
     }
-    claudeCmd += ` --resume ${sessionId}`
-  } else {
-    // No session or empty session - generate ID and start new session
-    if (!sessionId) {
-      sessionId = crypto.randomUUID()
-      saveWorkspace({ ...workspace, sessionId })
-    }
-    // Put flags BEFORE --session-id so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
-    }
-    claudeCmd += ` --session-id ${sessionId}`
-  }
 
-  // If an initial prompt is provided, append it to the command
-  // Claude will process this prompt automatically when it starts
-  if (initialPrompt) {
-    // Escape single quotes in the prompt and wrap in single quotes
-    const escapedPrompt = initialPrompt.replace(/'/g, "'\\''")
-    claudeCmd += ` '${escapedPrompt}'`
+    // If an initial prompt is provided, append it to the command
+    // Claude will process this prompt automatically when it starts
+    if (initialPrompt) {
+      // Escape single quotes in the prompt and wrap in single quotes
+      const escapedPrompt = initialPrompt.replace(/'/g, "'\\''")
+      claudeCmd += ` '${escapedPrompt}'`
+    }
+    claudeCmd += '\n'
   }
-  claudeCmd += '\n'
 
   // Benchmark: start PTY spawn timing
   startTimer(`agent:pty-spawn:${workspaceId}`, 'agent')
@@ -250,34 +253,40 @@ export function createTerminal(
 
   // Auto-start claude when shell prompt is detected (instead of fixed delay)
   // This ensures asdf and other shell initialization is complete
-  let promptDetected = false
-  const promptHandler = (data: string) => {
-    // Detect common shell prompts (ends with $, %, >, or contains username@hostname)
-    if (!promptDetected && (
-      /[$%>]\s*$/.test(data) ||
-      /\w+@\w+/.test(data) ||
-      data.includes(os.userInfo().username)
-    )) {
-      promptDetected = true
-      endTimer(`agent:shell-prompt:${workspaceId}`)
-      startTimer(`agent:claude-start:${workspaceId}`, 'agent')
-      // Small additional delay to ensure shell is fully ready
-      setTimeout(() => {
-        ptyProcess.write(claudeCmd)
-      }, 100)
+  // Skip for plain terminals
+  if (!workspace.isPlainTerminal && claudeCmd) {
+    let promptDetected = false
+    const promptHandler = (data: string) => {
+      // Detect common shell prompts (ends with $, %, >, or contains username@hostname)
+      if (!promptDetected && (
+        /[$%>]\s*$/.test(data) ||
+        /\w+@\w+/.test(data) ||
+        data.includes(os.userInfo().username)
+      )) {
+        promptDetected = true
+        endTimer(`agent:shell-prompt:${workspaceId}`)
+        startTimer(`agent:claude-start:${workspaceId}`, 'agent')
+        // Small additional delay to ensure shell is fully ready
+        setTimeout(() => {
+          ptyProcess.write(claudeCmd)
+        }, 100)
+      }
     }
-  }
-  ptyProcess.onData(promptHandler)
+    ptyProcess.onData(promptHandler)
 
-  // Fallback: if no prompt detected after 3 seconds, send anyway
-  setTimeout(() => {
-    if (!promptDetected) {
-      promptDetected = true
-      endTimer(`agent:shell-prompt:${workspaceId}`)
-      startTimer(`agent:claude-start:${workspaceId}`, 'agent')
-      ptyProcess.write(claudeCmd)
-    }
-  }, 3000)
+    // Fallback: if no prompt detected after 3 seconds, send anyway
+    setTimeout(() => {
+      if (!promptDetected) {
+        promptDetected = true
+        endTimer(`agent:shell-prompt:${workspaceId}`)
+        startTimer(`agent:claude-start:${workspaceId}`, 'agent')
+        ptyProcess.write(claudeCmd)
+      }
+    }, 3000)
+  } else {
+    // For plain terminals, just mark shell as ready
+    endTimer(`agent:shell-prompt:${workspaceId}`)
+  }
 
   // Detect when Claude is ready (shows the status line with ⏵)
   let claudeReadyDetected = false
