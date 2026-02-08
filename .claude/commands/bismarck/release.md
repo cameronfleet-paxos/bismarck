@@ -70,7 +70,8 @@ git add package.json package-lock.json
 git commit --no-gpg-sign -m "v<new-version>"
 
 # Create annotated tag with release notes
-git tag -a v<new-version> -m "$(cat <<'EOF'
+# IMPORTANT: --cleanup=verbatim preserves ## markdown headings (git treats # as comments by default)
+git tag -a v<new-version> --cleanup=verbatim -m "$(cat <<'EOF'
 v<new-version>
 
 ## What's New
@@ -103,6 +104,7 @@ Show:
 
 ## Important Notes
 - Always use `--no-gpg-sign` for commits (GPG signing may fail)
+- Always use `--cleanup=verbatim` with `git tag -a` to preserve `##` markdown headings (git's default cleanup treats `#` lines as comments and strips them)
 - The tag message first line should be the version (gets stripped by workflow)
 - GitHub Actions automatically builds DMG and creates release from tag annotation
 - No need to build locally - CI handles everything!
