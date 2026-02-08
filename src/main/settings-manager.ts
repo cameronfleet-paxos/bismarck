@@ -224,7 +224,7 @@ export function getDefaultSettings(): AppSettings {
       maxIterations: 2,
     },
     planPhase: {
-      enabled: true,
+      enabled: false,
       timeoutMs: 120000,
     },
     _internal: {
