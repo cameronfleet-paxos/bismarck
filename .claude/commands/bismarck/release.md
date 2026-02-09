@@ -58,7 +58,10 @@ v<version>
 ```
 
 ### 5. Show proposed release and ask for confirmation
-Display the new version number and release notes. Ask user to confirm or edit.
+Display the new version number and release notes, then use `AskUserQuestion` to confirm:
+- Header: "Release"
+- Question: "Release v<new-version>? (release notes shown above)"
+- Options: "Ship it" (proceed with release), "Edit notes" (let user provide revised notes), "Cancel" (abort release)
 
 ### 6. Execute the release
 ```bash
