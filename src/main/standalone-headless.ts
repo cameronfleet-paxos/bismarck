@@ -32,8 +32,6 @@ import {
   createWorktree,
   removeWorktree,
   deleteLocalBranch,
-  deleteRemoteBranch,
-  remoteBranchExists,
   getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
@@ -620,16 +618,6 @@ export async function cleanupStandaloneWorktree(headlessId: string): Promise<voi
   } catch (error) {
     // Branch may not exist if worktree removal already deleted it
     devLog(`[StandaloneHeadless] Local branch ${branch} may already be deleted:`, error)
-  }
-
-  // Delete the remote branch if it exists
-  try {
-    if (await remoteBranchExists(repoPath, branch)) {
-      await deleteRemoteBranch(repoPath, branch)
-      devLog(`[StandaloneHeadless] Deleted remote branch ${branch}`)
-    }
-  } catch (error) {
-    console.error(`[StandaloneHeadless] Failed to delete remote branch:`, error)
   }
 
   // Remove agent info

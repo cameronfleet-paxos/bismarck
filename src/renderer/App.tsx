@@ -220,7 +220,7 @@ function App() {
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
-  const [isDestroying, setIsDestroying] = useState(false)
+
 
   // Prompt viewer modal state
   const [promptViewerInfo, setPromptViewerInfo] = useState<HeadlessAgentInfo | null>(null)
@@ -1574,24 +1574,20 @@ function App() {
   const handleDestroyAgent = async () => {
     if (!destroyAgentTarget) return
     const { info, isStandalone } = destroyAgentTarget
-    setIsDestroying(true)
-    try {
-      await window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
-      // Remove from headless agents map
-      setHeadlessAgents((prev) => {
-        const newMap = new Map(prev)
-        newMap.delete(info.taskId!)
-        return newMap
-      })
-      // Reload agents to pick up workspace deletion
-      await loadAgents()
-      // Refresh tabs
-      const state = await window.electronAPI.getState()
-      setTabs(state.tabs || [])
-    } finally {
-      setIsDestroying(false)
-      setDestroyAgentTarget(null)
-    }
+    // Close dialog immediately
+    setDestroyAgentTarget(null)
+    // Optimistically remove agent from UI
+    setHeadlessAgents((prev) => {
+      const newMap = new Map(prev)
+      newMap.delete(info.taskId!)
+      return newMap
+    })
+    // Fire-and-forget backend cleanup
+    window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
+      .then(() => loadAgents())
+      .then(() => window.electronAPI.getState())
+      .then((state) => setTabs(state.tabs || []))
+      .catch(() => loadAgents()) // Re-fetch correct state on error
   }
 
   // Open follow-up modal for a standalone headless agent
@@ -3875,15 +3871,15 @@ function App() {
             <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
               <li>The Docker container (if running)</li>
               <li>The git worktree</li>
-              <li>Local and remote branches</li>
+              <li>Local branches</li>
             </ul>
             <p className="text-sm text-yellow-500">This action cannot be undone.</p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)} disabled={isDestroying}>
+              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDestroyAgent} disabled={isDestroying}>
-                {isDestroying ? 'Destroying...' : 'Destroy'}
+              <Button variant="destructive" onClick={handleDestroyAgent}>
+                Destroy
               </Button>
             </DialogFooter>
           </DialogContent>

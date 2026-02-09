@@ -2340,15 +2340,6 @@ export async function destroyHeadlessAgent(
               // may already be deleted
             }
 
-            // Delete remote branch if exists
-            try {
-              if (await remoteBranchExists(repo.rootPath, worktree.branch)) {
-                await deleteRemoteBranch(repo.rootPath, worktree.branch, 'origin', logCtx)
-              }
-            } catch (e) {
-              logger.warn('agent', 'Remote branch deletion failed', logCtx, { error: String(e) })
-            }
-
             // Mark worktree as cleaned in plan
             worktree.status = 'cleaned'
             await savePlan(plan!)
