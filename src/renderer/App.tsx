@@ -40,9 +40,10 @@ import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
+import { GridResizeHandle } from '@/renderer/components/GridResizeHandle'
 import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
 import { themes } from '@/shared/constants'
-import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
+import { getGridConfig, getGridPosition, getDefaultProportions, proportionsToCssGrid, updateProportionsFromDrag } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
 import { terminalBuffer } from '@/renderer/utils/terminal-buffer'
 
@@ -3309,13 +3310,57 @@ function App() {
                   </div>
                 ) : (
                   // Regular grid for normal tabs (size based on user preference)
-                  <div
-                    className="h-full grid gap-2"
-                    style={{
-                      gridTemplateColumns: `repeat(${gridConfig.cols}, 1fr)`,
-                      gridTemplateRows: `repeat(${gridConfig.rows}, 1fr)`,
-                    }}
-                  >
+                  (() => {
+                    // Get or calculate proportions for this tab
+                    const columnProportions = tab.columnProportions && tab.columnProportions.length === gridConfig.cols
+                      ? tab.columnProportions
+                      : getDefaultProportions(gridConfig.cols)
+                    const rowProportions = tab.rowProportions && tab.rowProportions.length === gridConfig.rows
+                      ? tab.rowProportions
+                      : getDefaultProportions(gridConfig.rows)
+
+                    const gridRef = useRef<HTMLDivElement>(null)
+
+                    // Handle resize drag completion
+                    const handleResizeDragEnd = useCallback((orientation: 'vertical' | 'horizontal', index: number, delta: number) => {
+                      if (!gridRef.current) return
+
+                      const containerSize = orientation === 'vertical'
+                        ? gridRef.current.offsetWidth
+                        : gridRef.current.offsetHeight
+
+                      const currentProportions = orientation === 'vertical' ? columnProportions : rowProportions
+                      const updatedProportions = updateProportionsFromDrag(currentProportions, index, delta, containerSize)
+
+                      // Update tab proportions in state
+                      const newColumnProportions = orientation === 'vertical' ? updatedProportions : columnProportions
+                      const newRowProportions = orientation === 'horizontal' ? updatedProportions : rowProportions
+
+                      window.electronAPI?.updateTabProportions?.(tab.id, newColumnProportions, newRowProportions)
+                    }, [tab.id, columnProportions, rowProportions])
+
+                    // Handle double-click to reset proportions
+                    const handleResetProportions = useCallback((orientation: 'vertical' | 'horizontal', _index: number) => {
+                      const newColumnProportions = orientation === 'vertical'
+                        ? getDefaultProportions(gridConfig.cols)
+                        : columnProportions
+                      const newRowProportions = orientation === 'horizontal'
+                        ? getDefaultProportions(gridConfig.rows)
+                        : rowProportions
+
+                      window.electronAPI?.updateTabProportions?.(tab.id, newColumnProportions, newRowProportions)
+                    }, [tab.id, columnProportions, rowProportions])
+
+                    return (
+                      <div
+                        ref={gridRef}
+                        data-testid="workspace-grid"
+                        className="h-full grid gap-2 relative"
+                        style={{
+                          gridTemplateColumns: proportionsToCssGrid(columnProportions),
+                          gridTemplateRows: proportionsToCssGrid(rowProportions),
+                        }}
+                      >
                     {/* Render active terminals - keyed by terminalId, positioned by CSS grid */}
                     {/* Iterate over activeTerminals (stable order) and look up position from tabWorkspaceIds */}
                     {/* Only render agents that fit within the current grid size */}
@@ -3715,7 +3760,38 @@ function App() {
                         </div>
                       )
                     })}
+
+                    {/* Render resize handles - only for non-expanded state and multi-cell grids */}
+                    {!expandedAgentId && (
+                      <>
+                        {/* Vertical handles (between columns) */}
+                        {Array.from({ length: gridConfig.cols - 1 }).map((_, i) => (
+                          <GridResizeHandle
+                            key={`vertical-${i}`}
+                            orientation="vertical"
+                            index={i}
+                            onDragEnd={(idx, delta) => handleResizeDragEnd('vertical', idx, delta)}
+                            onDoubleClick={(idx) => handleResetProportions('vertical', idx)}
+                            containerRef={gridRef}
+                          />
+                        ))}
+
+                        {/* Horizontal handles (between rows) */}
+                        {Array.from({ length: gridConfig.rows - 1 }).map((_, i) => (
+                          <GridResizeHandle
+                            key={`horizontal-${i}`}
+                            orientation="horizontal"
+                            index={i}
+                            onDragEnd={(idx, delta) => handleResizeDragEnd('horizontal', idx, delta)}
+                            onDoubleClick={(idx) => handleResetProportions('horizontal', idx)}
+                            containerRef={gridRef}
+                          />
+                        ))}
+                      </>
+                    )}
                   </div>
+                    )
+                  })()
                 )}
               </div>
             )

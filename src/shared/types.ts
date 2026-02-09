@@ -96,6 +96,8 @@ export interface AgentTab {
   workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
+  columnProportions?: number[] // Custom column width proportions (e.g., [0.6, 0.4] for 2 cols)
+  rowProportions?: number[] // Custom row height proportions (e.g., [0.5, 0.5] for 2 rows)
 }
 
 // Attention mode determines how waiting agents are displayed
