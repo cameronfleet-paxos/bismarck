@@ -964,33 +964,21 @@ function App() {
       })
     })
 
-    // Listen for waiting queue changes
+    // Single source of truth for waiting queue changes
+    // Auto-acknowledge any agents that the user is already focused on
     window.electronAPI?.onWaitingQueueChanged?.((queue: string[]) => {
+      const focusedId = focusedAgentIdRef.current
+      if (focusedId && queue.includes(focusedId)) {
+        devLog(`[Renderer] Agent ${focusedId} already focused, auto-acknowledging`)
+        window.electronAPI?.acknowledgeWaiting?.(focusedId)
+        // Filter out the focused agent from the queue locally
+        const filtered = queue.filter(id => id !== focusedId)
+        setWaitingQueue(filtered)
+        window.electronAPI?.updateTray?.(filtered.length)
+        return
+      }
       setWaitingQueue(queue)
       window.electronAPI?.updateTray?.(queue.length)
-    })
-
-    // Listen for agent waiting events
-    window.electronAPI?.onAgentWaiting?.((agentId: string) => {
-      devLog(`[Renderer] Received agent-waiting event for ${agentId}`)
-      // Check if user is already focused on this agent using the ref
-      if (focusedAgentIdRef.current === agentId) {
-        devLog(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
-        window.electronAPI?.acknowledgeWaiting?.(agentId)
-        return  // Don't add to waiting queue or trigger attention
-      }
-
-      // Add to waiting queue since user isn't focused on this agent
-      setWaitingQueue((prev) => {
-        devLog(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
-        if (!prev.includes(agentId)) {
-          const newQueue = [...prev, agentId]
-          devLog(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
-          window.electronAPI?.updateTray?.(newQueue.length)
-          return newQueue
-        }
-        return prev
-      })
     })
 
     // Global terminal data listener - routes data to the appropriate terminal writer
