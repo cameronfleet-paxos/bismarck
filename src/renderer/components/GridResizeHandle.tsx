@@ -25,7 +25,7 @@ export interface GridResizeHandleProps {
   /**
    * Container dimensions for calculating drag bounds
    */
-  containerRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>
 }
 
 export function GridResizeHandle({

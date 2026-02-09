@@ -66,6 +66,7 @@ export interface ElectronAPI {
     targetTabId: string,
     position?: number
   ) => Promise<boolean>
+  updateTabProportions: (tabId: string, columnProportions: number[], rowProportions: number[]) => Promise<void>
 
   // Waiting queue management
   getWaitingQueue: () => Promise<string[]>
