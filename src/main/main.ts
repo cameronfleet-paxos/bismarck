@@ -175,6 +175,7 @@ import {
   startRalphLoopDiscussion,
   cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
+  getActiveDiscussionTerminalIds,
 } from './standalone-headless'
 import {
   startRalphLoop,
@@ -1385,7 +1386,9 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   clearQueue()
-  closeAllTerminals()
+  // Preserve terminals for active discussions so they can complete and spawn headless agents
+  const discussionTerminals = getActiveDiscussionTerminalIds()
+  closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
   closeAllSocketServers()
   stopPeriodicChecks()
   stopToolAuthChecks()
@@ -1406,7 +1409,8 @@ app.on('activate', () => {
 
 app.on('before-quit', async () => {
   clearQueue()
-  closeAllTerminals()
+  const discussionTerminals = getActiveDiscussionTerminalIds()
+  closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
   closeAllSocketServers()
   cleanupPowerSave()
   await cleanupPlanManager()
