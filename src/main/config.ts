@@ -485,6 +485,56 @@ export function clearClaudeOAuthToken(): void {
   }
 }
 
+// GitHub token storage
+const GITHUB_TOKEN_FILE = 'github-token.json'
+
+interface GitHubTokenData {
+  token: string
+  createdAt: string
+}
+
+function getGitHubTokenPath(): string {
+  return path.join(getConfigDir(), GITHUB_TOKEN_FILE)
+}
+
+/**
+ * Get the configured GitHub token from file storage
+ */
+export function getConfiguredGitHubToken(): string | null {
+  const tokenPath = getGitHubTokenPath()
+  try {
+    const content = fs.readFileSync(tokenPath, 'utf-8')
+    const data = JSON.parse(content) as GitHubTokenData
+    return data.token || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Store the GitHub token
+ */
+export function setConfiguredGitHubToken(token: string): void {
+  const tokenPath = getGitHubTokenPath()
+  const data: GitHubTokenData = {
+    token,
+    createdAt: new Date().toISOString(),
+  }
+  writeConfigAtomic(tokenPath, data)
+}
+
+/**
+ * Clear the stored GitHub token
+ */
+export function clearConfiguredGitHubToken(): void {
+  const tokenPath = getGitHubTokenPath()
+  try {
+    fs.unlinkSync(tokenPath)
+  } catch {
+    // File doesn't exist, that's fine
+  }
+}
+
 // Plan activities persistence (per-plan)
 export function loadPlanActivities(planId: string): PlanActivity[] {
   const activitiesPath = getPlanActivitiesPath(planId)

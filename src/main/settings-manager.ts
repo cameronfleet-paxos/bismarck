@@ -7,7 +7,7 @@
 
 import * as path from 'path'
 import * as fs from 'fs/promises'
-import { getConfigDir, writeConfigAtomic } from './config'
+import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
 import type { CustomizablePromptType } from '../shared/types'
 
 /**
@@ -70,9 +70,7 @@ export interface AppSettings {
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
   }
-  tools: {
-    githubToken: string | null  // GitHub token for gh CLI (needed for SAML SSO orgs)
-  }
+  tools: Record<string, never>
   playbox: {
     personaMode: 'none' | 'bismarck' | 'otto' | 'custom'  // Persona mode for interactive Claude sessions
     customPersonaPrompt: string | null  // User-defined prompt when personaMode === 'custom'
@@ -195,9 +193,7 @@ export function getDefaultSettings(): AppSettings {
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
     },
-    tools: {
-      githubToken: null,
-    },
+    tools: {},
     playbox: {
       personaMode: 'none',
       customPersonaPrompt: null,
@@ -349,6 +345,16 @@ export async function loadSettings(): Promise<AppSettings> {
     }
     if (merged.docker.selectedImage === OLD_IMAGE_NAME) {
       merged.docker.selectedImage = NEW_IMAGE_NAME
+      needsMigration = true
+    }
+
+    // Migration: Move GitHub token from settings.json to dedicated github-token.json
+    if (loaded.tools?.githubToken && typeof loaded.tools.githubToken === 'string') {
+      if (!getConfiguredGitHubToken()) {
+        setConfiguredGitHubToken(loaded.tools.githubToken)
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (merged.tools as any).githubToken
       needsMigration = true
     }
 
@@ -727,23 +733,19 @@ export async function getGitHubToken(): Promise<string | null> {
     }
   }
 
-  // Fall back to configured token in settings
-  const settings = await loadSettings()
-  const defaults = getDefaultSettings()
-  return settings.tools?.githubToken ?? defaults.tools.githubToken
+  // Fall back to configured token in dedicated file
+  return getConfiguredGitHubToken()
 }
 
 /**
  * Set the GitHub token (null to clear)
  */
 export async function setGitHubToken(token: string | null): Promise<void> {
-  const settings = await loadSettings()
-  const defaults = getDefaultSettings()
-  settings.tools = {
-    ...(settings.tools || defaults.tools),
-    githubToken: token,
+  if (token && token.length > 0) {
+    setConfiguredGitHubToken(token)
+  } else {
+    clearConfiguredGitHubToken()
   }
-  await saveSettings(settings)
 }
 
 /**
@@ -773,8 +775,7 @@ export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> 
   // Check the configured token first (what the user set in settings),
   // falling back to env var. This ensures we verify what the user just saved,
   // not an env var that may hold a different token.
-  const settings = await loadSettings()
-  const configuredToken = settings.tools?.githubToken
+  const configuredToken = getConfiguredGitHubToken()
   const token = (configuredToken && configuredToken.length > 0) ? configuredToken : await getGitHubToken()
   if (!token) {
     return {
@@ -882,9 +883,8 @@ export async function checkGitHubTokenScopes(): Promise<GitHubTokenScopeResult> 
  * Used by the setup wizard to determine if a detected token needs to be persisted
  */
 export async function hasConfiguredGitHubToken(): Promise<boolean> {
-  const settings = await loadSettings()
-  const token = settings.tools?.githubToken
-  return token !== null && token !== undefined && token.length > 0
+  const token = getConfiguredGitHubToken()
+  return token !== null && token.length > 0
 }
 
 /**
