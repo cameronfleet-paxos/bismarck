@@ -302,3 +302,19 @@ export async function bdGetDependents(planId: string, taskId: string): Promise<s
     return []
   }
 }
+
+/**
+ * Detect dependency cycles in a plan's beads repository
+ * Returns an array of cycles (each cycle is an array of task IDs)
+ */
+export async function bdDetectCycles(planId: string): Promise<string[][]> {
+  const planDir = await ensureBeadsRepo(planId)
+  try {
+    const { stdout } = await execAsync('bd --sandbox dep cycles --json', { cwd: planDir })
+    if (!stdout.trim()) return []
+    const result = JSON.parse(stdout)
+    return Array.isArray(result) ? result : []
+  } catch {
+    return []
+  }
+}

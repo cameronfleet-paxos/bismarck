@@ -27,7 +27,7 @@ import {
   getRepoCacheDir,
   getRepoModCacheDir,
 } from './config'
-import { bdCreate, bdList, bdUpdate, bdClose, bdAddDependency, bdGetDependents, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
+import { bdCreate, bdList, bdUpdate, bdClose, bdAddDependency, bdGetDependents, bdDetectCycles, BeadTask, ensureBeadsRepo, getPlanDir } from './bd-client'
 import { injectTextToTerminal, injectPromptToTerminal, getTerminalForWorkspace, waitForTerminalOutput, closeTerminal, getTerminalEmitter } from './terminal'
 import { queueTerminalCreation } from './terminal-queue'
 import { createTab, addWorkspaceToTab, addActiveWorkspace, removeActiveWorkspace, removeWorkspaceFromTab, setActiveTab, deleteTab, getState, setFocusedWorkspace, getPreferences } from './state-manager'
@@ -69,6 +69,7 @@ let pollInterval: NodeJS.Timeout | null = null
 let syncInProgress = false // Guard against overlapping syncs
 
 const POLL_INTERVAL_MS = 5000 // Poll bd every 5 seconds
+let lastCycleCheckTime: number | null = null
 const DEFAULT_MAX_PARALLEL_AGENTS = 4
 
 // In-memory activity storage per plan
@@ -1346,19 +1347,48 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
   try {
     // Get tasks marked as ready for Bismarck (from the active plan's directory)
     const readyTasks = await bdList(activePlan.id, { labels: ['bismarck-ready'], status: 'open' })
-    if (readyTasks.length > 0) {
-      logger.info('plan', `Found ${readyTasks.length} ready tasks`, logCtx, {
-        taskIds: readyTasks.map(t => t.id),
+    const closedTasks = await bdList(activePlan.id, { status: 'closed' })
+    const closedTaskIds = new Set(closedTasks.map(t => t.id))
+
+    // Filter out tasks that still have open blockers
+    const dispatchableTasks = readyTasks.filter(task => {
+      if (!task.blockedBy || task.blockedBy.length === 0) return true
+      const openBlockers = task.blockedBy.filter(id => !closedTaskIds.has(id))
+      if (openBlockers.length > 0) {
+        logger.debug('plan', `Task ${task.id} has open blockers, deferring`, logCtx, { openBlockers })
+        return false
+      }
+      return true
+    })
+
+    if (dispatchableTasks.length > 0) {
+      logger.info('plan', `Found ${dispatchableTasks.length} dispatchable tasks (${readyTasks.length} ready, ${readyTasks.length - dispatchableTasks.length} blocked)`, logCtx, {
+        taskIds: dispatchableTasks.map(t => t.id),
       })
     }
 
-    for (const task of readyTasks) {
+    // Periodic cycle detection (once per 60s)
+    const now = Date.now()
+    if (!lastCycleCheckTime || now - lastCycleCheckTime > 60_000) {
+      lastCycleCheckTime = now
+      try {
+        const cycles = await bdDetectCycles(activePlan.id)
+        if (cycles.length > 0) {
+          logger.warn('plan', `Dependency cycles detected: ${cycles.length}`, logCtx, { cycles })
+          addPlanActivity(activePlan.id, 'warning', 'Dependency cycle detected',
+            `${cycles.length} cycle(s) found - tasks may be permanently blocked`)
+        }
+      } catch {
+        // Non-critical, swallow
+      }
+    }
+
+    for (const task of dispatchableTasks) {
       await processReadyTask(activePlan.id, task)
     }
 
     // Check for completed tasks and update assignments
     const allAssignments = loadTaskAssignments(activePlan.id)
-    const closedTasks = await bdList(activePlan.id, { status: 'closed' })
 
     for (const assignment of allAssignments) {
       if (assignment.status === 'sent' || assignment.status === 'in_progress') {
@@ -3380,8 +3410,10 @@ async function handleCriticCompletion(planId: string, criticTask: BeadTask): Pro
       for (const depTaskId of dependentTaskIds) {
         try {
           await bdAddDependency(planId, depTaskId, fixup.id)
-        } catch {
-          // Ignore dependency errors
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error'
+          logger.warn('plan', `Failed to add dependency: ${fixup.id} blocks ${depTaskId}`, logCtx, { error: msg })
+          addPlanActivity(planId, 'warning', `Dependency error: ${fixup.id} -> ${depTaskId}`, msg)
         }
       }
     }
