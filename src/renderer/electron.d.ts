@@ -36,6 +36,10 @@ export interface ElectronAPI {
   closeTerminal: (terminalId: string) => Promise<void>
   stopWorkspace: (workspaceId: string) => Promise<void>
 
+  // Plain terminal management (non-agent shell terminals)
+  createPlainTerminal: (directory: string) => Promise<{ terminalId: string; tabId: string }>
+  closePlainTerminal: (terminalId: string) => Promise<void>
+
   // State management
   getState: () => Promise<AppState>
   setFocusedWorkspace: (workspaceId: string | undefined) => Promise<void>

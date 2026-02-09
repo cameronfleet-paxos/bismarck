@@ -35,6 +35,7 @@ import {
   closeTerminal,
   closeAllTerminals,
   getTerminalForWorkspace,
+  createPlainTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -464,6 +465,21 @@ function registerIpcHandlers() {
     removeWorkspaceFromTab(workspaceId)
     removeActiveWorkspace(workspaceId)
     closeSocketServer(workspaceId)
+  })
+
+  // Plain terminal management (non-agent shell terminals)
+  ipcMain.handle('create-plain-terminal', async (_event, directory: string) => {
+    const terminalId = createPlainTerminal(directory, mainWindow)
+
+    // Create a dedicated terminal tab
+    const tab = createTab('Terminal', { isTerminalTab: true })
+    setActiveTab(tab.id)
+
+    return { terminalId, tabId: tab.id }
+  })
+
+  ipcMain.handle('close-plain-terminal', (_event, terminalId: string) => {
+    closeTerminal(terminalId)
   })
 
   // Tab management

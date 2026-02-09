@@ -96,6 +96,16 @@ export interface AgentTab {
   workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
+  isTerminalTab?: boolean // Tab dedicated to a plain terminal (no Claude agent)
+}
+
+// Plain terminal session info (non-agent terminal)
+export interface PlainTerminal {
+  id: string           // e.g., "plain-terminal-1234567890"
+  terminalId: string   // PTY terminal ID
+  tabId: string        // Tab this terminal is in
+  name: string         // Display name (e.g., "Terminal 1")
+  directory: string    // Working directory
 }
 
 // Attention mode determines how waiting agents are displayed

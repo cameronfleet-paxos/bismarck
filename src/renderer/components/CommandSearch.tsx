@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, HelpCircle } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, HelpCircle, TerminalSquare } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ interface ActiveTerminal {
 type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config'
 
 // Track which command triggered agent selection
-type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | null
+type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | null
 
 interface Command {
   id: string
@@ -30,6 +30,7 @@ interface Command {
 }
 
 const commands: Command[] = [
+  { id: 'open-terminal', label: 'Open: Terminal', icon: TerminalSquare },
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
@@ -50,6 +51,7 @@ interface CommandSearchProps {
   onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
+  onOpenTerminal?: (agentId: string) => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
   prefillRalphLoopConfig?: {
     referenceAgentId: string
@@ -72,6 +74,7 @@ export function CommandSearch({
   onStartHeadlessDiscussion,
   onStartRalphLoopDiscussion,
   onStartPlan,
+  onOpenTerminal,
   onStartRalphLoop,
   prefillRalphLoopConfig,
 }: CommandSearchProps) {
@@ -332,7 +335,12 @@ export function CommandSearch({
       // Check if selecting a command or an agent
       if (idx < filteredCommands.length) {
         const command = filteredCommands[idx]
-        if (command.id === 'start-headless') {
+        if (command.id === 'open-terminal') {
+          setPendingCommand('open-terminal')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
+        } else if (command.id === 'start-headless') {
           setPendingCommand('headless')
           setMode('agent-select')
           setQuery('')
@@ -368,6 +376,12 @@ export function CommandSearch({
     } else if (mode === 'agent-select') {
       const agent = filteredAgents[idx]
       if (agent) {
+        if (pendingCommand === 'open-terminal') {
+          // Immediately open terminal for the selected agent's directory
+          onOpenTerminal?.(agent.id)
+          onOpenChange(false)
+          return
+        }
         setSelectedAgent(agent)
         if (pendingCommand === 'ralph-loop') {
           setMode('ralph-loop-config')
@@ -460,6 +474,7 @@ export function CommandSearch({
   const getTitle = () => {
     switch (mode) {
       case 'agent-select':
+        if (pendingCommand === 'open-terminal') return 'Open: Terminal'
         if (pendingCommand === 'ralph-loop') return 'Start: Ralph Loop'
         if (pendingCommand === 'ralph-loop-discussion') return 'Discuss: Ralph Loop'
         if (pendingCommand === 'headless-discussion') return 'Discuss: Headless Agent'

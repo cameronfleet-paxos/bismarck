@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopWorkspace: (workspaceId: string): Promise<void> =>
     ipcRenderer.invoke('stop-workspace', workspaceId),
 
+  // Plain terminal management (non-agent shell terminals)
+  createPlainTerminal: (directory: string): Promise<{ terminalId: string; tabId: string }> =>
+    ipcRenderer.invoke('create-plain-terminal', directory),
+  closePlainTerminal: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('close-plain-terminal', terminalId),
+
   // State management
   getState: (): Promise<AppState> => ipcRenderer.invoke('get-state'),
   setFocusedWorkspace: (workspaceId: string | undefined): Promise<void> =>

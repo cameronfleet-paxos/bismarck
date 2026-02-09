@@ -40,7 +40,7 @@ import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, PlainTerminal } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -162,6 +162,9 @@ function App() {
 
   // Ralph Loop state
   const [ralphLoops, setRalphLoops] = useState<Map<string, RalphLoopState>>(new Map())
+
+  // Plain terminal state (non-agent shell terminals)
+  const [plainTerminals, setPlainTerminals] = useState<Map<string, PlainTerminal>>(new Map())
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -1711,6 +1714,33 @@ function App() {
     }
   }
 
+  // Open plain terminal handler (non-agent shell terminal)
+  const handleOpenTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    try {
+      const result = await window.electronAPI?.createPlainTerminal?.(agent.directory)
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Terminal — ${agent.name}`,
+          directory: agent.directory,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+
+        // Refresh state to pick up the new tab
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to open plain terminal:', err)
+    }
+  }
+
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => {
     // Generate a unique spawning ID for this placeholder
@@ -1851,6 +1881,17 @@ function App() {
     // Mark the tab as closing to show spinner
     setClosingTabIds((prev) => new Set(prev).add(tabId))
     try {
+      // Close any plain terminals in this tab
+      const plainTerminal = Array.from(plainTerminals.values()).find(t => t.tabId === tabId)
+      if (plainTerminal) {
+        await window.electronAPI?.closePlainTerminal?.(plainTerminal.terminalId)
+        setPlainTerminals(prev => {
+          const next = new Map(prev)
+          next.delete(plainTerminal.id)
+          return next
+        })
+      }
+
       const result = await window.electronAPI?.deleteTab?.(tabId)
       if (result?.success) {
         // Stop all agents in the deleted tab
@@ -2707,7 +2748,38 @@ function App() {
                 key={tab.id}
                 className={`absolute inset-2 bg-background ${shouldShowTab ? '' : 'invisible pointer-events-none'} ${zIndex}`}
               >
-                {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
+                {tab.isTerminalTab ? (
+                  // Plain terminal tab - render full-size terminal
+                  (() => {
+                    const pt = Array.from(plainTerminals.values()).find(t => t.tabId === tab.id)
+                    if (pt) {
+                      return (
+                        <div className="h-full rounded-lg border overflow-hidden flex flex-col">
+                          <div className="px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                            <span className="truncate">{pt.name}</span>
+                            <span className="text-xs text-muted-foreground truncate ml-2">{pt.directory}</span>
+                          </div>
+                          <div className="flex-1 relative">
+                            <Terminal
+                              terminalId={pt.terminalId}
+                              theme="gray"
+                              isBooting={false}
+                              isVisible={currentView === 'main' && !!shouldShowTab}
+                              registerWriter={registerWriter}
+                              unregisterWriter={unregisterWriter}
+                              getBufferedContent={getBufferedContent}
+                            />
+                          </div>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        Terminal loading...
+                      </div>
+                    )
+                  })()
+                ) : tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
                     const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {
@@ -3942,6 +4014,7 @@ function App() {
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
+        onOpenTerminal={handleOpenTerminal}
         onStartRalphLoop={handleStartRalphLoop}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
