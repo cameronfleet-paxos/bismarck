@@ -461,7 +461,7 @@ export async function listDirectoryContents(directory: string, relativePath?: st
   const startTime = Date.now();
   const targetPath = relativePath || '';
 
-  logger.debug('git-diff', 'Listing directory contents', { directory, filepath: targetPath });
+  logger.debug('git-diff', 'Listing directory contents', { directory }, { relativePath: targetPath });
 
   // Validate path to prevent traversal attacks
   if (targetPath) {
@@ -490,7 +490,7 @@ export async function listDirectoryContents(directory: string, relativePath?: st
     } catch (error) {
       const err = error as Error & { code?: string };
       if (err.code === 'ENOENT') {
-        logger.warn('git-diff', 'Directory does not exist', { directory, filepath: targetPath });
+        logger.warn('git-diff', 'Directory does not exist', { directory }, { relativePath: targetPath });
         return {
           entries: [],
           path: targetPath,
@@ -575,7 +575,7 @@ export async function listDirectoryContents(directory: string, relativePath?: st
       }
     } catch (error) {
       const err = error as Error;
-      logger.warn('git-diff', 'Failed to get git tracked files', { directory, filepath: targetPath }, { error: err.message });
+      logger.warn('git-diff', 'Failed to get git tracked files', { directory }, { relativePath: targetPath, error: err.message });
       // Continue with filesystem listing
     }
 
@@ -631,7 +631,8 @@ export async function listDirectoryContents(directory: string, relativePath?: st
     logger.debug(
       'git-diff',
       `Listed ${entries.length} entries (${duration}ms)`,
-      { directory, filepath: targetPath }
+      { directory },
+      { relativePath: targetPath }
     );
 
     return {
@@ -641,7 +642,7 @@ export async function listDirectoryContents(directory: string, relativePath?: st
   } catch (error) {
     const err = error as Error;
     const duration = Date.now() - startTime;
-    logger.error('git-diff', `Failed to list directory contents (${duration}ms)`, { directory, filepath: targetPath }, { error: err.message });
+    logger.error('git-diff', `Failed to list directory contents (${duration}ms)`, { directory }, { relativePath: targetPath, error: err.message });
     throw new Error(`Failed to list directory contents: ${err.message}`);
   }
 }
