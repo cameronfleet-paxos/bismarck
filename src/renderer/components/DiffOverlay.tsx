@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, RotateCw, Columns2, FileText, ChevronUp, ChevronDown, Save } from 'lucide-react'
+import { X, RotateCw, Columns2, FileText, ChevronUp, ChevronDown, Save, Copy, Check } from 'lucide-react'
 import { DiffFileList } from './DiffFileList'
 import { DiffViewer } from './DiffViewer'
 import type { DiffFile, FileDiffContent } from '@/shared/types'
@@ -32,6 +32,7 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set())
   const [editedContent, setEditedContent] = useState<Map<string, string>>(new Map())
   const [revertConfirm, setRevertConfirm] = useState<{ type: 'file'; path: string } | { type: 'all' } | null>(null)
+  const [copiedPath, setCopiedPath] = useState(false)
 
   // Load persisted view mode preference on mount
   useEffect(() => {
@@ -288,9 +289,22 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
           {selectedFile && (
             <>
               <span className="text-muted-foreground">·</span>
-              <span className="text-sm text-muted-foreground truncate max-w-md" title={selectedFile}>
-                {selectedFile}
-              </span>
+              <button
+                className="text-sm text-muted-foreground truncate max-w-md hover:text-foreground transition-colors flex items-center gap-1.5 group"
+                title={`Click to copy: ${selectedFile}`}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(selectedFile)
+                  setCopiedPath(true)
+                  setTimeout(() => setCopiedPath(false), 1500)
+                }}
+              >
+                <span className="truncate">{selectedFile}</span>
+                {copiedPath ? (
+                  <Check className="w-3.5 h-3.5 flex-shrink-0 text-green-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                )}
+              </button>
               {currentFile && (
                 <span className="text-xs text-muted-foreground">
                   (+{currentFile.additions} -{currentFile.deletions})
