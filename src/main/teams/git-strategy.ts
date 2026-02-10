@@ -80,6 +80,18 @@ export async function markWorktreeReadyForReview(planId: string, taskId: string)
     logger.info('task', 'Task completed and ready for review', logCtx)
     addPlanActivity(planId, 'success', `Task ${taskId} ready for review`, `Worktree: ${worktree.branch}`)
 
+    // Close the beads task to unblock dependents
+    // (The agent should have already closed it via bd close, but ensure it's closed)
+    try {
+      await bdClose(planId, taskId)
+      logger.info('task', 'Closed beads task', logCtx)
+    } catch (err) {
+      // Expected if agent already closed it
+      logger.debug('task', 'Beads task close returned error (likely already closed)', logCtx, {
+        error: err instanceof Error ? err.message : 'Unknown error',
+      })
+    }
+
     // Return worktree copy for use outside the lock
     return { ...worktree }
   })
