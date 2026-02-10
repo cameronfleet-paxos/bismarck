@@ -370,6 +370,7 @@ export function CodeEditorFileTree({
             type="text"
             placeholder="Search files..."
             value={searchQuery}
+            // eslint-disable-next-line no-undef
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="pl-8 pr-8 h-8 text-sm"
           />
