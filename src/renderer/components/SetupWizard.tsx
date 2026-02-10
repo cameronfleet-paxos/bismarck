@@ -1509,6 +1509,18 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                 </div>
               )}
 
+              {/* Re-check button */}
+              {planModeEnabled && !isCheckingDeps && dependencies && (
+                <Button
+                  onClick={checkDependencies}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  Re-check Dependencies
+                </Button>
+              )}
+
               {/* Error Message */}
               {error && (
                 <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
