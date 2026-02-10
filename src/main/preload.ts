@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, FileTreeEntry, FileContent, GitBranch, GitLogEntry } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -321,6 +321,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('write-file-content', directory, filepath, content),
   revertAllFiles: (directory: string): Promise<void> =>
     ipcRenderer.invoke('revert-all-files', directory),
+
+  // Code browser operations
+  getFileTree: (directory: string, ref?: string): Promise<FileTreeEntry[]> =>
+    ipcRenderer.invoke('get-file-tree', directory, ref),
+  getFileContent: (directory: string, filepath: string, ref?: string): Promise<FileContent> =>
+    ipcRenderer.invoke('get-file-content', directory, filepath, ref),
+  getGitBranches: (directory: string): Promise<GitBranch[]> =>
+    ipcRenderer.invoke('get-git-branches', directory),
+  getGitLog: (directory: string, limit?: number): Promise<GitLogEntry[]> =>
+    ipcRenderer.invoke('get-git-log', directory, limit),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>

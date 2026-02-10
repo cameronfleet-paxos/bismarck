@@ -741,3 +741,35 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// Code browser types
+
+// File tree entry for browsing repository files
+export interface FileTreeEntry {
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+}
+
+// File content for code viewing/editing
+export interface FileContent {
+  content: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  error?: string
+}
+
+// Git branch information
+export interface GitBranch {
+  name: string
+  isCurrent: boolean
+}
+
+// Git log entry
+export interface GitLogEntry {
+  sha: string
+  shortSha: string
+  message: string
+  date: string
+}
