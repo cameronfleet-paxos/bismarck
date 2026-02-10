@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { ChevronRight, ChevronDown, Folder, FileCode, FileText, File, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Input } from '@/components/ui/input'
+import { Input } from '@/renderer/components/ui/input'
 
 interface CodeEditorFileTreeProps {
   files: string[]
@@ -370,7 +370,7 @@ export function CodeEditorFileTree({
             type="text"
             placeholder="Search files..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="pl-8 pr-8 h-8 text-sm"
           />
           {searchQuery && (
