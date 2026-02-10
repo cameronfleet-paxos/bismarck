@@ -122,8 +122,21 @@ export async function spawnCriticAgent(planId: string, originalTaskId: string): 
 
   // Build task-raising instructions for bottom-up mode
   // In bottom-up mode, critics can also raise new tasks for issues beyond fix-ups
-  // TODO: Re-enable when teamMode field is added to Plan type
-  const taskRaisingInstructions = '' // Temporarily disabled - plan.teamMode property doesn't exist yet
+  const taskRaisingInstructions = plan.teamMode === 'bottom-up'
+    ? `
+=== RAISING NEW TASKS (Bottom-Up Mode) ===
+If you discover issues beyond the scope of fix-up tasks (e.g., systemic problems, missing
+features, or tech debt), you can raise new tasks for the manager to triage:
+  bd --sandbox create "<task title>" --description "<detailed description of what needs to change and why>" --label needs-triage
+
+Include enough context in the description for a manager to triage effectively:
+- What you discovered and where (file paths, line numbers)
+- Why it matters (bug, missing feature, tech debt)
+- Any relevant code references
+
+Use this for broader issues. For issues specific to the code under review, create fix-up tasks instead.
+`
+    : ''
 
   // Build the critic prompt
   const baseBranch = worktree.baseBranch || 'main'
@@ -139,7 +152,7 @@ export async function spawnCriticAgent(planId: string, originalTaskId: string): 
     repoName,
     worktreeName: worktreeNameFromPath,
     lastIterationWarning,
-    // taskRaisingInstructions removed - not in PromptVariables type
+    taskRaisingInstructions,
   })
 
   addPlanActivity(planId, 'info', `Spawning critic for ${originalTaskId}`, `Iteration ${currentIteration + 1}/${maxIterations}`)
