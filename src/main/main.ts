@@ -223,7 +223,7 @@ import {
   checkAllToolAuth,
 } from './tool-auth-checker'
 import { isGitRepo } from './git-utils'
-import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType } from '../shared/types'
+import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType, TeamMode } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 
 // Generate unique instance ID for socket isolation
@@ -615,7 +615,7 @@ function registerIpcHandlers() {
   })
 
   // Plan management (Team Mode)
-  ipcMain.handle('create-team-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
+  ipcMain.handle('create-team-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs'; teamMode?: TeamMode }) => {
     return await createPlan(title, description, options)
   })
 
@@ -623,9 +623,9 @@ function registerIpcHandlers() {
     return getPlans()
   })
 
-  ipcMain.handle('execute-team-plan', async (_event, planId: string, referenceAgentId: string) => {
-    devLog('[Main] execute-team-plan IPC received:', { planId, referenceAgentId })
-    const result = await executePlan(planId, referenceAgentId)
+  ipcMain.handle('execute-team-plan', async (_event, planId: string, referenceAgentId: string, teamMode?: string) => {
+    devLog('[Main] execute-team-plan IPC received:', { planId, referenceAgentId, teamMode })
+    const result = await executePlan(planId, referenceAgentId, teamMode as TeamMode | undefined)
     devLog('[Main] execute-team-plan result:', result?.status)
     return result
   })

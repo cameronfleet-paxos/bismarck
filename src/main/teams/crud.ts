@@ -19,7 +19,7 @@ import {
 import { getPlanDir } from '../bd-client'
 import { getTerminalForWorkspace, closeTerminal } from '../terminal'
 import { removeActiveWorkspace, deleteTab } from '../state-manager'
-import type { Plan, TaskAssignment, PlanStatus, BranchStrategy } from '../../shared/types'
+import type { Plan, TaskAssignment, PlanStatus, BranchStrategy, TeamMode } from '../../shared/types'
 import { setMainWindow, getMainWindow, planActivities, executingPlans, DEFAULT_MAX_PARALLEL_AGENTS } from './state'
 import { emitPlanUpdate, clearPlanActivities } from './events'
 import { generatePlanId, generateDiscussionId } from './helpers'
@@ -72,6 +72,7 @@ export async function createPlan(
   options?: {
     maxParallelAgents?: number
     branchStrategy?: BranchStrategy
+    teamMode?: TeamMode
   }
 ): Promise<Plan> {
   const now = new Date().toISOString()
@@ -90,6 +91,7 @@ export async function createPlan(
     orchestratorWorkspaceId: null,
     orchestratorTabId: null,
     maxParallelAgents: options?.maxParallelAgents ?? DEFAULT_MAX_PARALLEL_AGENTS,
+    teamMode: options?.teamMode ?? 'top-down',
     worktrees: [],
     branchStrategy,
     // Generate feature branch name for feature_branch strategy
@@ -229,6 +231,7 @@ export async function clonePlan(
     orchestratorWorkspaceId: null,
     orchestratorTabId: null,
     branchStrategy: source.branchStrategy,
+    teamMode: source.teamMode ?? 'top-down',
     maxParallelAgents: source.maxParallelAgents ?? DEFAULT_MAX_PARALLEL_AGENTS,
     worktrees: [],
     // Generate new feature branch name for feature_branch strategy

@@ -102,7 +102,7 @@ export async function markWorktreeReadyForReview(planId: string, taskId: string)
   try {
     await handleTaskCompletionStrategy(planId, taskId, worktreeForStrategy)
   } catch (error) {
-    console.error(`[PlanManager] Error handling task completion strategy:`, error)
+    logger.error('git', 'Error handling task completion strategy', { planId, taskId }, { error: error instanceof Error ? error.message : String(error) })
     addPlanActivity(planId, 'warning', `Git operation warning for ${taskId}`, error instanceof Error ? error.message : 'Unknown error')
   }
 }

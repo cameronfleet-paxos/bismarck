@@ -35,8 +35,10 @@ export async function completePlan(planId: string): Promise<Plan | null> {
   // Clean up all worktrees
   await cleanupAllWorktrees(planId)
 
-  // Cleanup orchestrator
-  await cleanupOrchestrator(plan)
+  // Cleanup orchestrator (only exists in top-down mode)
+  if (plan.teamMode !== 'bottom-up') {
+    await cleanupOrchestrator(plan)
+  }
 
   plan.status = 'completed'
   plan.updatedAt = new Date().toISOString()
@@ -72,7 +74,7 @@ export async function cleanupPlanManager(): Promise<void> {
     try {
       await stopHeadlessTaskAgent(taskId)
     } catch (error) {
-      console.error(`[PlanManager] Error stopping headless agent ${taskId}:`, error)
+      logger.error('agent', `Error stopping headless agent ${taskId}`, {}, { error: String(error) })
     }
   }
 
@@ -80,7 +82,7 @@ export async function cleanupPlanManager(): Promise<void> {
   try {
     await stopAllContainers()
   } catch (error) {
-    console.error('[PlanManager] Error stopping containers:', error)
+    logger.error('docker', 'Error stopping containers', {}, { error: String(error) })
   }
 
   // Stop tool proxy
@@ -89,7 +91,7 @@ export async function cleanupPlanManager(): Promise<void> {
       const { stopToolProxy } = require('../tool-proxy')
       await stopToolProxy()
     } catch (error) {
-      console.error('[PlanManager] Error stopping tool proxy:', error)
+      logger.error('proxy', 'Error stopping tool proxy', {}, { error: String(error) })
     }
   }
 
@@ -121,17 +123,24 @@ export async function updatePlanStatuses(): Promise<void> {
       // Check task states
       const openTasks = allTaskItems.filter(t => t.status === 'open')
       const closedTasks = allTaskItems.filter(t => t.status === 'closed')
-      const allClosed = openTasks.length === 0 && closedTasks.length > 0
+
+      // Bottom-up mode: exclude deferred tasks from active count
+      const isBottomUp = plan.teamMode === 'bottom-up'
+      const deferredTasks = isBottomUp ? openTasks.filter(t => t.labels?.includes('bismarck-deferred')) : []
+      const activeTasks = isBottomUp ? openTasks.filter(t => !t.labels?.includes('bismarck-deferred')) : openTasks
+      const allActiveClosed = activeTasks.length === 0 && closedTasks.length > 0
 
       logger.debug('plan', 'Checking plan status', logCtx, {
         totalTasks: allTaskItems.length,
         openTasks: openTasks.length,
+        activeTasks: activeTasks.length,
+        deferredTasks: deferredTasks.length,
         closedTasks: closedTasks.length,
         currentStatus: plan.status,
       })
 
-      if (allClosed) {
-        // All tasks closed - mark as ready_for_review (don't auto-cleanup)
+      if (allActiveClosed) {
+        // All active tasks closed - mark as ready_for_review (don't auto-cleanup)
         // User must explicitly click "Mark Complete" to trigger cleanup
         logger.planStateChange(plan.id, plan.status, 'ready_for_review', 'All tasks completed')
         plan.status = 'ready_for_review'
@@ -142,8 +151,13 @@ export async function updatePlanStatuses(): Promise<void> {
 
         await savePlan(plan)
         emitPlanUpdate(plan)
-        addPlanActivity(plan.id, 'success', 'All tasks completed', 'Click "Mark Complete" to cleanup worktrees')
-      } else if (openTasks.length > 0 && plan.status === 'delegating') {
+
+        if (deferredTasks.length > 0) {
+          addPlanActivity(plan.id, 'success', 'All active tasks completed', `${deferredTasks.length} deferred task(s) available for follow-up`)
+        } else {
+          addPlanActivity(plan.id, 'success', 'All tasks completed', 'Click "Mark Complete" to cleanup worktrees')
+        }
+      } else if (activeTasks.length > 0 && plan.status === 'delegating') {
         // Has open tasks, move to in_progress
         logger.planStateChange(plan.id, plan.status, 'in_progress', `${openTasks.length} open tasks`)
         plan.status = 'in_progress'
@@ -158,14 +172,20 @@ export async function updatePlanStatuses(): Promise<void> {
       const allTasks = await bdList(plan.id, { status: 'all' })
       const openTasks = allTasks.filter(t => t.type === 'task' && t.status === 'open')
 
-      if (openTasks.length > 0) {
+      // In bottom-up mode, exclude deferred tasks from triggering re-entry
+      const isBottomUp = plan.teamMode === 'bottom-up'
+      const nonDeferredOpenTasks = isBottomUp
+        ? openTasks.filter(t => !t.labels?.includes('bismarck-deferred'))
+        : openTasks
+
+      if (nonDeferredOpenTasks.length > 0) {
         // New tasks exist - transition back to in_progress
-        logger.planStateChange(plan.id, plan.status, 'in_progress', `${openTasks.length} new follow-up tasks`)
+        logger.planStateChange(plan.id, plan.status, 'in_progress', `${nonDeferredOpenTasks.length} new follow-up tasks`)
         plan.status = 'in_progress'
         plan.updatedAt = new Date().toISOString()
         await savePlan(plan)
         emitPlanUpdate(plan)
-        addPlanActivity(plan.id, 'info', `Resuming with ${openTasks.length} follow-up task(s)`)
+        addPlanActivity(plan.id, 'info', `Resuming with ${nonDeferredOpenTasks.length} follow-up task(s)`)
 
         // Notify renderer about task changes
         emitBeadTasksUpdate(plan.id)

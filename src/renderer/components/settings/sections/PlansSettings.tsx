@@ -31,6 +31,8 @@ interface PromptStatus {
   critic: boolean
   ralph_loop_discussion: boolean
   plan_phase: boolean
+  manager: boolean
+  architect: boolean
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -44,6 +46,8 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   critic: 'Critic',
   ralph_loop_discussion: 'Ralph Loop Discussion',
   plan_phase: 'Plan Phase',
+  manager: 'Manager',
+  architect: 'Architect',
 }
 
 const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
@@ -57,6 +61,8 @@ const PROMPT_DESCRIPTIONS: Record<PromptType, string> = {
   critic: 'Reviews completed task work and creates fix-up tasks',
   ralph_loop_discussion: 'Discussion phase in Ralph loop workflow',
   plan_phase: 'Read-only planning phase before execution',
+  manager: 'Triages incoming tasks in bottom-up mode',
+  architect: 'Decomposes large tasks into subtasks in bottom-up mode',
 }
 
 export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
@@ -74,6 +80,8 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
     critic: false,
     ralph_loop_discussion: false,
     plan_phase: false,
+    manager: false,
+    architect: false,
   })
   const [criticEnabled, setCriticEnabled] = useState(true)
   const [maxCriticIterations, setMaxCriticIterations] = useState(2)
@@ -100,6 +108,8 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
           critic: !!customPrompts.critic,
           ralph_loop_discussion: !!customPrompts.ralph_loop_discussion,
           plan_phase: false,
+          manager: !!customPrompts.manager,
+          architect: !!customPrompts.architect,
         })
 
         // Load critic settings
@@ -203,9 +213,9 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
 
       {/* Plans Section */}
       <div>
-        <h3 className="text-lg font-semibold mb-1">Plans</h3>
+        <h3 className="text-lg font-semibold mb-1">Teams</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Configure plan execution and task orchestration
+          Configure team execution and task orchestration
         </p>
 
         <div className="space-y-4">
@@ -290,7 +300,7 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
         </p>
 
         <div className="space-y-3">
-          {(['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup', 'critic'] as PromptType[]).map((type) => (
+          {(['orchestrator', 'planner', 'discussion', 'task', 'standalone_headless', 'standalone_followup', 'critic', 'manager', 'architect'] as PromptType[]).map((type) => (
             <div
               key={type}
               className="flex items-center justify-between py-2 px-3 rounded-lg border bg-muted/20"

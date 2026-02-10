@@ -4,7 +4,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { PlanCard } from '@/renderer/components/PlanCard'
 import { PlanDetailView } from '@/renderer/components/PlanDetailView'
 import { ClonePlanDialog } from '@/renderer/components/ClonePlanDialog'
-import type { Plan, TaskAssignment, Agent, PlanActivity } from '@/shared/types'
+import type { Plan, TaskAssignment, Agent, PlanActivity, TeamMode } from '@/shared/types'
 
 interface PlanSidebarProps {
   open: boolean
@@ -17,7 +17,7 @@ interface PlanSidebarProps {
   expandPlanId?: string | null  // Plan ID to auto-expand from parent
   onCreatePlan: () => void
   onSelectPlan: (planId: string | null) => void
-  onExecutePlan: (planId: string, referenceAgentId: string) => void
+  onExecutePlan: (planId: string, referenceAgentId: string, teamMode: TeamMode) => void
   onStartDiscussion: (planId: string, referenceAgentId: string) => void
   onCancelDiscussion: (planId: string) => Promise<void>
   onCancelPlan: (planId: string) => Promise<void>
@@ -186,8 +186,8 @@ export function PlanSidebar({
             await onCancelDiscussion(detailPlan.id)
             setDetailPlanId(null)
           }}
-          onExecute={(referenceAgentId) => {
-            onExecutePlan(detailPlan.id, referenceAgentId)
+          onExecute={(referenceAgentId, teamMode) => {
+            onExecutePlan(detailPlan.id, referenceAgentId, teamMode)
           }}
           onRequestFollowUps={async () => {
             await onRequestFollowUps(detailPlan.id)
@@ -247,7 +247,7 @@ export function PlanSidebar({
           </>
         ) : (
           <>
-            <h2 className="font-medium">Plans</h2>
+            <h2 className="font-medium">Teams</h2>
             <div className="flex items-center gap-1">
               <Button size="sm" onClick={onCreatePlan}>
                 <Plus className="h-4 w-4 mr-1" />
@@ -287,7 +287,7 @@ export function PlanSidebar({
                     isActive={activePlanId === plan.id}
                     isSelected={selectedPlanIds.has(plan.id)}
                     onToggleSelect={() => toggleSelection(plan.id)}
-                    onExecute={(leaderId) => onExecutePlan(plan.id, leaderId)}
+                    onExecute={(leaderId, teamMode) => onExecutePlan(plan.id, leaderId, teamMode)}
                     onStartDiscussion={(leaderId) => onStartDiscussion(plan.id, leaderId)}
                     onCancelDiscussion={() => onCancelDiscussion(plan.id)}
                     onCancel={() => onCancelPlan(plan.id)}
@@ -317,7 +317,7 @@ export function PlanSidebar({
                     isActive={activePlanId === plan.id}
                     isSelected={selectedPlanIds.has(plan.id)}
                     onToggleSelect={() => toggleSelection(plan.id)}
-                    onExecute={(leaderId) => onExecutePlan(plan.id, leaderId)}
+                    onExecute={(leaderId, teamMode) => onExecutePlan(plan.id, leaderId, teamMode)}
                     onStartDiscussion={(leaderId) => onStartDiscussion(plan.id, leaderId)}
                     onCancelDiscussion={() => onCancelDiscussion(plan.id)}
                     onCancel={() => onCancelPlan(plan.id)}
@@ -347,7 +347,7 @@ export function PlanSidebar({
                     isActive={activePlanId === plan.id}
                     isSelected={selectedPlanIds.has(plan.id)}
                     onToggleSelect={() => toggleSelection(plan.id)}
-                    onExecute={(leaderId) => onExecutePlan(plan.id, leaderId)}
+                    onExecute={(leaderId, teamMode) => onExecutePlan(plan.id, leaderId, teamMode)}
                     onStartDiscussion={(leaderId) => onStartDiscussion(plan.id, leaderId)}
                     onCancelDiscussion={() => onCancelDiscussion(plan.id)}
                     onCancel={() => onCancelPlan(plan.id)}

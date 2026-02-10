@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, TeamMode, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -80,12 +80,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-preferences', preferences),
 
   // Plan management (Team Mode)
-  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy }): Promise<Plan> =>
+  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy; teamMode?: TeamMode }): Promise<Plan> =>
     ipcRenderer.invoke('create-team-plan', title, description, options),
   getPlans: (): Promise<Plan[]> =>
     ipcRenderer.invoke('get-team-plans'),
-  executePlan: (planId: string, referenceAgentId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('execute-team-plan', planId, referenceAgentId),
+  executePlan: (planId: string, referenceAgentId: string, teamMode?: string): Promise<Plan | null> =>
+    ipcRenderer.invoke('execute-team-plan', planId, referenceAgentId, teamMode),
   startDiscussion: (planId: string, referenceAgentId: string): Promise<Plan | null> =>
     ipcRenderer.invoke('start-team-discussion', planId, referenceAgentId),
   cancelDiscussion: (planId: string): Promise<Plan | null> =>
@@ -438,7 +438,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
-  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null }> =>
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; manager: string | null; architect: string | null }> =>
     ipcRenderer.invoke('get-custom-prompts'),
   setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
     ipcRenderer.invoke('set-custom-prompt', type, template),

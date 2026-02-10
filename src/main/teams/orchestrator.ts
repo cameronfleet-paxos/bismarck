@@ -144,7 +144,7 @@ export async function buildOrchestratorPrompt(plan: Plan, agents: Agent[], gateT
  * - Assigning tasks to agents
  * - Marking tasks as ready
  */
-export async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string, repository: Repository | undefined, gateTaskId: string): Promise<string> {
+export async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string, repository: Repository | undefined, gateTaskId: string, taskAssignmentInstructions?: string): Promise<string> {
   const planDir = getPlanDir(plan.id)
 
   // Include discussion context if a discussion was completed
@@ -201,6 +201,7 @@ Example dependency setup:
     discussionContext,
     featureBranchGuidance,
     gateTaskId,
+    taskAssignmentInstructions: taskAssignmentInstructions ?? '',
   }
 
   return buildPrompt('planner', variables)

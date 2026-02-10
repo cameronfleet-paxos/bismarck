@@ -31,8 +31,8 @@ import {
   deleteRemoteBranch,
   deleteLocalBranch,
 } from '../git-utils'
-import type { Plan, Workspace, PlanStatus } from '../../shared/types'
-import { getMainWindow, executingPlans } from './state'
+import type { Plan, Workspace, PlanStatus, TeamMode } from '../../shared/types'
+import { getMainWindow, executingPlans, clearBottomUpState } from './state'
 import { addPlanActivity, clearPlanActivities, emitPlanUpdate, emitStateUpdate } from './events'
 import { buildOrchestratorPrompt, buildPlanAgentPrompt, cleanupPlanAgent } from './orchestrator'
 import { startTaskPolling } from './task-polling'
@@ -43,12 +43,12 @@ import { headlessAgentInfo } from '../headless/state'
 /**
  * Execute a plan using a reference agent's working directory
  */
-export async function executePlan(planId: string, referenceAgentId: string): Promise<Plan | null> {
+export async function executePlan(planId: string, referenceAgentId: string, teamMode?: TeamMode): Promise<Plan | null> {
   const plan = getPlanById(planId)
   if (!plan) return null
 
   const logCtx: LogContext = { planId }
-  logger.info('plan', 'Starting plan execution', logCtx, { referenceAgentId, title: plan.title })
+  logger.info('plan', 'Starting plan execution', logCtx, { referenceAgentId, teamMode, title: plan.title })
 
   // Guard against duplicate execution (can happen due to React StrictMode double-invocation)
   // Use in-memory set because status check alone isn't fast enough - the second call
@@ -95,69 +95,44 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   })
   logger.info('plan', `Created gate task: ${gateTaskId}`, logCtx)
 
-  // Update plan with reference agent and set status to delegating
+  // Update plan with reference agent, team mode, and set status to delegating
   plan.referenceAgentId = referenceAgentId
+  if (teamMode) {
+    plan.teamMode = teamMode
+  }
   plan.status = 'delegating'
   plan.updatedAt = new Date().toISOString()
 
-  // Create a dedicated tab for the orchestrator BEFORE emitting update
-  // so renderer has the orchestratorTabId for headless agent lookup
+  // Create a dedicated tab for the planner/orchestrator
   const orchestratorTab = createTab(plan.title.substring(0, 20), { isPlanTab: true, planId: plan.id })
   plan.orchestratorTabId = orchestratorTab.id
 
   await savePlan(plan)
   emitPlanUpdate(plan)
 
-  // Create orchestrator workspace (runs in plan directory to work with bd tasks)
-  const orchestratorWorkspace: Workspace = {
-    id: `orchestrator-${planId}`,
-    name: `Orchestrator (${plan.title})`,
-    directory: planDir, // Orchestrator runs in plan directory
-    purpose: 'Plan orchestration - monitors task completion',
-    theme: 'gray',
-    icon: getRandomUniqueIcon(allAgents),
-    isOrchestrator: true, // Mark as orchestrator for filtering in processReadyTask
-  }
-  saveWorkspace(orchestratorWorkspace)
-  plan.orchestratorWorkspaceId = orchestratorWorkspace.id
-  await savePlan(plan)
+  if (plan.teamMode === 'bottom-up') {
+    // === BOTTOM-UP MODE ===
+    // No orchestrator — planner assigns repos/worktrees and marks tasks bismarck-ready directly.
+    // Manager and Architect agents are spawned on-demand by the polling loop.
 
-  // Create terminal for orchestrator and add to its dedicated tab
-  const mainWindow = getMainWindow()
-  devLog(`[PlanManager] mainWindow is: ${mainWindow ? 'defined' : 'NULL'}`)
-  if (mainWindow) {
+    const mainWindow = getMainWindow()
+    if (!mainWindow) {
+      addPlanActivity(planId, 'error', 'Cannot start planner - window not available')
+      executingPlans.delete(planId)
+      plan.status = 'discussed'
+      plan.updatedAt = new Date().toISOString()
+      await savePlan(plan)
+      emitPlanUpdate(plan)
+      return plan
+    }
+
     try {
-      // Build the orchestrator prompt and pass it to queueTerminalCreation
-      // Claude will automatically process it when it's ready
-      // Pass --add-dir flag so orchestrator has permission to access plan directory without prompts
-      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
-      const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
-      const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents, gateTaskId)
-      devLog(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
-      const orchestratorTerminalId = await queueTerminalCreation(orchestratorWorkspace.id, mainWindow, {
-        initialPrompt: orchestratorPrompt,
-        claudeFlags,
-      })
-      devLog(`[PlanManager] Created terminal: ${orchestratorTerminalId}`)
-      addActiveWorkspace(orchestratorWorkspace.id)
-      addWorkspaceToTab(orchestratorWorkspace.id, orchestratorTab.id)
-      addPlanActivity(planId, 'info', 'Orchestrator agent started')
-      addPlanActivity(planId, 'success', 'Orchestrator monitoring started')
-
-      // Notify renderer about the new terminal
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('terminal-created', {
-          terminalId: orchestratorTerminalId,
-          workspaceId: orchestratorWorkspace.id,
-        })
-      }
-
-      // Create plan agent workspace (runs in plan directory so bd commands work without cd)
+      // Create plan agent workspace
       const planAgentWorkspace: Workspace = {
         id: `plan-agent-${planId}`,
         name: `Planner (${plan.title})`,
-        directory: planDir, // Plan agent runs in plan directory for bd commands
-        purpose: 'Initial discovery and task creation',
+        directory: planDir,
+        purpose: 'Initial discovery and task creation (bottom-up)',
         theme: 'blue',
         icon: getRandomUniqueIcon(allAgents),
         isPlanAgent: true,
@@ -166,27 +141,46 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       plan.planAgentWorkspaceId = planAgentWorkspace.id
       await savePlan(plan)
 
-      // Create terminal with plan agent prompt
-      // Pass --add-dir flags so plan agent can access both plan directory and codebase
-      // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+      // Build planner prompt with task assignment instructions for bottom-up mode
       const planAgentClaudeFlags = `--add-dir "${planDir}" --add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
-      // Look up repository for feature branch guidance
-      // Try repositoryId first, fallback to path-based lookup for legacy workspaces
       const repository = referenceWorkspace.repositoryId
         ? await getRepositoryById(referenceWorkspace.repositoryId)
         : await getRepositoryByPath(referenceWorkspace.directory)
-      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository, gateTaskId)
-      devLog(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
+
+      // Get all repositories for assignment instructions
+      const allRepos = await getAllRepositories()
+      const repoNames = allRepos.map(r => r.name).join(', ')
+      const taskAssignmentInstructions = `
+=== TASK ASSIGNMENT (Bottom-Up Mode) ===
+In bottom-up mode, YOU are responsible for assigning tasks to repositories and worktrees.
+There is no separate orchestrator. When creating tasks:
+
+For well-scoped tasks you can fully specify:
+1. Assign each task a repository: bd --sandbox update <task-id> --add-label "repo:<repo-name>"
+2. Assign a unique worktree name: bd --sandbox update <task-id> --add-label "worktree:<name>"
+3. Mark as ready: bd --sandbox update <task-id> --add-label bismarck-ready
+
+You can combine all labels in one command:
+  bd --sandbox update <task-id> --add-label "repo:<name>" --add-label "worktree:<name>" --add-label bismarck-ready
+
+For complex tasks that need further decomposition by an Architect agent, label them needs-architect instead:
+  bd --sandbox update <task-id> --add-label needs-architect
+The Architect will analyze the codebase and break them into smaller implementation tasks.
+
+Available repositories: ${repoNames}
+Use descriptive worktree names (e.g., "fix-auth-bug", "add-validation").
+`
+
+      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository, gateTaskId, taskAssignmentInstructions)
+
       const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {
         initialPrompt: planAgentPrompt,
         claudeFlags: planAgentClaudeFlags,
       })
-      devLog(`[PlanManager] Created plan agent terminal: ${planAgentTerminalId}`)
       addActiveWorkspace(planAgentWorkspace.id)
       addWorkspaceToTab(planAgentWorkspace.id, orchestratorTab.id)
-      addPlanActivity(planId, 'info', 'Plan agent started')
+      addPlanActivity(planId, 'info', 'Planner started (bottom-up mode)')
 
-      // Notify renderer about the plan agent terminal
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal-created', {
           terminalId: planAgentTerminalId,
@@ -198,22 +192,146 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       const planAgentEmitter = getTerminalEmitter(planAgentTerminalId)
       if (planAgentEmitter) {
         const exitHandler = (data: string) => {
-          // Claude shows "Goodbye!" when /exit is used
           if (data.includes('Goodbye') || data.includes('Session ended')) {
             planAgentEmitter.removeListener('data', exitHandler)
             cleanupPlanAgent(plan).catch((err) => {
-              console.error('[PlanManager] Error cleaning up plan agent:', err)
+              logger.error('agent', 'Error cleaning up plan agent', { planId }, { error: String(err) })
             })
           }
         }
         planAgentEmitter.on('data', exitHandler)
       }
 
-      // Emit state update so renderer knows about the new tab
       emitStateUpdate()
     } catch (error) {
-      console.error(`[PlanManager] Failed to create orchestrator terminal:`, error)
-      addPlanActivity(planId, 'error', 'Failed to start orchestrator', error instanceof Error ? error.message : 'Unknown error')
+      addPlanActivity(planId, 'error', 'Failed to start planner', error instanceof Error ? error.message : 'Unknown error')
+      executingPlans.delete(planId)
+      plan.status = 'discussed'
+      plan.updatedAt = new Date().toISOString()
+      await savePlan(plan)
+      emitPlanUpdate(plan)
+      return plan
+    }
+  } else {
+    // === TOP-DOWN MODE (existing behavior) ===
+    // Create orchestrator workspace (runs in plan directory to work with bd tasks)
+    const orchestratorWorkspace: Workspace = {
+      id: `orchestrator-${planId}`,
+      name: `Orchestrator (${plan.title})`,
+      directory: planDir, // Orchestrator runs in plan directory
+      purpose: 'Plan orchestration - monitors task completion',
+      theme: 'gray',
+      icon: getRandomUniqueIcon(allAgents),
+      isOrchestrator: true, // Mark as orchestrator for filtering in processReadyTask
+    }
+    saveWorkspace(orchestratorWorkspace)
+    plan.orchestratorWorkspaceId = orchestratorWorkspace.id
+    await savePlan(plan)
+
+    // Create terminal for orchestrator and add to its dedicated tab
+    const mainWindow = getMainWindow()
+    devLog(`[PlanManager] mainWindow is: ${mainWindow ? 'defined' : 'NULL'}`)
+    if (mainWindow) {
+      try {
+        // Build the orchestrator prompt and pass it to queueTerminalCreation
+        // Claude will automatically process it when it's ready
+        // Pass --add-dir flag so orchestrator has permission to access plan directory without prompts
+        // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+        const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
+        const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents, gateTaskId)
+        devLog(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
+        const orchestratorTerminalId = await queueTerminalCreation(orchestratorWorkspace.id, mainWindow, {
+          initialPrompt: orchestratorPrompt,
+          claudeFlags,
+        })
+        devLog(`[PlanManager] Created terminal: ${orchestratorTerminalId}`)
+        addActiveWorkspace(orchestratorWorkspace.id)
+        addWorkspaceToTab(orchestratorWorkspace.id, orchestratorTab.id)
+        addPlanActivity(planId, 'info', 'Orchestrator agent started')
+        addPlanActivity(planId, 'success', 'Orchestrator monitoring started')
+
+        // Notify renderer about the new terminal
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('terminal-created', {
+            terminalId: orchestratorTerminalId,
+            workspaceId: orchestratorWorkspace.id,
+          })
+        }
+
+        // Create plan agent workspace (runs in plan directory so bd commands work without cd)
+        const planAgentWorkspace: Workspace = {
+          id: `plan-agent-${planId}`,
+          name: `Planner (${plan.title})`,
+          directory: planDir, // Plan agent runs in plan directory for bd commands
+          purpose: 'Initial discovery and task creation',
+          theme: 'blue',
+          icon: getRandomUniqueIcon(allAgents),
+          isPlanAgent: true,
+        }
+        saveWorkspace(planAgentWorkspace)
+        plan.planAgentWorkspaceId = planAgentWorkspace.id
+        await savePlan(plan)
+
+        // Create terminal with plan agent prompt
+        // Pass --add-dir flags so plan agent can access both plan directory and codebase
+        // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
+        const planAgentClaudeFlags = `--add-dir "${planDir}" --add-dir "${referenceWorkspace.directory}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
+        // Look up repository for feature branch guidance
+        // Try repositoryId first, fallback to path-based lookup for legacy workspaces
+        const repository = referenceWorkspace.repositoryId
+          ? await getRepositoryById(referenceWorkspace.repositoryId)
+          : await getRepositoryByPath(referenceWorkspace.directory)
+        const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository, gateTaskId)
+        devLog(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
+        const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {
+          initialPrompt: planAgentPrompt,
+          claudeFlags: planAgentClaudeFlags,
+        })
+        devLog(`[PlanManager] Created plan agent terminal: ${planAgentTerminalId}`)
+        addActiveWorkspace(planAgentWorkspace.id)
+        addWorkspaceToTab(planAgentWorkspace.id, orchestratorTab.id)
+        addPlanActivity(planId, 'info', 'Plan agent started')
+
+        // Notify renderer about the plan agent terminal
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('terminal-created', {
+            terminalId: planAgentTerminalId,
+            workspaceId: planAgentWorkspace.id,
+          })
+        }
+
+        // Set up listener for plan agent exit
+        const planAgentEmitter = getTerminalEmitter(planAgentTerminalId)
+        if (planAgentEmitter) {
+          const exitHandler = (data: string) => {
+            // Claude shows "Goodbye!" when /exit is used
+            if (data.includes('Goodbye') || data.includes('Session ended')) {
+              planAgentEmitter.removeListener('data', exitHandler)
+              cleanupPlanAgent(plan).catch((err) => {
+                logger.error('agent', 'Error cleaning up plan agent', { planId }, { error: String(err) })
+              })
+            }
+          }
+          planAgentEmitter.on('data', exitHandler)
+        }
+
+        // Emit state update so renderer knows about the new tab
+        emitStateUpdate()
+      } catch (error) {
+        logger.error('plan', 'Failed to create orchestrator terminal', { planId }, { error: error instanceof Error ? error.message : String(error) })
+        addPlanActivity(planId, 'error', 'Failed to start orchestrator', error instanceof Error ? error.message : 'Unknown error')
+        // Clean up executingPlans to allow retry
+        executingPlans.delete(planId)
+        // Revert status since we couldn't actually execute
+        plan.status = 'discussed'
+        plan.updatedAt = new Date().toISOString()
+        await savePlan(plan)
+        emitPlanUpdate(plan)
+        return plan
+      }
+    } else {
+      logger.error('plan', 'Cannot create orchestrator terminal - mainWindow is null', { planId })
+      addPlanActivity(planId, 'error', 'Cannot start orchestrator - window not available')
       // Clean up executingPlans to allow retry
       executingPlans.delete(planId)
       // Revert status since we couldn't actually execute
@@ -223,17 +341,6 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       emitPlanUpdate(plan)
       return plan
     }
-  } else {
-    console.error(`[PlanManager] Cannot create orchestrator terminal - mainWindow is null`)
-    addPlanActivity(planId, 'error', 'Cannot start orchestrator - window not available')
-    // Clean up executingPlans to allow retry
-    executingPlans.delete(planId)
-    // Revert status since we couldn't actually execute
-    plan.status = 'discussed'
-    plan.updatedAt = new Date().toISOString()
-    await savePlan(plan)
-    emitPlanUpdate(plan)
-    return plan
   }
 
   // Start polling for task updates for this plan
@@ -402,6 +509,9 @@ async function killAllPlanAgents(plan: Plan): Promise<void> {
     deleteTab(plan.orchestratorTabId)
     plan.orchestratorTabId = null
   }
+
+  // Clear bottom-up state (active managers/architects)
+  clearBottomUpState(plan.id)
 
   // Emit state update so renderer reloads workspaces (clears headless agents from sidebar)
   emitStateUpdate()

@@ -253,6 +253,7 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
 export function wrapPromptWithPlan(originalPrompt: string, plan: string): string {
   return `=== IMPLEMENTATION PLAN ===
 The following plan was created during a read-only analysis phase. Follow it closely.
+Do NOT enter plan mode. Do NOT use EnterPlanMode. Proceed directly to implementation.
 
 ${plan}
 

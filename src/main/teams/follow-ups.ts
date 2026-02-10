@@ -24,7 +24,7 @@ import { startTaskPolling } from './task-polling'
  * Build the prompt for the Follow-Up Agent
  * This agent helps the user create follow-up tasks after reviewing completed work
  */
-async function buildFollowUpAgentPrompt(plan: Plan, completedTasks: BeadTask[]): Promise<string> {
+async function buildFollowUpAgentPrompt(plan: Plan, completedTasks: BeadTask[], deferredTasks: BeadTask[] = []): Promise<string> {
   const planDir = getPlanDir(plan.id)
 
   const completedTasksList = completedTasks.length > 0
@@ -67,7 +67,14 @@ ${repoList}
 === EXISTING WORKTREES ===
 ${worktreeInfo}
 
-=== CREATING FOLLOW-UP TASKS ===
+${deferredTasks.length > 0 ? `=== DEFERRED TASKS ===
+The following tasks were deferred during execution and are available for approval:
+${deferredTasks.map(t => `- ${t.id}: ${t.title}`).join('\n')}
+
+To approve a deferred task for execution:
+  bd --sandbox update <task-id> --remove-label bismarck-deferred --add-label needs-triage
+
+` : ''}=== CREATING FOLLOW-UP TASKS ===
 Help the user identify what additional work is needed. When they decide on tasks:
 
 1. Create tasks using bd (beads CLI):
@@ -202,6 +209,12 @@ export async function requestFollowUps(planId: string): Promise<Plan | null> {
   // Get completed tasks for context
   const completedTasks = await bdList(planId, { status: 'closed' })
 
+  // In bottom-up mode, include deferred tasks in the prompt
+  const allOpenTasks = await bdList(planId, { status: 'open' })
+  const deferredTasks = plan.teamMode === 'bottom-up'
+    ? allOpenTasks.filter(t => t.labels?.includes('bismarck-deferred'))
+    : []
+
   // Get the plan directory
   const planDir = getPlanDir(planId)
 
@@ -231,7 +244,7 @@ export async function requestFollowUps(planId: string): Promise<Plan | null> {
   const mainWindow = getMainWindow()
   if (mainWindow) {
     try {
-      const followUpPrompt = await buildFollowUpAgentPrompt(plan, completedTasks)
+      const followUpPrompt = await buildFollowUpAgentPrompt(plan, completedTasks, deferredTasks)
       // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
       const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
 

@@ -261,11 +261,16 @@ export async function startHeadlessTaskAgent(
     const bdCloseSucceeded = tasksWithSuccessfulBdClose.has(task.id)
     const effectiveSuccess = result.success || bdCloseSucceeded
 
-    logger.info('agent', 'Headless agent complete event received', { planId, taskId: task.id }, {
-      success: result.success,
-      exitCode: result.exitCode,
-      bdCloseSucceeded,
+    const durationMs = agentInfo.startedAt
+      ? Date.now() - new Date(agentInfo.startedAt).getTime()
+      : undefined
+
+    logger.info('agent', 'Agent completion summary', { planId, taskId: task.id }, {
       effectiveSuccess,
+      bdCloseSucceeded,
+      exitCode: result.exitCode,
+      durationMs,
+      eventCount: agentInfo.events.length,
     })
 
     agentInfo.status = effectiveSuccess ? 'completed' : 'failed'
@@ -622,6 +627,23 @@ ${repository.guidance}
 
    NOTE: In feature branch mode, Bismarck handles PR creation.`
 
+  // Build task-raising instructions for bottom-up mode
+  // In bottom-up mode, workers can discover and raise new tasks during execution
+  const taskRaisingInstructions = plan?.teamMode === 'bottom-up'
+    ? `
+=== RAISING NEW TASKS (Bottom-Up Mode) ===
+If you discover additional work needed while completing this task, you can raise new tasks:
+  bd --sandbox create "<task title>" --description "<detailed description of what needs to change and why>" --label needs-triage
+
+Include enough context in the description for a manager to triage effectively:
+- What you discovered and where (file paths, line numbers)
+- Why it matters (bug, missing feature, tech debt)
+- Any relevant code references
+
+Do NOT attempt to do the extra work yourself - raise a task and stay focused on your assigned task.
+`
+    : ''
+
   const variables: PromptVariables = {
     taskId: task.id,
     taskTitle: task.title,
@@ -631,6 +653,7 @@ ${repository.guidance}
     gitCommands,
     completionCriteria,
     guidance,
+    taskRaisingInstructions,
     // Note: bismarckPrefix/ottoPrefix are NOT included for plan task agents
     // Persona prompts are only injected via hooks for interactive Claude Code sessions
   }
