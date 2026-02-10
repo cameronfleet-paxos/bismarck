@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, GitFileEntry, GitCommit, GitBranch, FileContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Tool auth status from the auth checker
@@ -153,6 +153,14 @@ export interface ElectronAPI {
   revertFile: (directory: string, filepath: string) => Promise<void>
   writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
   revertAllFiles: (directory: string) => Promise<void>
+
+  // Code editor git browser operations
+  codeEditorListFiles: (directory: string, ref?: string) => Promise<GitFileEntry[]>
+  codeEditorGetFileContent: (directory: string, filepath: string, ref?: string) => Promise<FileContent>
+  codeEditorGetCommitLog: (directory: string, options?: { limit?: number; branch?: string }) => Promise<GitCommit[]>
+  codeEditorGetBranches: (directory: string) => Promise<GitBranch[]>
+  codeEditorDiffBetweenRefs: (directory: string, fromRef: string, toRef: string) => Promise<DiffResult>
+  codeEditorGetFileDiffBetweenRefs: (directory: string, filepath: string, fromRef: string, toRef: string) => Promise<FileDiffContent>
 
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>

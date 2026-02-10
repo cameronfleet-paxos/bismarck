@@ -24,6 +24,7 @@ export type LogCategory =
   | 'agent'
   | 'git'
   | 'git-diff'
+  | 'git-browser'
   | 'bd'
   | 'docker'
   | 'proxy'

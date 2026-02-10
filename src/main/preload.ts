@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, GitFileEntry, GitCommit, GitBranch, FileContent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -321,6 +321,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('write-file-content', directory, filepath, content),
   revertAllFiles: (directory: string): Promise<void> =>
     ipcRenderer.invoke('revert-all-files', directory),
+
+  // Code editor git browser operations
+  codeEditorListFiles: (directory: string, ref?: string): Promise<GitFileEntry[]> =>
+    ipcRenderer.invoke('code-editor:list-files', directory, ref),
+  codeEditorGetFileContent: (directory: string, filepath: string, ref?: string): Promise<FileContent> =>
+    ipcRenderer.invoke('code-editor:get-file-content', directory, filepath, ref),
+  codeEditorGetCommitLog: (directory: string, options?: { limit?: number; branch?: string }): Promise<GitCommit[]> =>
+    ipcRenderer.invoke('code-editor:get-commit-log', directory, options),
+  codeEditorGetBranches: (directory: string): Promise<GitBranch[]> =>
+    ipcRenderer.invoke('code-editor:get-branches', directory),
+  codeEditorDiffBetweenRefs: (directory: string, fromRef: string, toRef: string): Promise<DiffResult> =>
+    ipcRenderer.invoke('code-editor:diff-between-refs', directory, fromRef, toRef),
+  codeEditorGetFileDiffBetweenRefs: (directory: string, filepath: string, fromRef: string, toRef: string): Promise<FileDiffContent> =>
+    ipcRenderer.invoke('code-editor:get-file-diff-between-refs', directory, filepath, fromRef, toRef),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>

@@ -215,6 +215,7 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { listFiles, getFileContent, getCommitLog, getBranches, diffBetweenRefs, getFileDiffBetweenRefs } from './git-browser'
 import {
   setAuthCheckerWindow,
   startToolAuthChecks,
@@ -889,6 +890,31 @@ function registerIpcHandlers() {
 
   ipcMain.handle('revert-all-files', async (_event, directory: string) => {
     return revertAllFiles(directory)
+  })
+
+  // Code editor git browser operations
+  ipcMain.handle('code-editor:list-files', async (_event, directory: string, ref?: string) => {
+    return listFiles(directory, ref)
+  })
+
+  ipcMain.handle('code-editor:get-file-content', async (_event, directory: string, filepath: string, ref?: string) => {
+    return getFileContent(directory, filepath, ref)
+  })
+
+  ipcMain.handle('code-editor:get-commit-log', async (_event, directory: string, options?: { limit?: number; branch?: string }) => {
+    return getCommitLog(directory, options)
+  })
+
+  ipcMain.handle('code-editor:get-branches', async (_event, directory: string) => {
+    return getBranches(directory)
+  })
+
+  ipcMain.handle('code-editor:diff-between-refs', async (_event, directory: string, fromRef: string, toRef: string) => {
+    return diffBetweenRefs(directory, fromRef, toRef)
+  })
+
+  ipcMain.handle('code-editor:get-file-diff-between-refs', async (_event, directory: string, filepath: string, fromRef: string, toRef: string) => {
+    return getFileDiffBetweenRefs(directory, filepath, fromRef, toRef)
   })
 
   // Setup wizard
