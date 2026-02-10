@@ -111,6 +111,7 @@ export function CodeEditorViewer({
   // Handle copy to clipboard
   const handleCopyPath = async () => {
     try {
+      // eslint-disable-next-line no-undef
       await navigator.clipboard.writeText(filepath)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -134,6 +135,7 @@ export function CodeEditorViewer({
 
   // Calculate file size for display
   const fileSize = useMemo(() => {
+    // eslint-disable-next-line no-undef
     const bytes = new Blob([content]).size
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

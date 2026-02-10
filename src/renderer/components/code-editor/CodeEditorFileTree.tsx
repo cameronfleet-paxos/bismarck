@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { ChevronRight, ChevronDown, Folder, FileCode, FileText, File, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/renderer/components/ui/input'
