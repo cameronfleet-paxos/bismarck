@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, DirectoryListing, FileContent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -321,6 +321,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('write-file-content', directory, filepath, content),
   revertAllFiles: (directory: string): Promise<void> =>
     ipcRenderer.invoke('revert-all-files', directory),
+  listDirectoryContents: (directory: string, relativePath?: string): Promise<DirectoryListing> =>
+    ipcRenderer.invoke('list-directory-contents', directory, relativePath),
+  readFileContent: (directory: string, filepath: string): Promise<FileContent> =>
+    ipcRenderer.invoke('read-file-content', directory, filepath),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>

@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, DirectoryListing, FileContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Tool auth status from the auth checker
@@ -153,6 +153,8 @@ export interface ElectronAPI {
   revertFile: (directory: string, filepath: string) => Promise<void>
   writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
   revertAllFiles: (directory: string) => Promise<void>
+  listDirectoryContents: (directory: string, relativePath?: string) => Promise<DirectoryListing>
+  readFileContent: (directory: string, filepath: string) => Promise<FileContent>
 
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>

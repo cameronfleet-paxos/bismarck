@@ -9,7 +9,7 @@ import { promisify } from 'util';
 import { logger } from './logger';
 import { findBinary } from './exec-utils';
 import { isGitRepo } from './git-utils';
-import type { DiffResult, DiffFile, FileDiffContent } from '../shared/types';
+import type { DiffResult, DiffFile, FileDiffContent, DirectoryListing, DirectoryEntry, FileContent } from '../shared/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -447,4 +447,310 @@ export async function revertAllFiles(directory: string): Promise<void> {
   }
 
   logger.debug('git-diff', `Reverted ${result.files.length} files`, { directory });
+}
+
+/**
+ * List directory contents (files and directories) at a given path within the repo
+ * Combines tracked files from git with untracked files from filesystem, respecting .gitignore
+ *
+ * @param directory - Repository working directory
+ * @param relativePath - Relative path within the repo (optional, defaults to root)
+ * @returns DirectoryListing with entries and path
+ */
+export async function listDirectoryContents(directory: string, relativePath?: string): Promise<DirectoryListing> {
+  const startTime = Date.now();
+  const targetPath = relativePath || '';
+
+  logger.debug('git-diff', 'Listing directory contents', { directory, relativePath: targetPath });
+
+  // Validate path to prevent traversal attacks
+  if (targetPath) {
+    validateFilepath(targetPath);
+  }
+
+  // Return empty result for non-git directories
+  if (!await isGitRepo(directory)) {
+    logger.debug('git-diff', 'Not a git repository, returning empty result', { directory });
+    return {
+      entries: [],
+      path: targetPath,
+    };
+  }
+
+  try {
+    const gitPath = getGitPath();
+    const fullPath = path.join(directory, targetPath);
+
+    // Check if the path exists and is a directory
+    try {
+      const stats = await fs.stat(fullPath);
+      if (!stats.isDirectory()) {
+        throw new Error('Path is not a directory');
+      }
+    } catch (error) {
+      const err = error as Error & { code?: string };
+      if (err.code === 'ENOENT') {
+        logger.warn('git-diff', 'Directory does not exist', { directory, relativePath: targetPath });
+        return {
+          entries: [],
+          path: targetPath,
+        };
+      }
+      throw error;
+    }
+
+    // Get tracked files from git ls-tree (respects .gitignore)
+    const trackedFiles = new Map<string, { type: 'file' | 'directory'; size?: number }>();
+
+    try {
+      const hasHead = await hasHeadCommit(directory);
+
+      if (hasHead) {
+        // Use git ls-tree to list tracked files at this path
+        const gitPathArg = targetPath ? `HEAD:${targetPath}` : 'HEAD';
+        const { stdout } = await execFileAsync(
+          gitPath,
+          ['ls-tree', '--full-tree', '-l', gitPathArg],
+          { cwd: directory, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        // Parse ls-tree output (format: "mode type hash size\tname")
+        for (const line of stdout.trim().split('\n')) {
+          if (!line) continue;
+
+          const match = line.match(/^(\d+)\s+(blob|tree)\s+([a-f0-9]+)\s+(-|\d+)\s+(.+)$/);
+          if (!match) continue;
+
+          const [, , type, , sizeStr, name] = match;
+          const entryType = type === 'tree' ? 'directory' : 'file';
+          const size = sizeStr === '-' ? undefined : parseInt(sizeStr, 10);
+
+          trackedFiles.set(name, { type: entryType, size });
+        }
+      }
+
+      // Get untracked files (respecting .gitignore)
+      const gitLsArgs = ['ls-files', '--others', '--exclude-standard'];
+      if (targetPath) {
+        gitLsArgs.push(targetPath);
+      }
+
+      const { stdout: untrackedOutput } = await execFileAsync(
+        gitPath,
+        gitLsArgs,
+        { cwd: directory, maxBuffer: 10 * 1024 * 1024 }
+      );
+
+      // Add untracked files (but only those directly in this directory, not subdirectories)
+      for (const filepath of untrackedOutput.trim().split('\n')) {
+        if (!filepath) continue;
+
+        // Get the relative path from our target directory
+        const relPath = targetPath ? filepath.substring(targetPath.length + 1) : filepath;
+
+        // Skip if this file is in a subdirectory
+        if (relPath.includes('/')) continue;
+
+        // Get file stats for size
+        try {
+          const stats = await fs.stat(path.join(directory, filepath));
+          trackedFiles.set(relPath, {
+            type: stats.isDirectory() ? 'directory' : 'file',
+            size: stats.isFile() ? stats.size : undefined
+          });
+        } catch {
+          // Ignore stat errors
+        }
+      }
+    } catch (error) {
+      const err = error as Error;
+      logger.warn('git-diff', 'Failed to get git tracked files', { directory, relativePath: targetPath }, { error: err.message });
+      // Continue with filesystem listing
+    }
+
+    // Read directory from filesystem
+    const fsEntries = await fs.readdir(fullPath, { withFileTypes: true });
+
+    // Build entry list, combining git info with filesystem info
+    const entries: DirectoryEntry[] = [];
+
+    for (const dirent of fsEntries) {
+      // Skip .git directory
+      if (dirent.name === '.git') continue;
+
+      const entryPath = targetPath ? `${targetPath}/${dirent.name}` : dirent.name;
+      const entryFullPath = path.join(fullPath, dirent.name);
+
+      try {
+        const stats = await fs.stat(entryFullPath);
+        const gitInfo = trackedFiles.get(dirent.name);
+
+        // For files, check if binary
+        let isBinary: boolean | undefined = undefined;
+        if (dirent.isFile()) {
+          const buffer = await fs.readFile(entryFullPath);
+          const sampleSize = Math.min(buffer.length, 8192);
+          isBinary = buffer.slice(0, sampleSize).includes(0);
+        }
+
+        entries.push({
+          name: dirent.name,
+          type: dirent.isDirectory() ? 'directory' : 'file',
+          path: entryPath,
+          size: gitInfo?.size || (dirent.isFile() ? stats.size : undefined),
+          isBinary,
+        });
+      } catch (error) {
+        const err = error as Error;
+        logger.warn('git-diff', 'Failed to stat directory entry', { directory, entry: dirent.name }, { error: err.message });
+        // Skip entries we can't stat
+        continue;
+      }
+    }
+
+    // Sort: directories first, then files, alphabetically within each group
+    entries.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    const duration = Date.now() - startTime;
+    logger.debug(
+      'git-diff',
+      `Listed ${entries.length} entries (${duration}ms)`,
+      { directory, relativePath: targetPath }
+    );
+
+    return {
+      entries,
+      path: targetPath,
+    };
+  } catch (error) {
+    const err = error as Error;
+    const duration = Date.now() - startTime;
+    logger.error('git-diff', `Failed to list directory contents (${duration}ms)`, { directory, relativePath: targetPath }, { error: err.message });
+    throw new Error(`Failed to list directory contents: ${err.message}`);
+  }
+}
+
+/**
+ * Read file content from the working directory
+ * Similar to getFileDiff but only returns current content (no diff)
+ *
+ * @param directory - Repository working directory
+ * @param filepath - Relative path to file from repository root
+ * @returns FileContent with content and metadata
+ */
+export async function readFileContent(directory: string, filepath: string): Promise<FileContent> {
+  const startTime = Date.now();
+  logger.debug('git-diff', 'Reading file content', { directory, filepath });
+
+  // Validate path
+  validateFilepath(filepath);
+
+  // Return error for non-git directories
+  if (!await isGitRepo(directory)) {
+    logger.debug('git-diff', 'Not a git repository', { directory });
+    return {
+      content: '',
+      language: detectLanguage(filepath),
+      isBinary: false,
+      isTooLarge: false,
+      error: 'Not a git repository',
+    };
+  }
+
+  try {
+    const fullPath = path.join(directory, filepath);
+    const language = detectLanguage(filepath);
+
+    // Check if file exists
+    try {
+      await fs.access(fullPath);
+    } catch (error) {
+      const err = error as Error & { code?: string };
+      if (err.code === 'ENOENT') {
+        logger.warn('git-diff', 'File does not exist', { directory, filepath });
+        return {
+          content: '',
+          language,
+          isBinary: false,
+          isTooLarge: false,
+          error: 'File not found',
+        };
+      }
+      throw error;
+    }
+
+    // Check if file is too large
+    const stats = await fs.stat(fullPath);
+    if (stats.size > MAX_FILE_SIZE_BYTES) {
+      logger.warn('git-diff', 'File is too large to display', { directory, filepath, size: stats.size });
+      return {
+        content: '',
+        language,
+        isBinary: false,
+        isTooLarge: true,
+      };
+    }
+
+    // Read file content
+    const buffer = await fs.readFile(fullPath);
+
+    // Check if binary by looking for null bytes in first 8KB
+    const sampleSize = Math.min(buffer.length, 8192);
+    const isBinary = buffer.slice(0, sampleSize).includes(0);
+
+    if (isBinary) {
+      logger.debug('git-diff', 'File is binary', { directory, filepath });
+      return {
+        content: '',
+        language,
+        isBinary: true,
+        isTooLarge: false,
+      };
+    }
+
+    const content = buffer.toString('utf8');
+
+    const duration = Date.now() - startTime;
+    logger.debug(
+      'git-diff',
+      `Read file content (${duration}ms)`,
+      { directory, filepath },
+      { size: content.length }
+    );
+
+    return {
+      content,
+      language,
+      isBinary: false,
+      isTooLarge: false,
+    };
+  } catch (error) {
+    const err = error as Error & { code?: string };
+    const duration = Date.now() - startTime;
+
+    if (err.code === 'EACCES') {
+      logger.error('git-diff', 'Permission denied reading file', { directory, filepath });
+      return {
+        content: '',
+        language: detectLanguage(filepath),
+        isBinary: false,
+        isTooLarge: false,
+        error: 'Permission denied',
+      };
+    }
+
+    logger.error('git-diff', `Failed to read file content (${duration}ms)`, { directory, filepath }, { error: err.message });
+    return {
+      content: '',
+      language: detectLanguage(filepath),
+      isBinary: false,
+      isTooLarge: false,
+      error: `Failed to read file: ${err.message}`,
+    };
+  }
 }

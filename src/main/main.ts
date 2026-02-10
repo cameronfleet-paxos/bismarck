@@ -214,7 +214,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles, listDirectoryContents, readFileContent } from './git-diff'
 import {
   setAuthCheckerWindow,
   startToolAuthChecks,
@@ -889,6 +889,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('revert-all-files', async (_event, directory: string) => {
     return revertAllFiles(directory)
+  })
+
+  ipcMain.handle('list-directory-contents', async (_event, directory: string, relativePath?: string) => {
+    return listDirectoryContents(directory, relativePath)
+  })
+
+  ipcMain.handle('read-file-content', async (_event, directory: string, filepath: string) => {
+    return readFileContent(directory, filepath)
   })
 
   // Setup wizard

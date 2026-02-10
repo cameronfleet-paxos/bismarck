@@ -741,3 +741,27 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// Entry in a directory listing (file or directory)
+export interface DirectoryEntry {
+  name: string
+  type: 'file' | 'directory'
+  path: string
+  size?: number
+  isBinary?: boolean
+}
+
+// Result of listing directory contents
+export interface DirectoryListing {
+  entries: DirectoryEntry[]
+  path: string
+}
+
+// Content and metadata for reading a file
+export interface FileContent {
+  content: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  error?: string
+}
