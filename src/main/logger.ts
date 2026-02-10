@@ -24,6 +24,7 @@ export type LogCategory =
   | 'agent'
   | 'git'
   | 'git-diff'
+  | 'code-browser'
   | 'bd'
   | 'docker'
   | 'proxy'
@@ -43,6 +44,8 @@ export interface LogContext {
   directory?: string
   filepath?: string
   size?: number
+  ref?: string
+  limit?: number
 }
 
 // Debug settings cache
