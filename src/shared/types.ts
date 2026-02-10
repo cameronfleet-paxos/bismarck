@@ -741,3 +741,38 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// ============================================
+// File Browser Types
+// ============================================
+
+// Individual file or directory entry in the file browser
+export interface FileEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  isGitTracked?: boolean
+  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked'
+}
+
+// Complete file tree result with recursive structure
+export interface FileTreeResult {
+  entries: FileEntry[]
+  summary?: {
+    totalFiles: number
+    totalDirectories: number
+  }
+}
+
+// Content and metadata for viewing a specific file
+export interface FileContent {
+  content: string
+  path: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  size: number
+  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked'
+  error?: string
+}
