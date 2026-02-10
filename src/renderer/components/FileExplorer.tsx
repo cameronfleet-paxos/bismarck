@@ -9,9 +9,7 @@ import {
   FileJson,
   Image,
   Search,
-  X,
-  List,
-  FolderTree
+  X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DiffFile } from '@/shared/types'
@@ -24,8 +22,6 @@ interface FileExplorerProps {
   showChangedOnly?: boolean
   onToggleChangedOnly?: (value: boolean) => void
 }
-
-type ViewType = 'flat' | 'tree'
 
 // Tree node structure for building the file tree
 interface TreeNode {
@@ -312,7 +308,6 @@ export function FileExplorer({
   showChangedOnly = false,
   onToggleChangedOnly
 }: FileExplorerProps) {
-  const [viewType, setViewType] = useState<ViewType>('tree')
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set())
   const [treeInitialized, setTreeInitialized] = useState(false)
   const [allFiles, setAllFiles] = useState<string[]>([])
@@ -378,12 +373,12 @@ export function FileExplorer({
 
   // Auto-initialize tree when first loaded
   useEffect(() => {
-    if (viewType === 'tree' && !treeInitialized && displayFiles.length > 0) {
+    if (!treeInitialized && displayFiles.length > 0) {
       const allDirs = getAllDirPaths(tree)
       setExpandedDirs(new Set(allDirs))
       setTreeInitialized(true)
     }
-  }, [viewType, treeInitialized, displayFiles.length, tree])
+  }, [treeInitialized, displayFiles.length, tree])
 
   const toggleDir = (path: string) => {
     setExpandedDirs(prev => {
