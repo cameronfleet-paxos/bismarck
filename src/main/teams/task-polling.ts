@@ -4,6 +4,7 @@ import {
   getPlanById,
   loadTaskAssignments,
   saveTaskAssignment,
+  deleteTaskAssignment,
   getWorkspaces,
   getClaudeOAuthToken,
 } from '../config'
@@ -21,7 +22,7 @@ import { getAllRepositories, getRepositoryById } from '../repository-manager'
 import { startToolProxy, isProxyRunning } from '../tool-proxy'
 import { runSetupToken } from '../oauth-setup'
 import type { TaskAssignment } from '../../shared/types'
-import { getPollInterval, setPollInterval, getSyncInProgress, setSyncInProgress, getLastCycleCheckTime, setLastCycleCheckTime, POLL_INTERVAL_MS } from './state'
+import { getPollInterval, setPollInterval, getSyncInProgress, setSyncInProgress, getLastCycleCheckTime, setLastCycleCheckTime, POLL_INTERVAL_MS, isManagerRunning, isArchitectRunning, getStagnationTracker, setStagnationTracker, clearStagnationTracker, getLastPollSummaryTime, setLastPollSummaryTime, clearLastPollSummaryTime, type StagnationTracker } from './state'
 import { addPlanActivity, emitTaskAssignmentUpdate, emitBeadTasksUpdate, emitStateUpdate } from './events'
 import { getOriginalTaskIdFromLabels } from './helpers'
 import { canSpawnMoreAgents, getActiveTaskAgentCount, createTaskAgentWithWorktree } from './worktree-agents'
@@ -30,6 +31,8 @@ import { updatePlanStatuses } from './completion'
 import { getMainWindow } from './state'
 // Import headless functions
 import { startHeadlessTaskAgent, setupBdCloseListener } from '../headless/team-agents'
+import { spawnManager } from './manager'
+import { spawnArchitect } from './architect'
 
 /**
  * Start polling bd for task updates for a specific plan
@@ -49,11 +52,15 @@ export function startTaskPolling(planId: string): void {
 /**
  * Stop polling bd for task updates
  */
-export function stopTaskPolling(): void {
+export function stopTaskPolling(planId?: string): void {
   const interval = getPollInterval()
   if (interval) {
     clearInterval(interval)
     setPollInterval(null)
+  }
+  if (planId) {
+    clearStagnationTracker(planId)
+    clearLastPollSummaryTime(planId)
   }
 }
 
@@ -88,7 +95,7 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
   // Include ready_for_review to detect new follow-up tasks
   if (!activePlan || (activePlan.status !== 'delegating' && activePlan.status !== 'in_progress' && activePlan.status !== 'ready_for_review')) {
     logger.debug('plan', 'Plan no longer active, stopping polling', logCtx, { status: activePlan?.status })
-    stopTaskPolling()
+    stopTaskPolling(planId)
     return
   }
 
@@ -100,12 +107,14 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
     const closedTasks = await bdList(activePlan.id, { status: 'closed' })
     const closedTaskIds = new Set(closedTasks.map(t => t.id))
 
-    // Filter out tasks that still have open blockers
+    // Filter out tasks that still have open blockers, collecting deferred task info
+    const deferredTaskMap: Map<string, string[]> = new Map() // taskId -> open blocker IDs
     const dispatchableTasks = readyTasks.filter(task => {
       if (!task.blockedBy || task.blockedBy.length === 0) return true
       const openBlockers = task.blockedBy.filter(id => !closedTaskIds.has(id))
       if (openBlockers.length > 0) {
         logger.debug('plan', `Task ${task.id} has open blockers, deferring`, logCtx, { openBlockers })
+        deferredTaskMap.set(task.id, openBlockers)
         return false
       }
       return true
@@ -117,8 +126,78 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
       })
     }
 
-    // Periodic cycle detection (once per 60s)
+    // Stagnation detection: track deferred tasks across poll cycles
     const now = Date.now()
+    const currentDeferredIds = new Set(deferredTaskMap.keys())
+    const tracker = getStagnationTracker(activePlan.id)
+
+    if (currentDeferredIds.size > 0) {
+      if (tracker) {
+        // Check if the deferred set is identical to last cycle
+        const same = currentDeferredIds.size === tracker.deferredTaskIds.size &&
+          [...currentDeferredIds].every(id => tracker.deferredTaskIds.has(id))
+
+        if (same) {
+          const stuckDurationMs = now - tracker.unchangedSince
+          const STAGNATION_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+
+          if (stuckDurationMs >= STAGNATION_THRESHOLD_MS && !tracker.warningEmitted) {
+            // Build details for each stuck task
+            const details = [...deferredTaskMap.entries()]
+              .map(([taskId, blockers]) => `${taskId} blocked by [${blockers.join(', ')}]`)
+              .join('; ')
+            const stuckMinutes = Math.round(stuckDurationMs / 60_000)
+
+            logger.warn('plan', `Stagnation detected: ${currentDeferredIds.size} task(s) blocked for ${stuckMinutes}m`, logCtx, {
+              deferredTaskIds: [...currentDeferredIds],
+              blockerDetails: Object.fromEntries(deferredTaskMap),
+            })
+            addPlanActivity(
+              activePlan.id,
+              'warning',
+              `${currentDeferredIds.size} task(s) stuck for ${stuckMinutes}+ minutes`,
+              details
+            )
+            tracker.warningEmitted = true
+            setStagnationTracker(activePlan.id, tracker)
+          }
+        } else {
+          // Deferred set changed — reset tracker
+          setStagnationTracker(activePlan.id, {
+            deferredTaskIds: currentDeferredIds,
+            unchangedSince: now,
+            warningEmitted: false,
+          })
+        }
+      } else {
+        // First observation of deferred tasks
+        setStagnationTracker(activePlan.id, {
+          deferredTaskIds: currentDeferredIds,
+          unchangedSince: now,
+          warningEmitted: false,
+        })
+      }
+    } else if (tracker) {
+      // No deferred tasks — clear tracker
+      clearStagnationTracker(activePlan.id)
+    }
+
+    // Poll cycle summary log (every 30 seconds)
+    const lastSummaryTime = getLastPollSummaryTime(activePlan.id)
+    if (now - lastSummaryTime >= 30_000) {
+      const activeAgentCount = getActiveTaskAgentCount(activePlan.id)
+      logger.info('plan', 'Poll cycle summary', logCtx, {
+        totalReady: readyTasks.length,
+        dispatchable: dispatchableTasks.length,
+        deferred: deferredTaskMap.size,
+        closed: closedTasks.length,
+        activeAgents: activeAgentCount,
+        ...(deferredTaskMap.size > 0 ? { deferredTaskIds: [...deferredTaskMap.keys()] } : {}),
+      })
+      setLastPollSummaryTime(activePlan.id, now)
+    }
+
+    // Periodic cycle detection (once per 60s)
     if (!getLastCycleCheckTime() || now - getLastCycleCheckTime()! > 60_000) {
       setLastCycleCheckTime(now)
       try {
@@ -128,14 +207,19 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
           addPlanActivity(activePlan.id, 'warning', 'Dependency cycle detected',
             `${cycles.length} cycle(s) found - tasks may be permanently blocked`)
         }
-      } catch {
-        // Non-critical, swallow
+      } catch (err) {
+        logger.debug('plan', 'Cycle detection failed (non-critical)', logCtx, {
+          error: err instanceof Error ? err.message : 'Unknown error',
+        })
       }
     }
 
-    for (const task of dispatchableTasks) {
-      await processReadyTask(activePlan.id, task)
-    }
+    // Dispatch tasks concurrently - processReadyTask checks canSpawnMoreAgents()
+    // and existing assignments internally, so concurrent dispatch is safe.
+    // Note: slight over-spawning is possible if multiple tasks pass the check
+    // before any worktree is created, but withPlanLock serializes worktree
+    // additions and the count will be accurate on the next poll cycle.
+    await Promise.allSettled(dispatchableTasks.map(task => processReadyTask(activePlan.id, task)))
 
     // Check for completed tasks and update assignments
     const allAssignments = loadTaskAssignments(activePlan.id)
@@ -163,13 +247,53 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
       }
     }
 
+    // Recover stale pending assignments (safety net for missed cleanup)
+    const STALE_ASSIGNMENT_THRESHOLD_MS = 2 * 60 * 1000 // 2 minutes
+    for (const assignment of allAssignments) {
+      if (assignment.status === 'pending') {
+        const assignedAt = new Date(assignment.assignedAt).getTime()
+        if (now - assignedAt > STALE_ASSIGNMENT_THRESHOLD_MS) {
+          // Check if there's actually an active agent for this task
+          const hasAgent = assignment.agentId && getWorkspaces().some(a => a.id === assignment.agentId)
+          if (!hasAgent) {
+            logger.info('plan', `Recovered stale pending assignment for ${assignment.beadId}`, logCtx, {
+              assignedAt: assignment.assignedAt,
+              ageMs: now - assignedAt,
+            })
+            deleteTaskAssignment(activePlan.id, assignment.beadId)
+          }
+        }
+      }
+    }
+
     // Update plan statuses based on task completion
     await updatePlanStatuses()
+
+    // Bottom-up mode: detect needs-triage and needs-architect tasks
+    if (activePlan.teamMode === 'bottom-up') {
+      try {
+        const triageTasks = await bdList(activePlan.id, { labels: ['needs-triage'], status: 'open' })
+        if (triageTasks.length > 0 && !isManagerRunning(activePlan.id)) {
+          await spawnManager(activePlan.id, triageTasks)
+        }
+
+        const architectTasks = await bdList(activePlan.id, { labels: ['needs-architect'], status: 'open' })
+        if (architectTasks.length > 0 && !isArchitectRunning(activePlan.id)) {
+          await spawnArchitect(activePlan.id, architectTasks)
+        }
+      } catch (error) {
+        logger.warn('plan', 'Error checking bottom-up tasks', logCtx, {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
 
     // Notify renderer about task changes so UI can refresh
     emitBeadTasksUpdate(activePlan.id)
   } catch (error) {
-    console.error('Error syncing tasks from bd:', error)
+    logger.error('plan', 'Error syncing tasks from bd', logCtx, {
+      error: error instanceof Error ? error.message : String(error),
+    })
     addPlanActivity(
       activePlan.id,
       'error',
@@ -375,6 +499,8 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
   if (!result) {
     logger.error('task', 'Failed to create task agent with worktree', logCtx)
     addPlanActivity(planId, 'error', `Failed to create task agent for ${task.id}`)
+    deleteTaskAssignment(planId, task.id)
+    logger.warn('task', 'Cleaned up stale assignment after worktree creation failure', logCtx)
     return
   }
 
@@ -461,6 +587,8 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
         `Failed to start headless agent for ${task.id}`,
         error instanceof Error ? error.message : 'Unknown error'
       )
+      deleteTaskAssignment(planId, task.id)
+      logger.warn('task', 'Cleaned up stale assignment after headless agent startup failure', logCtx)
     }
 }
 
