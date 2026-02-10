@@ -259,12 +259,12 @@ export async function getCommitLog(
       throw new Error(`Reference '${branch}' not found in repository`);
     }
 
-    // Format: sha|shortSha|message|author|timestamp
+    // Format: sha|shortSha|message|author|authorEmail|timestamp
     const { stdout } = await execFileAsync(
       gitPath,
       [
         'log',
-        `--format=%H|%h|%s|%an|%aI`,
+        `--format=%H|%h|%s|%an|%ae|%aI`,
         `-n${limit}`,
         branch,
       ],
@@ -276,14 +276,15 @@ export async function getCommitLog(
       if (!line) continue;
 
       const parts = line.split('|');
-      if (parts.length < 5) continue;
+      if (parts.length < 6) continue;
 
       commits.push({
         sha: parts[0],
         shortSha: parts[1],
         message: parts[2],
         author: parts[3],
-        timestamp: parts[4],
+        authorEmail: parts[4],
+        timestamp: parts[5],
       });
     }
 
@@ -340,19 +341,21 @@ export async function getBranches(directory: string): Promise<GitBranch[]> {
       const name = parts[0];
       const shortSha = parts[1];
       const date = parts[2];
-      const isCurrent = parts[3] === '*';
+      const isHead = parts[3] === '*';
 
       // Skip remote HEAD pointers (e.g., origin/HEAD -> origin/main)
       if (name.includes('->')) continue;
 
       const isRemote = name.startsWith('remotes/');
+      const isLocal = !isRemote;
 
       branches.push({
         name: isRemote ? name.replace('remotes/', '') : name,
         shortSha,
         date,
+        isLocal,
         isRemote,
-        isCurrent,
+        isHead,
       });
     }
 
