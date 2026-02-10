@@ -217,7 +217,13 @@ export interface ElectronAPI {
 
   // Playbox settings
   updatePlayboxSettings: (settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }) => Promise<void>
-  getPlayboxSettings: () => Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }>
+  getPlayboxSettings: () => Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null; personaPresets: Array<{ id: string; name: string; prompt: string }> }>
+
+  // Persona preset management
+  getPersonaPresets: () => Promise<Array<{ id: string; name: string; prompt: string }>>
+  addPersonaPreset: (preset: { name: string; prompt: string }) => Promise<{ id: string; name: string; prompt: string }>
+  updatePersonaPreset: (id: string, updates: { name?: string; prompt?: string }) => Promise<{ id: string; name: string; prompt: string } | undefined>
+  deletePersonaPreset: (id: string) => Promise<boolean>
 
   // Debug settings
   getDebugSettings: () => Promise<{ enabled: boolean; logPath: string }>

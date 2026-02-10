@@ -76,6 +76,7 @@ export interface AppSettings {
   playbox: {
     personaMode: 'none' | 'bismarck' | 'otto' | 'custom'  // Persona mode for interactive Claude sessions
     customPersonaPrompt: string | null  // User-defined prompt when personaMode === 'custom'
+    personaPresets: PersonaPresetData[]  // Saved custom persona prompts
   }
   updates: {
     autoCheck: boolean          // Whether to automatically check for updates
@@ -98,6 +99,15 @@ export interface AppSettings {
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
+}
+
+/**
+ * Persona preset data stored in settings
+ */
+export interface PersonaPresetData {
+  id: string
+  name: string
+  prompt: string
 }
 
 /**
@@ -202,6 +212,7 @@ export function getDefaultSettings(): AppSettings {
     playbox: {
       personaMode: 'none',
       customPersonaPrompt: null,
+      personaPresets: [],
     },
     updates: {
       autoCheck: true,
@@ -912,6 +923,85 @@ export async function updatePlayboxSettings(playboxSettings: Partial<AppSettings
 export async function getPlayboxSettings(): Promise<AppSettings['playbox']> {
   const settings = await loadSettings()
   return settings.playbox
+}
+
+/**
+ * Get persona presets
+ */
+export async function getPersonaPresets(): Promise<PersonaPresetData[]> {
+  const settings = await loadSettings()
+  return settings.playbox?.personaPresets || []
+}
+
+/**
+ * Add a persona preset
+ */
+export async function addPersonaPreset(preset: Omit<PersonaPresetData, 'id'>): Promise<PersonaPresetData> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const newPreset: PersonaPresetData = {
+    id: `persona-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    ...preset,
+  }
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    personaPresets: [...(settings.playbox?.personaPresets || []), newPreset],
+  }
+  await saveSettings(settings)
+  return newPreset
+}
+
+/**
+ * Update a persona preset
+ */
+export async function updatePersonaPreset(
+  id: string,
+  updates: Partial<Omit<PersonaPresetData, 'id'>>
+): Promise<PersonaPresetData | undefined> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.playbox?.personaPresets || []
+  const index = presets.findIndex((p) => p.id === id)
+
+  if (index === -1) {
+    return undefined
+  }
+
+  presets[index] = {
+    ...presets[index],
+    ...updates,
+  }
+
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    personaPresets: presets,
+  }
+
+  await saveSettings(settings)
+  return presets[index]
+}
+
+/**
+ * Delete a persona preset
+ */
+export async function deletePersonaPreset(id: string): Promise<boolean> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.playbox?.personaPresets || []
+  const initialLength = presets.length
+  const filtered = presets.filter((p) => p.id !== id)
+
+  if (filtered.length === initialLength) {
+    return false
+  }
+
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    personaPresets: filtered,
+  }
+
+  await saveSettings(settings)
+  return true
 }
 
 /**

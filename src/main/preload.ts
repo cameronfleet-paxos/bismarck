@@ -448,8 +448,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Playbox settings
   updatePlayboxSettings: (settings: { personaMode?: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt?: string | null }): Promise<void> =>
     ipcRenderer.invoke('update-playbox-settings', settings),
-  getPlayboxSettings: (): Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }> =>
+  getPlayboxSettings: (): Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null; personaPresets: Array<{ id: string; name: string; prompt: string }> }> =>
     ipcRenderer.invoke('get-playbox-settings'),
+
+  // Persona preset management
+  getPersonaPresets: (): Promise<Array<{ id: string; name: string; prompt: string }>> =>
+    ipcRenderer.invoke('get-persona-presets'),
+  addPersonaPreset: (preset: { name: string; prompt: string }): Promise<{ id: string; name: string; prompt: string }> =>
+    ipcRenderer.invoke('add-persona-preset', preset),
+  updatePersonaPreset: (id: string, updates: { name?: string; prompt?: string }): Promise<{ id: string; name: string; prompt: string } | undefined> =>
+    ipcRenderer.invoke('update-persona-preset', id, updates),
+  deletePersonaPreset: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-persona-preset', id),
 
   // Ralph Loop preset management
   getRalphLoopPresets: (): Promise<Array<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>> =>

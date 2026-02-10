@@ -148,6 +148,10 @@ import {
   setGitHubToken,
   checkGitHubTokenScopes,
   updatePlayboxSettings,
+  getPersonaPresets,
+  addPersonaPreset,
+  updatePersonaPreset,
+  deletePersonaPreset,
   loadSettings,
   getRalphLoopPresets,
   addRalphLoopPreset,
@@ -1130,6 +1134,23 @@ function registerIpcHandlers() {
   ipcMain.handle('get-playbox-settings', async () => {
     const appSettings = await loadSettings()
     return appSettings.playbox
+  })
+
+  // Persona preset management
+  ipcMain.handle('get-persona-presets', async () => {
+    return getPersonaPresets()
+  })
+
+  ipcMain.handle('add-persona-preset', async (_event, preset: { name: string; prompt: string }) => {
+    return addPersonaPreset(preset)
+  })
+
+  ipcMain.handle('update-persona-preset', async (_event, id: string, updates: { name?: string; prompt?: string }) => {
+    return updatePersonaPreset(id, updates)
+  })
+
+  ipcMain.handle('delete-persona-preset', async (_event, id: string) => {
+    return deletePersonaPreset(id)
   })
 
   // Ralph Loop preset management
