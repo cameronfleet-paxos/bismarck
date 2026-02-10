@@ -781,6 +781,13 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
   // Ensure beads repo exists for this plan (creates ~/.bismarck/plans/{plan_id}/)
   const planDir = await ensureBeadsRepo(plan.id)
 
+  // Create gate task for planner/orchestrator synchronization
+  const gateTaskId = await bdCreate(plan.id, {
+    title: 'Planning complete',
+    labels: ['bismarck-gate'],
+  })
+  logger.info('plan', `Created gate task: ${gateTaskId}`, logCtx)
+
   // Update plan with reference agent and set status to delegating
   plan.referenceAgentId = referenceAgentId
   plan.status = 'delegating'
@@ -817,7 +824,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       // Pass --add-dir flag so orchestrator has permission to access plan directory without prompts
       // Pass --allowedTools to pre-approve bd commands so agent doesn't need interactive approval
       const claudeFlags = `--add-dir "${planDir}" --allowedTools "Bash(bd --sandbox *),Bash(bd *)"`
-      const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents)
+      const orchestratorPrompt = await buildOrchestratorPrompt(plan, allAgents, gateTaskId)
       devLog(`[PlanManager] Creating terminal for orchestrator ${orchestratorWorkspace.id}`)
       const orchestratorTerminalId = await queueTerminalCreation(orchestratorWorkspace.id, mainWindow, {
         initialPrompt: orchestratorPrompt,
@@ -860,7 +867,7 @@ export async function executePlan(planId: string, referenceAgentId: string): Pro
       const repository = referenceWorkspace.repositoryId
         ? await getRepositoryById(referenceWorkspace.repositoryId)
         : await getRepositoryByPath(referenceWorkspace.directory)
-      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository)
+      const planAgentPrompt = await buildPlanAgentPrompt(plan, allAgents, referenceWorkspace.directory, repository, gateTaskId)
       devLog(`[PlanManager] Creating terminal for plan agent ${planAgentWorkspace.id}`)
       const planAgentTerminalId = await queueTerminalCreation(planAgentWorkspace.id, mainWindow, {
         initialPrompt: planAgentPrompt,
@@ -1717,7 +1724,7 @@ async function processReadyTask(planId: string, task: BeadTask): Promise<void> {
  * Returns only instructions with trailing newline (no /clear - handled separately)
  * Note: Orchestrator runs in the plan directory, so no 'cd' needed for bd commands
  */
-async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<string> {
+async function buildOrchestratorPrompt(plan: Plan, agents: Agent[], gateTaskId: string): Promise<string> {
   // Get repositories from agents that have them
   const repositories = await getAllRepositories()
 
@@ -1753,6 +1760,7 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
     referenceRepoName: referenceRepo?.name || repositories[0]?.name || 'unknown',
     referenceRepoPath: referenceRepo?.rootPath || '',
     referenceAgentName: referenceAgent?.name || 'unknown',
+    gateTaskId,
   }
 
   return buildPrompt('orchestrator', variables)
@@ -1772,7 +1780,7 @@ async function buildOrchestratorPrompt(plan: Plan, agents: Agent[]): Promise<str
  * - Assigning tasks to agents
  * - Marking tasks as ready
  */
-async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string, repository?: Repository): Promise<string> {
+async function buildPlanAgentPrompt(plan: Plan, _agents: Agent[], codebasePath: string, repository: Repository | undefined, gateTaskId: string): Promise<string> {
   const planDir = getPlanDir(plan.id)
 
   // Include discussion context if a discussion was completed
@@ -1828,6 +1836,7 @@ Example dependency setup:
     codebasePath,
     discussionContext,
     featureBranchGuidance,
+    gateTaskId,
   }
 
   return buildPrompt('planner', variables)
@@ -2174,7 +2183,26 @@ async function startHeadlessTaskAgent(
         // Fix-up completed → re-trigger critic on original task
         const originalTaskId = getOriginalTaskIdFromLabels(task)
         if (originalTaskId && criticEnabled && maxIterations > 0) {
-          await spawnCriticAgent(planId, originalTaskId)
+          // Check if limits already reached - avoid spawning a critic that would auto-approve
+          const activePlan = getPlanById(planId)
+          const wt = activePlan?.worktrees?.find(w => w.taskId === originalTaskId)
+          const iteration = wt?.criticIteration ?? 0
+          const maxFixups = settings.critic?.maxFixupsPerTask ?? 5
+          const totalFixups = wt?.totalFixupCount ?? 0
+
+          if (iteration >= maxIterations || totalFixups >= maxFixups) {
+            logger.info('plan', 'Skipping critic - limits reached', { planId, taskId: task.id },
+              { iteration, maxIterations, totalFixups, maxFixups })
+            addPlanActivity(planId, 'info', `Auto-approving ${originalTaskId} (limits reached)`)
+            if (wt) {
+              wt.criticStatus = 'approved'
+              await savePlan(activePlan!)
+              emitPlanUpdate(activePlan!)
+            }
+            await markWorktreeReadyForReview(planId, originalTaskId)
+          } else {
+            await spawnCriticAgent(planId, originalTaskId)
+          }
         } else {
           await markWorktreeReadyForReview(planId, task.id)
         }
@@ -3137,7 +3165,7 @@ async function spawnCriticAgent(planId: string, originalTaskId: string): Promise
   }
 
   // Update worktree state
-  worktree.criticIteration = currentIteration
+  worktree.criticIteration = currentIteration + 1
   worktree.criticStatus = 'reviewing'
 
   // Create critic beads task
@@ -3400,9 +3428,28 @@ async function handleCriticCompletion(planId: string, criticTask: BeadTask): Pro
   )
 
   if (fixupTasks.length > 0) {
+    // Track cumulative fixup count
+    const previousFixups = worktree.totalFixupCount ?? 0
+    worktree.totalFixupCount = previousFixups + fixupTasks.length
+
+    // Check fixup cap
+    const settings = await loadSettings()
+    const maxFixups = settings.critic?.maxFixupsPerTask ?? 5
+    if (worktree.totalFixupCount >= maxFixups) {
+      logger.info('plan', 'Max fixups reached, auto-approving', logCtx,
+        { totalFixups: worktree.totalFixupCount, maxFixups })
+      addPlanActivity(planId, 'info',
+        `Max fixups (${maxFixups}) reached for ${originalTaskId}, auto-approving`)
+      worktree.criticStatus = 'approved'
+      await savePlan(plan)
+      emitPlanUpdate(plan)
+      await markWorktreeReadyForReview(planId, originalTaskId)
+      return
+    }
+
     // Critic rejected - fix-ups exist
     worktree.criticStatus = 'rejected'
-    addPlanActivity(planId, 'warning', `Critic rejected ${originalTaskId}`, `${fixupTasks.length} fix-up task(s) created`)
+    addPlanActivity(planId, 'warning', `Critic rejected ${originalTaskId}`, `${fixupTasks.length} fix-up task(s) created (${worktree.totalFixupCount} total)`)
 
     // Add fix-up tasks as blockers for dependents (so dependents stay blocked until fix-ups complete AND next critic approves)
     const dependentTaskIds = await bdGetDependents(planId, originalTaskId)

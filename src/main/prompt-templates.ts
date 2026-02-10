@@ -39,6 +39,9 @@ export interface PromptVariables {
   // Feature branch mode variables
   featureBranchGuidance?: string
 
+  // Gate task for planner/orchestrator sync
+  gateTaskId?: string
+
   // Task variables
   taskId?: string
   taskTitle?: string
@@ -221,9 +224,18 @@ Find dependents (what this task blocks):
   bd --sandbox dep list <task-id> --direction=up
 
 === WORKFLOW ===
-Phase 1 - Initial Setup (after Planner exits):
+Phase 0 - Wait for Planner (REQUIRED):
+The Planner will close gate task {{gateTaskId}} when all tasks and dependencies are ready.
+
+1. bd --sandbox show {{gateTaskId}} --json
+2. If status is "open": sleep 30, then repeat step 1
+3. If status is "closed": Proceed to Phase 1
+
+DO NOT proceed to Phase 1 until the gate task is closed.
+
+Phase 1 - Initial Setup:
 1. List all tasks: bd --sandbox list --json
-2. For each task:
+2. For each task (skip the gate task {{gateTaskId}}):
    a. Decide which repository it belongs to
    b. Assign repo and worktree labels
 3. Mark first task(s) (those with no blockers) as ready
@@ -243,7 +255,7 @@ Loop every 2 minutes:
 7. Report: "Monitoring... X in progress, Y waiting"
 8. Repeat from step 1
 
-Begin by waiting for Planner to create tasks, then start Phase 1.`,
+Begin with Phase 0 - poll the gate task until the Planner signals it is done.`,
 
   planner: `[BISMARCK PLANNER]
 Plan ID: {{planId}}
@@ -312,7 +324,14 @@ Now create tasks with the context you've gathered:
 **Step 4: Review and Confirm**
 Summarize your plan and ask if the user wants any changes.
 
-Once you've created all tasks and dependencies, let the user know:
+**Final Step: Signal Planning Complete**
+After ALL tasks and dependencies are created and verified:
+  bd --sandbox close {{gateTaskId}} --reason "All tasks and dependencies created"
+
+CRITICAL: Only close this after ALL tasks exist and ALL dependencies are set up.
+The Orchestrator is waiting for this signal before it starts assigning work.
+
+Once you've closed the gate task and confirmed everything, let the user know:
 "Plan complete! Need to add tasks, change dependencies, or modify anything? Just ask."`,
 
   task: `[BISMARCK TASK AGENT]
@@ -692,9 +711,9 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'discussion':
       return ['planTitle', 'planDescription', 'codebasePath', 'planDir']
     case 'orchestrator':
-      return ['planId', 'planTitle', 'repoList', 'maxParallel', 'referenceRepoName', 'referenceRepoPath', 'referenceAgentName']
+      return ['planId', 'planTitle', 'repoList', 'maxParallel', 'referenceRepoName', 'referenceRepoPath', 'referenceAgentName', 'gateTaskId']
     case 'planner':
-      return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance']
+      return ['planId', 'planTitle', 'planDescription', 'planDir', 'codebasePath', 'discussionContext', 'featureBranchGuidance', 'gateTaskId']
     case 'task':
       return ['taskId', 'taskTitle', 'baseBranch', 'planDir', 'completionInstructions', 'gitCommands', 'completionCriteria', 'guidance']
     case 'standalone_headless':

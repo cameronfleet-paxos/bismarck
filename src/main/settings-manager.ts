@@ -91,6 +91,7 @@ export interface AppSettings {
   critic: {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
+    maxFixupsPerTask: number      // Maximum cumulative fix-up tasks per worktree
   }
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
@@ -214,6 +215,7 @@ export function getDefaultSettings(): AppSettings {
     critic: {
       enabled: true,
       maxIterations: 2,
+      maxFixupsPerTask: 5,
     },
     _internal: {
       lastLogPurgeVersion: null,

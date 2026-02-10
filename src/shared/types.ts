@@ -292,6 +292,7 @@ export interface PlanWorktree {
   criticIteration?: number                                    // Current review iteration (0-based)
   criticStatus?: 'pending' | 'reviewing' | 'approved' | 'rejected'
   criticTaskId?: string                                       // Current critic task ID in beads
+  totalFixupCount?: number                                     // Cumulative fix-up tasks across all critic iterations
 }
 
 // Plan definition for team mode coordination
