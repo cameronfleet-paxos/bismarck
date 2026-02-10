@@ -160,7 +160,7 @@ export async function getFileContent(
           {
             cwd: directory,
             maxBuffer: 10 * 1024 * 1024,
-            encoding: 'buffer',
+            encoding: null,
           }
         );
         buffer = stdout as Buffer;
