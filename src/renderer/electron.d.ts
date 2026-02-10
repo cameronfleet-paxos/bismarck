@@ -126,6 +126,12 @@ export interface ElectronAPI {
   getAllRalphLoops: () => Promise<RalphLoopState[]>
   cleanupRalphLoop: (loopId: string) => Promise<void>
 
+  // Saved personas
+  getSavedPersonas: () => Promise<Array<{ id: string; name: string; prompt: string }>>
+  addSavedPersona: (persona: { name: string; prompt: string }) => Promise<{ id: string; name: string; prompt: string }>
+  updateSavedPersona: (id: string, updates: { name?: string; prompt?: string }) => Promise<{ id: string; name: string; prompt: string } | undefined>
+  deleteSavedPersona: (id: string) => Promise<boolean>
+
   // Ralph Loop presets
   getRalphLoopPresets: () => Promise<Array<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>>
   addRalphLoopPreset: (preset: { label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>

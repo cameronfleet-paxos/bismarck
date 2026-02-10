@@ -1,9 +1,23 @@
 import { useState, useEffect } from 'react'
-import { Check, Sparkles, Dog, User, Pencil } from 'lucide-react'
+import { Check, Sparkles, Dog, User, Pencil, Trash2, Save, FolderOpen } from 'lucide-react'
+import { Button } from '@/renderer/components/ui/button'
+import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Textarea } from '@/renderer/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/renderer/components/ui/dialog'
 
 type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
+
+interface SavedPersona {
+  id: string
+  name: string
+  prompt: string
+}
 
 interface PlayboxSettingsProps {
   onSettingsChange: () => void
@@ -12,15 +26,23 @@ interface PlayboxSettingsProps {
 export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
   const [personaMode, setPersonaMode] = useState<PersonaMode>('none')
   const [customPersonaPrompt, setCustomPersonaPrompt] = useState<string>('')
+  const [savedPersonas, setSavedPersonas] = useState<SavedPersona[]>([])
   const [loading, setLoading] = useState(true)
   const [showSaved, setShowSaved] = useState(false)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [savePersonaName, setSavePersonaName] = useState('')
+  const [editingPersona, setEditingPersona] = useState<SavedPersona | null>(null)
 
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const playbox = await window.electronAPI.getPlayboxSettings()
+        const [playbox, personas] = await Promise.all([
+          window.electronAPI.getPlayboxSettings(),
+          window.electronAPI.getSavedPersonas(),
+        ])
         setPersonaMode(playbox.personaMode)
         setCustomPersonaPrompt(playbox.customPersonaPrompt || '')
+        setSavedPersonas(personas)
       } catch (error) {
         console.error('Failed to load playbox settings:', error)
       } finally {
@@ -31,13 +53,17 @@ export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
     loadSettings()
   }, [])
 
+  const showSavedIndicator = () => {
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
+  }
+
   const handlePersonaModeChange = async (mode: PersonaMode) => {
     try {
       await window.electronAPI.updatePlayboxSettings({ personaMode: mode })
       setPersonaMode(mode)
       onSettingsChange()
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
+      showSavedIndicator()
     } catch (error) {
       console.error('Failed to update persona mode:', error)
     }
@@ -47,11 +73,78 @@ export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
     try {
       await window.electronAPI.updatePlayboxSettings({ customPersonaPrompt })
       onSettingsChange()
-      setShowSaved(true)
-      setTimeout(() => setShowSaved(false), 2000)
+      showSavedIndicator()
     } catch (error) {
       console.error('Failed to save custom persona prompt:', error)
     }
+  }
+
+  const loadPersonas = async () => {
+    try {
+      const personas = await window.electronAPI.getSavedPersonas()
+      setSavedPersonas(personas)
+    } catch (error) {
+      console.error('Failed to load saved personas:', error)
+    }
+  }
+
+  const handleSavePersona = async () => {
+    if (!savePersonaName.trim() || !customPersonaPrompt.trim()) return
+
+    try {
+      if (editingPersona) {
+        await window.electronAPI.updateSavedPersona(editingPersona.id, {
+          name: savePersonaName.trim(),
+          prompt: customPersonaPrompt,
+        })
+      } else {
+        await window.electronAPI.addSavedPersona({
+          name: savePersonaName.trim(),
+          prompt: customPersonaPrompt,
+        })
+      }
+      await loadPersonas()
+      onSettingsChange()
+      showSavedIndicator()
+      setSaveDialogOpen(false)
+      setSavePersonaName('')
+      setEditingPersona(null)
+    } catch (error) {
+      console.error('Failed to save persona:', error)
+    }
+  }
+
+  const handleLoadPersona = async (persona: SavedPersona) => {
+    setCustomPersonaPrompt(persona.prompt)
+    try {
+      await window.electronAPI.updatePlayboxSettings({ customPersonaPrompt: persona.prompt })
+      onSettingsChange()
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to load persona:', error)
+    }
+  }
+
+  const handleDeletePersona = async (id: string) => {
+    try {
+      await window.electronAPI.deleteSavedPersona(id)
+      await loadPersonas()
+      onSettingsChange()
+      showSavedIndicator()
+    } catch (error) {
+      console.error('Failed to delete persona:', error)
+    }
+  }
+
+  const openSaveDialog = (persona?: SavedPersona) => {
+    if (persona) {
+      setEditingPersona(persona)
+      setSavePersonaName(persona.name)
+    } else {
+      setEditingPersona(null)
+      setSavePersonaName('')
+    }
+    setSaveDialogOpen(true)
   }
 
   if (loading) {
@@ -196,7 +289,7 @@ export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
 
         {/* Custom Persona Editor */}
         {personaMode === 'custom' && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
               <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">
                 Custom persona active
@@ -207,7 +300,19 @@ export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="customPrompt">Custom Persona Prompt</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="customPrompt">Custom Persona Prompt</Label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openSaveDialog()}
+                  disabled={!customPersonaPrompt.trim()}
+                  title="Save current prompt as a persona"
+                >
+                  <Save className="h-3.5 w-3.5 mr-1" />
+                  Save as Persona
+                </Button>
+              </div>
               <Textarea
                 id="customPrompt"
                 value={customPersonaPrompt}
@@ -220,9 +325,92 @@ export function PlayboxSettings({ onSettingsChange }: PlayboxSettingsProps) {
                 Changes are saved automatically when you click outside the text area.
               </p>
             </div>
+
+            {/* Saved Personas */}
+            {savedPersonas.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Saved Personas</Label>
+                <div className="space-y-2">
+                  {savedPersonas.map((persona) => (
+                    <div
+                      key={persona.id}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{persona.name}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {persona.prompt.slice(0, 100)}{persona.prompt.length > 100 ? '...' : ''}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 ml-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleLoadPersona(persona)}
+                          title="Load this persona"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openSaveDialog(persona)}
+                          title="Edit persona name"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeletePersona(persona.id)}
+                          className="text-destructive hover:text-destructive"
+                          title="Delete persona"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Save Persona Dialog */}
+      <Dialog open={saveDialogOpen} onOpenChange={(open) => !open && setSaveDialogOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingPersona ? 'Edit Persona' : 'Save Persona'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="persona-name">Name</Label>
+              <Input
+                id="persona-name"
+                value={savePersonaName}
+                onChange={(e) => setSavePersonaName(e.target.value)}
+                placeholder="e.g., Wise Wizard, Pirate Captain"
+                onKeyDown={(e) => e.key === 'Enter' && handleSavePersona()}
+              />
+            </div>
+            {!editingPersona && (
+              <p className="text-xs text-muted-foreground">
+                The current custom prompt will be saved with this name.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setSaveDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSavePersona} disabled={!savePersonaName.trim()}>
+                {editingPersona ? 'Update' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

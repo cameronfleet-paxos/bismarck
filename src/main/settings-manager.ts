@@ -74,6 +74,7 @@ export interface AppSettings {
   playbox: {
     personaMode: 'none' | 'bismarck' | 'otto' | 'custom'  // Persona mode for interactive Claude sessions
     customPersonaPrompt: string | null  // User-defined prompt when personaMode === 'custom'
+    savedPersonas: SavedPersona[]  // User-saved custom personas
   }
   updates: {
     autoCheck: boolean          // Whether to automatically check for updates
@@ -96,6 +97,15 @@ export interface AppSettings {
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
+}
+
+/**
+ * Saved custom persona stored in settings
+ */
+export interface SavedPersona {
+  id: string
+  name: string
+  prompt: string
 }
 
 /**
@@ -198,6 +208,7 @@ export function getDefaultSettings(): AppSettings {
     playbox: {
       personaMode: 'none',
       customPersonaPrompt: null,
+      savedPersonas: [],
     },
     updates: {
       autoCheck: true,
@@ -908,6 +919,85 @@ export async function updatePlayboxSettings(playboxSettings: Partial<AppSettings
 export async function getPlayboxSettings(): Promise<AppSettings['playbox']> {
   const settings = await loadSettings()
   return settings.playbox
+}
+
+/**
+ * Get saved custom personas
+ */
+export async function getSavedPersonas(): Promise<SavedPersona[]> {
+  const settings = await loadSettings()
+  return settings.playbox?.savedPersonas || []
+}
+
+/**
+ * Add a saved custom persona
+ */
+export async function addSavedPersona(persona: Omit<SavedPersona, 'id'>): Promise<SavedPersona> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const newPersona: SavedPersona = {
+    id: `persona-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    ...persona,
+  }
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    savedPersonas: [...(settings.playbox?.savedPersonas || []), newPersona],
+  }
+  await saveSettings(settings)
+  return newPersona
+}
+
+/**
+ * Update a saved custom persona
+ */
+export async function updateSavedPersona(
+  id: string,
+  updates: Partial<Omit<SavedPersona, 'id'>>
+): Promise<SavedPersona | undefined> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const personas = settings.playbox?.savedPersonas || []
+  const index = personas.findIndex((p) => p.id === id)
+
+  if (index === -1) {
+    return undefined
+  }
+
+  personas[index] = {
+    ...personas[index],
+    ...updates,
+  }
+
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    savedPersonas: personas,
+  }
+
+  await saveSettings(settings)
+  return personas[index]
+}
+
+/**
+ * Delete a saved custom persona
+ */
+export async function deleteSavedPersona(id: string): Promise<boolean> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const personas = settings.playbox?.savedPersonas || []
+  const initialLength = personas.length
+  const filtered = personas.filter((p) => p.id !== id)
+
+  if (filtered.length === initialLength) {
+    return false
+  }
+
+  settings.playbox = {
+    ...(settings.playbox || defaults.playbox),
+    savedPersonas: filtered,
+  }
+
+  await saveSettings(settings)
+  return true
 }
 
 /**

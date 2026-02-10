@@ -146,6 +146,10 @@ import {
   checkGitHubTokenScopes,
   updatePlayboxSettings,
   loadSettings,
+  getSavedPersonas,
+  addSavedPersona,
+  updateSavedPersona,
+  deleteSavedPersona,
   getRalphLoopPresets,
   addRalphLoopPreset,
   updateRalphLoopPreset,
@@ -1125,6 +1129,23 @@ function registerIpcHandlers() {
   ipcMain.handle('get-playbox-settings', async () => {
     const appSettings = await loadSettings()
     return appSettings.playbox
+  })
+
+  // Saved persona management
+  ipcMain.handle('get-saved-personas', async () => {
+    return getSavedPersonas()
+  })
+
+  ipcMain.handle('add-saved-persona', async (_event, persona: { name: string; prompt: string }) => {
+    return addSavedPersona(persona)
+  })
+
+  ipcMain.handle('update-saved-persona', async (_event, id: string, updates: { name?: string; prompt?: string }) => {
+    return updateSavedPersona(id, updates)
+  })
+
+  ipcMain.handle('delete-saved-persona', async (_event, id: string) => {
+    return deleteSavedPersona(id)
   })
 
   // Ralph Loop preset management

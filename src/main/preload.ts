@@ -451,6 +451,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlayboxSettings: (): Promise<{ personaMode: 'none' | 'bismarck' | 'otto' | 'custom'; customPersonaPrompt: string | null }> =>
     ipcRenderer.invoke('get-playbox-settings'),
 
+  // Saved persona management
+  getSavedPersonas: (): Promise<Array<{ id: string; name: string; prompt: string }>> =>
+    ipcRenderer.invoke('get-saved-personas'),
+  addSavedPersona: (persona: { name: string; prompt: string }): Promise<{ id: string; name: string; prompt: string }> =>
+    ipcRenderer.invoke('add-saved-persona', persona),
+  updateSavedPersona: (id: string, updates: { name?: string; prompt?: string }): Promise<{ id: string; name: string; prompt: string } | undefined> =>
+    ipcRenderer.invoke('update-saved-persona', id, updates),
+  deleteSavedPersona: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-saved-persona', id),
+
   // Ralph Loop preset management
   getRalphLoopPresets: (): Promise<Array<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' }>> =>
     ipcRenderer.invoke('get-ralph-loop-presets'),
