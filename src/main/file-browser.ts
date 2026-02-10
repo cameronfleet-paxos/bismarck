@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { logger } from './logger';
 import { findBinary } from './exec-utils';
 import { isGitRepo } from './git-utils';
+import { validateFilepath } from './path-utils';
 import type { FileEntry, FileContentResult, FileSearchResult } from '../shared/types';
 
 const execFileAsync = promisify(execFile);
@@ -28,15 +29,6 @@ function getGitPath(): string {
     throw new Error('Git binary not found. Please ensure git is installed.');
   }
   return gitPath;
-}
-
-/**
- * Validate that a filepath doesn't contain path traversal
- */
-function validateFilepath(filepath: string): void {
-  if (filepath.includes('..') || path.isAbsolute(filepath)) {
-    throw new Error('Invalid filepath: path traversal not allowed');
-  }
 }
 
 /**

@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { logger } from './logger';
 import { findBinary } from './exec-utils';
 import { isGitRepo } from './git-utils';
+import { validateFilepath } from './path-utils';
 import type { DiffResult, DiffFile, FileDiffContent } from '../shared/types';
 
 const execFileAsync = promisify(execFile);
@@ -363,15 +364,6 @@ export async function getFileDiff(directory: string, filepath: string, force?: b
     const duration = Date.now() - startTime;
     logger.error('git-diff', `Failed to get file diff (${duration}ms)`, { directory, filepath }, { error: err.message });
     throw new Error(`Failed to get file diff: ${err.message}`);
-  }
-}
-
-/**
- * Validate that a filepath doesn't contain path traversal
- */
-function validateFilepath(filepath: string): void {
-  if (filepath.includes('..') || path.isAbsolute(filepath)) {
-    throw new Error('Invalid filepath: path traversal not allowed');
   }
 }
 
