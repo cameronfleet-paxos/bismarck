@@ -8,7 +8,6 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { logger } from './logger';
 import { findBinary } from './exec-utils';
-import { isGitRepo } from './git-utils';
 import type { FileTreeEntry, FileContent, GitBranch, GitLogEntry } from '../shared/types';
 
 const execFileAsync = promisify(execFile);
