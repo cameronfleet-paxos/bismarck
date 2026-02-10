@@ -66,6 +66,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     position?: number
   ): Promise<boolean> =>
     ipcRenderer.invoke('move-workspace-to-tab', workspaceId, targetTabId, position),
+  updateTabProportions: (
+    tabId: string,
+    columnProportions: number[],
+    rowProportions: number[]
+  ): Promise<void> =>
+    ipcRenderer.invoke('update-tab-proportions', tabId, columnProportions, rowProportions),
 
   // Waiting queue management
   getWaitingQueue: (): Promise<string[]> =>

@@ -78,6 +78,7 @@ import {
   getTabs,
   setPlanSidebarOpen,
   setActivePlanId,
+  updateTabProportions,
 } from './state-manager'
 import {
   createPlan,
@@ -554,6 +555,13 @@ function registerIpcHandlers() {
     'move-workspace-to-tab',
     (_event, workspaceId: string, targetTabId: string, position?: number) => {
       return moveWorkspaceToTab(workspaceId, targetTabId, position)
+    }
+  )
+
+  ipcMain.handle(
+    'update-tab-proportions',
+    (_event, tabId: string, columnProportions: number[], rowProportions: number[]) => {
+      updateTabProportions(tabId, columnProportions, rowProportions)
     }
   )
 

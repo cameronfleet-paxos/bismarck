@@ -428,6 +428,28 @@ export function getActiveTabId(): string | null {
   return currentState.activeTabId
 }
 
+/**
+ * Update column and row proportions for a tab
+ * @param tabId Tab ID
+ * @param columnProportions Array of column proportions (should sum to ~1)
+ * @param rowProportions Array of row proportions (should sum to ~1)
+ */
+export function updateTabProportions(
+  tabId: string,
+  columnProportions: number[],
+  rowProportions: number[]
+): void {
+  const tab = currentState.tabs.find((t) => t.id === tabId)
+  if (!tab) {
+    console.warn(`Cannot update proportions: tab ${tabId} not found`)
+    return
+  }
+
+  tab.columnProportions = columnProportions
+  tab.rowProportions = rowProportions
+  persistState()
+}
+
 // Preferences management
 export function getPreferences(): AppPreferences {
   return { ...currentState.preferences }
