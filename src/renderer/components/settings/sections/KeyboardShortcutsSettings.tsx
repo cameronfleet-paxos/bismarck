@@ -211,7 +211,7 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
 
         {shortcuts.togglePlansSidebar && (
           <ShortcutEditor
-            label="Toggle Plans Sidebar"
+            label="Toggle Teams Sidebar"
             description="Show or hide the plans sidebar (Team mode)"
             shortcut={shortcuts.togglePlansSidebar}
             onChange={(s) => handleShortcutChange('togglePlansSidebar', s)}

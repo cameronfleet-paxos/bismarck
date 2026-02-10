@@ -18,8 +18,8 @@ import {
   ContainerConfig,
   ContainerResult,
   DEFAULT_IMAGE,
-} from './docker-sandbox'
-import { logger, LogContext } from './logger'
+} from '../docker-sandbox'
+import { logger, LogContext } from '../logger'
 import {
   StreamEventParser,
   StreamEvent,
@@ -27,11 +27,11 @@ import {
   isCompletionEvent,
   isErrorEvent,
   extractTextContent,
-} from './stream-parser'
-import { isProxyRunning, getProxyConfig } from './tool-proxy'
-import { getGitHubToken } from './settings-manager'
-import { writeCrashLog } from './crash-logger'
-import { startTimer, endTimer, milestone } from './startup-benchmark'
+} from '../stream-parser'
+import { isProxyRunning, getProxyConfig } from '../tool-proxy'
+import { getGitHubToken } from '../settings-manager'
+import { writeCrashLog } from '../crash-logger'
+import { startTimer, endTimer, milestone } from '../startup-benchmark'
 
 // Track first headless agent ready for benchmark milestone
 let firstHeadlessReadyReported = false

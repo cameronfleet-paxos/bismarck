@@ -95,16 +95,19 @@ import {
   stopTaskPolling,
   completePlan,
   cleanupPlanManager,
+  startDiscussion,
+  cancelDiscussion,
+  requestFollowUps,
+  onPlanStatusChange,
+} from './teams'
+import {
   checkHeadlessModeAvailable,
   getHeadlessAgentInfo,
   getHeadlessAgentInfoForPlan,
   stopHeadlessTaskAgent,
   destroyHeadlessAgent,
-  startDiscussion,
-  cancelDiscussion,
-  requestFollowUps,
-  onPlanStatusChange,
-} from './plan-manager'
+  setHeadlessMainWindow,
+} from './headless'
 import {
   detectRepository,
   getAllRepositories,
@@ -175,7 +178,7 @@ import {
   startRalphLoopDiscussion,
   cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
-} from './standalone-headless'
+} from './headless'
 import {
   startRalphLoop,
   cancelRalphLoop,
@@ -291,6 +294,7 @@ function createWindow() {
   // Set the main window reference for socket server, plan manager, dev harness, queue, standalone headless, ralph loop, and auto-updater
   setMainWindow(mainWindow)
   setPlanManagerWindow(mainWindow)
+  setHeadlessMainWindow(mainWindow)
   setDevHarnessWindow(mainWindow)
   setQueueMainWindow(mainWindow)
   setMainWindowForStandaloneHeadless(mainWindow)
@@ -311,6 +315,7 @@ function createWindow() {
     mainWindow = null
     setMainWindow(null)
     setPlanManagerWindow(null)
+    setHeadlessMainWindow(null)
     setDevHarnessWindow(null)
     setQueueMainWindow(null)
     setAutoUpdaterWindow(null)
@@ -520,7 +525,7 @@ function registerIpcHandlers() {
   })
 
   // Check if a tab has an in-progress plan (for confirmation dialog)
-  ipcMain.handle('get-tab-plan-status', (_event, tabId: string) => {
+  ipcMain.handle('get-tab-team-plan-status', (_event, tabId: string) => {
     const plans = getPlans()
     const planForTab = plans.find((p) => p.orchestratorTabId === tabId)
     if (planForTab) {
@@ -610,54 +615,54 @@ function registerIpcHandlers() {
   })
 
   // Plan management (Team Mode)
-  ipcMain.handle('create-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
+  ipcMain.handle('create-team-plan', async (_event, title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: 'feature_branch' | 'raise_prs' }) => {
     return await createPlan(title, description, options)
   })
 
-  ipcMain.handle('get-plans', () => {
+  ipcMain.handle('get-team-plans', () => {
     return getPlans()
   })
 
-  ipcMain.handle('execute-plan', async (_event, planId: string, referenceAgentId: string) => {
-    devLog('[Main] execute-plan IPC received:', { planId, referenceAgentId })
+  ipcMain.handle('execute-team-plan', async (_event, planId: string, referenceAgentId: string) => {
+    devLog('[Main] execute-team-plan IPC received:', { planId, referenceAgentId })
     const result = await executePlan(planId, referenceAgentId)
-    devLog('[Main] execute-plan result:', result?.status)
+    devLog('[Main] execute-team-plan result:', result?.status)
     return result
   })
 
-  ipcMain.handle('start-discussion', async (_event, planId: string, referenceAgentId: string) => {
+  ipcMain.handle('start-team-discussion', async (_event, planId: string, referenceAgentId: string) => {
     return startDiscussion(planId, referenceAgentId)
   })
 
-  ipcMain.handle('cancel-discussion', async (_event, planId: string) => {
+  ipcMain.handle('cancel-team-discussion', async (_event, planId: string) => {
     return cancelDiscussion(planId)
   })
 
-  ipcMain.handle('cancel-plan', async (_event, planId: string) => {
+  ipcMain.handle('cancel-team-plan', async (_event, planId: string) => {
     return cancelPlan(planId)
   })
 
-  ipcMain.handle('restart-plan', async (_event, planId: string) => {
+  ipcMain.handle('restart-team-plan', async (_event, planId: string) => {
     return restartPlan(planId)
   })
 
-  ipcMain.handle('complete-plan', async (_event, planId: string) => {
+  ipcMain.handle('complete-team-plan', async (_event, planId: string) => {
     return completePlan(planId)
   })
 
-  ipcMain.handle('request-follow-ups', async (_event, planId: string) => {
+  ipcMain.handle('request-team-follow-ups', async (_event, planId: string) => {
     return requestFollowUps(planId)
   })
 
-  ipcMain.handle('get-task-assignments', (_event, planId: string) => {
+  ipcMain.handle('get-team-task-assignments', (_event, planId: string) => {
     return getTaskAssignments(planId)
   })
 
-  ipcMain.handle('get-plan-activities', (_event, planId: string) => {
+  ipcMain.handle('get-team-plan-activities', (_event, planId: string) => {
     return getPlanActivities(planId)
   })
 
-  ipcMain.handle('get-bead-tasks', async (_event, planId: string) => {
+  ipcMain.handle('get-team-bead-tasks', async (_event, planId: string) => {
     try {
       return await bdList(planId, { status: 'all' })
     } catch (error) {
@@ -666,23 +671,23 @@ function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle('set-plan-sidebar-open', (_event, open: boolean) => {
+  ipcMain.handle('set-team-sidebar-open', (_event, open: boolean) => {
     setPlanSidebarOpen(open)
   })
 
-  ipcMain.handle('set-active-plan-id', (_event, planId: string | null) => {
+  ipcMain.handle('set-active-team-plan-id', (_event, planId: string | null) => {
     setActivePlanId(planId)
   })
 
-  ipcMain.handle('delete-plan', async (_event, planId: string) => {
+  ipcMain.handle('delete-team-plan', async (_event, planId: string) => {
     return deletePlanById(planId)
   })
 
-  ipcMain.handle('delete-plans', async (_event, planIds: string[]) => {
+  ipcMain.handle('delete-team-plans', async (_event, planIds: string[]) => {
     return deletePlansById(planIds)
   })
 
-  ipcMain.handle('clone-plan', async (_event, planId: string, options?: { includeDiscussion?: boolean }) => {
+  ipcMain.handle('clone-team-plan', async (_event, planId: string, options?: { includeDiscussion?: boolean }) => {
     return clonePlan(planId, options)
   })
 
@@ -695,7 +700,7 @@ function registerIpcHandlers() {
     return getHeadlessAgentInfo(taskId)
   })
 
-  ipcMain.handle('get-headless-agents-for-plan', (_event, planId: string) => {
+  ipcMain.handle('get-headless-agents-for-team-plan', (_event, planId: string) => {
     return getHeadlessAgentInfoForPlan(planId)
   })
 

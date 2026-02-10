@@ -209,10 +209,10 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
         </p>
 
         <div className="space-y-4">
-          {/* Plans Enabled Toggle */}
+          {/* Teams Enabled Toggle */}
           <div className="flex items-center justify-between py-2">
             <div className="space-y-0.5">
-              <Label className="text-base font-medium">Plans Enabled</Label>
+              <Label className="text-base font-medium">Teams Enabled</Label>
               <p className="text-sm text-muted-foreground">
                 Enable coordinated task orchestration
               </p>
