@@ -2,8 +2,6 @@
  * Git repository browsing operations for code editor
  */
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { logger } from './logger';
