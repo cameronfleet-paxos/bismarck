@@ -1,3 +1,4 @@
+import * as fs from 'fs'
 import * as path from 'path'
 import { logger, type LogContext } from '../logger'
 import { devLog } from '../dev-log'
@@ -324,6 +325,10 @@ async function safeRebaseAndPush(
 
   // 3. If exists, must rebase to incorporate other task's commits
   if (exists) {
+    // Clean up plan.md — build artifact that blocks rebase with "untracked working tree file" error
+    const planMdPath = path.join(worktree.path, 'plan.md')
+    try { fs.unlinkSync(planMdPath) } catch { /* doesn't exist, fine */ }
+
     const rebaseResult = await rebaseOntoRemoteBranch(worktree.path, featureBranch, 'origin', logCtx)
 
     if (!rebaseResult.success) {

@@ -7,6 +7,7 @@ import {
   getWorkspaces,
   getWorktreePath,
   withPlanLock,
+  withRepoLock,
 } from '../config'
 import {
   createWorktree,
@@ -57,35 +58,44 @@ export async function createTaskAgentWithWorktree(
   const logCtx: LogContext = { planId, taskId: task.id, repo: repository.name }
   logger.info('worktree', `Creating worktree for task`, logCtx, { worktreeName })
 
-  // Include task ID suffix to guarantee uniqueness across parallel task creation
-  // Task IDs are like "bismarck-6c8.1", extract the suffix after the dot
-  const taskSuffix = task.id.includes('.') ? task.id.split('.').pop() : task.id.split('-').pop()
-  const baseBranchName = `bismarck/${planId.split('-')[1]}/${worktreeName}-${taskSuffix}`
+  // Serialize git operations per repo to prevent lock contention
+  const gitResult = await withRepoLock(repository.rootPath, async () => {
+    // Include task ID suffix to guarantee uniqueness across parallel task creation
+    // Task IDs are like "bismarck-6c8.1", extract the suffix after the dot
+    const taskSuffix = task.id.includes('.') ? task.id.split('.').pop() : task.id.split('-').pop()
+    const baseBranchName = `bismarck/${planId.split('-')[1]}/${worktreeName}-${taskSuffix}`
 
-  // Generate a unique branch name in case a branch with this name already exists
-  // (can happen if a plan is restarted and old branches weren't cleaned up)
-  const branchName = await generateUniqueBranchName(repository.rootPath, baseBranchName)
-  logger.debug('worktree', `Generated branch name: ${branchName}`, logCtx)
+    // Generate a unique branch name in case a branch with this name already exists
+    // (can happen if a plan is restarted and old branches weren't cleaned up)
+    const branchName = await generateUniqueBranchName(repository.rootPath, baseBranchName)
+    logger.debug('worktree', `Generated branch name: ${branchName}`, logCtx)
 
-  // Determine worktree path
-  const worktreePath = getWorktreePath(planId, repository.name, worktreeName)
+    // Determine worktree path
+    const worktreePath = getWorktreePath(planId, repository.name, worktreeName)
 
-  // Determine base branch based on strategy and task dependencies
-  const baseBranch = await getBaseBranchForTask(plan, task, repository)
+    // Determine base branch based on strategy and task dependencies
+    const baseBranch = await getBaseBranchForTask(plan, task, repository)
 
-  // Create the worktree
-  try {
-    await createWorktree(repository.rootPath, worktreePath, branchName, baseBranch)
-    addPlanActivity(planId, 'info', `Created worktree: ${worktreeName}`, `Branch: ${branchName}, Base: ${baseBranch}`)
-  } catch (error) {
-    addPlanActivity(
-      planId,
-      'error',
-      `Failed to create worktree: ${worktreeName}`,
-      error instanceof Error ? error.message : 'Unknown error'
-    )
-    return null
-  }
+    // Create the worktree
+    try {
+      await createWorktree(repository.rootPath, worktreePath, branchName, baseBranch)
+      addPlanActivity(planId, 'info', `Created worktree: ${worktreeName}`, `Branch: ${branchName}, Base: ${baseBranch}`)
+    } catch (error) {
+      addPlanActivity(
+        planId,
+        'error',
+        `Failed to create worktree: ${worktreeName}`,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      return null
+    }
+
+    return { branchName, worktreePath, baseBranch }
+  })
+
+  if (!gitResult) return null
+
+  const { branchName, worktreePath, baseBranch } = gitResult
 
   // Create task agent workspace pointing to the worktree
   const allAgents = getWorkspaces()

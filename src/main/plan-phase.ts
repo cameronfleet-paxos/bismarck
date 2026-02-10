@@ -138,10 +138,14 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
     })
 
     // Wait for exit with timeout
+    let timeoutId: NodeJS.Timeout | undefined
     const exitCode = await Promise.race([
-      container.wait(),
+      container.wait().then(code => {
+        if (timeoutId) clearTimeout(timeoutId)
+        return code
+      }),
       new Promise<number>((_, reject) => {
-        setTimeout(async () => {
+        timeoutId = setTimeout(async () => {
           logger.warn('agent', 'Plan phase timed out, stopping container', logCtx, {
             timeoutMs,
             chunksReceived: chunkCount,

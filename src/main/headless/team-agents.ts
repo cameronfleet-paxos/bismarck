@@ -31,6 +31,7 @@ import { getWorkspaces, deleteWorkspace } from '../config'
 import { getPlanDir, BeadTask } from '../bd-client'
 import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
 import { headlessAgents, headlessAgentInfo, tasksWithSuccessfulBdClose, isBdCloseListenerSetup, setBdCloseListenerSetup } from './state'
+import { addPendingCriticTask, removePendingCriticTask } from '../teams/state'
 import { emitHeadlessAgentUpdate, emitHeadlessAgentEvent } from './events'
 import type { HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, PlanWorktree, Repository, TaskAssignment } from '../../shared/types'
 
@@ -290,7 +291,7 @@ export async function startHeadlessTaskAgent(
       const maxIterations = settings.critic?.maxIterations ?? 2
 
       if (criticEnabled && maxIterations > 0 && !isCriticTask(task) && !isFixupTask(task)) {
-        // Regular task → spawn critic
+        // Regular task → spawn critic (pending critic state cleared by critic.ts)
         await onCriticNeeded?.(planId, task.id)
       } else if (isFixupTask(task)) {
         // Fix-up completed → re-trigger critic on original task
@@ -312,15 +313,19 @@ export async function startHeadlessTaskAgent(
               await savePlan(activePlan!)
               onEmitPlanUpdate?.(activePlan!)
             }
+            removePendingCriticTask(task.id)
             await onTaskReadyForReview?.(planId, originalTaskId)
           } else {
+            // Critic will be spawned — pending critic cleared by critic.ts
             await onCriticNeeded?.(planId, originalTaskId)
           }
         } else {
+          removePendingCriticTask(task.id)
           await onTaskReadyForReview?.(planId, task.id)
         }
       } else {
         // Critic task completed OR critics disabled → handle critic completion
+        removePendingCriticTask(task.id)
         if (isCriticTask(task)) {
           await onCriticCompleted?.(planId, task)
         } else {
@@ -328,6 +333,7 @@ export async function startHeadlessTaskAgent(
         }
       }
     } else {
+      removePendingCriticTask(task.id)
       onAddPlanActivity?.(planId, 'error', `Task ${task.id} failed`, result.error)
     }
   })
@@ -395,6 +401,9 @@ export function setupBdCloseListener(): void {
 
     // Mark this task as having successfully closed via bd
     tasksWithSuccessfulBdClose.add(taskId)
+
+    // Mark as pending critic so dependents aren't dispatched before critic is registered
+    addPendingCriticTask(taskId)
 
     logger.info('proxy', 'Scheduling container stop after 3s grace period', logCtx)
 
