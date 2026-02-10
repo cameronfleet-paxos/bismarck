@@ -3433,27 +3433,25 @@ function App() {
                               )}
                               {/* Diff toggle button (only for non-headless agents in git repos) */}
                               {preferences.showDiffView !== false && !agent.isHeadless && !agent.isStandaloneHeadless && gitRepoStatus.get(agent.directory) !== false && (
-                                <div className="relative">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (diffOpenForWorkspace === workspaceId) {
-                                        closeDiffAndRestore(tab.id)
-                                      } else {
-                                        setExpandedBeforeDiff(isExpanded)
-                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: workspaceId }))
-                                        setDiffOpenForWorkspace(workspaceId)
-                                      }
-                                    }}
-                                    title="View Changes (Cmd+D)"
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <GitCompareArrows className="h-3 w-3" />
-                                  </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === workspaceId) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: workspaceId }))
+                                      setDiffOpenForWorkspace(workspaceId)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 p-0 gap-1"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
                                   {fileChangeCounts.has(workspaceId) && (
-                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                    <span className={`min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 ${
                                       fileChangeCounts.get(workspaceId) === 0
                                         ? 'bg-green-500'
                                         : fileChangeCounts.get(workspaceId)! >= 10
@@ -3463,7 +3461,7 @@ function App() {
                                       {fileChangeCounts.get(workspaceId)! > 99 ? '99+' : fileChangeCounts.get(workspaceId)}
                                     </span>
                                   )}
-                                </div>
+                                </Button>
                               )}
                               {/* Maximize/Minimize button */}
                               <Button
