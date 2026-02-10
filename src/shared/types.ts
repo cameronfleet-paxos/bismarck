@@ -742,30 +742,14 @@ export interface FileDiffContent {
   error?: string
 }
 
-// Git browser types for code editor
+// ============================================
+// Git Browser Types (Code Editor)
+// ============================================
 
 // File entry in git tree (from ls-tree)
 export interface GitFileEntry {
   path: string
   type: 'blob' | 'tree'
-}
-
-// Commit information from git log
-export interface GitCommit {
-  sha: string
-  shortSha: string
-  message: string
-  author: string
-  timestamp: string
-}
-
-// Branch information
-export interface GitBranch {
-  name: string
-  shortSha: string
-  date: string
-  isRemote: boolean
-  isCurrent: boolean
 }
 
 // File content with metadata
@@ -775,4 +759,24 @@ export interface FileContent {
   isBinary: boolean
   isTooLarge: boolean
   error?: string
+}
+
+// Git branch information
+export interface GitBranch {
+  name: string
+  shortSha: string
+  date: string
+  isLocal: boolean
+  isRemote: boolean
+  isHead: boolean  // True if this is the currently checked out branch (formerly isCurrent)
+}
+
+// Git commit information
+export interface GitCommit {
+  sha: string
+  shortSha: string
+  message: string
+  author: string
+  authorEmail: string
+  timestamp: string  // ISO 8601 format
 }
