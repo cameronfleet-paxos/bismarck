@@ -741,3 +741,37 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// ============================================
+// File Browser Types
+// ============================================
+
+// Individual file or directory entry for browsing file trees
+export interface FileEntry {
+  name: string           // Filename only (basename)
+  path: string           // Full path relative to repository root
+  type: 'file' | 'directory'
+  size?: number          // File size in bytes (undefined for directories)
+  isSymlink?: boolean    // Whether this entry is a symbolic link
+}
+
+// File tree node for nested tree structures
+export interface FileTreeNode extends FileEntry {
+  children?: FileTreeNode[]  // Child nodes for directories
+}
+
+// File content result for reading arbitrary files
+export interface FileContentResult {
+  content: string
+  language: string       // Detected language/extension for syntax highlighting
+  isBinary: boolean      // Whether the file is binary
+  size: number           // File size in bytes
+  isTooLarge: boolean    // Whether file exceeded size limit
+  error?: string         // Error message if read failed
+}
+
+// Search result for file name searching
+export interface FileSearchResult {
+  files: string[]        // Array of matching file paths
+  error?: string         // Error message if search failed
+}

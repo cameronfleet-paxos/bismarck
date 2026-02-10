@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent, FileEntry, FileContentResult, FileSearchResult } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -321,6 +321,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('write-file-content', directory, filepath, content),
   revertAllFiles: (directory: string): Promise<void> =>
     ipcRenderer.invoke('revert-all-files', directory),
+
+  // File browser operations
+  listDirectory: (directory: string, relativePath?: string): Promise<FileEntry[]> =>
+    ipcRenderer.invoke('list-directory', directory, relativePath),
+  getFileTree: (directory: string): Promise<string[]> =>
+    ipcRenderer.invoke('get-file-tree', directory),
+  readFileContent: (directory: string, filepath: string, force?: boolean): Promise<FileContentResult> =>
+    ipcRenderer.invoke('read-file-content', directory, filepath, force),
+  searchFiles: (directory: string, query: string): Promise<FileSearchResult> =>
+    ipcRenderer.invoke('search-files', directory, query),
 
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>
