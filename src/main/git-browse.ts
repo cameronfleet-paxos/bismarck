@@ -70,7 +70,8 @@ export async function getFileTree(directory: string): Promise<FileTreeResult> {
 
   try {
     const gitPath = getGitPath();
-    const allFiles = new Set<string>();
+    const trackedFiles = new Set<string>();
+    const untrackedFiles = new Set<string>();
 
     // Get tracked files at HEAD
     try {
@@ -82,7 +83,7 @@ export async function getFileTree(directory: string): Promise<FileTreeResult> {
 
       for (const line of trackedOutput.trim().split('\n')) {
         if (line.length > 0) {
-          allFiles.add(line);
+          trackedFiles.add(line);
         }
       }
     } catch (error) {
@@ -103,7 +104,7 @@ export async function getFileTree(directory: string): Promise<FileTreeResult> {
 
       for (const line of untrackedOutput.trim().split('\n')) {
         if (line.length > 0) {
-          allFiles.add(line);
+          untrackedFiles.add(line);
         }
       }
     } catch (error) {
@@ -111,12 +112,13 @@ export async function getFileTree(directory: string): Promise<FileTreeResult> {
       logger.warn('git-browse', 'Failed to list untracked files', { directory }, { error: err.message });
     }
 
-    // Convert to sorted array and check for truncation
+    // Combine all files and preserve tracked/untracked status
+    const allFiles = new Set([...trackedFiles, ...untrackedFiles]);
     const sortedFiles = Array.from(allFiles).sort();
     const truncated = sortedFiles.length > MAX_FILES;
     const files = sortedFiles.slice(0, MAX_FILES).map(filepath => ({
       path: filepath,
-      isTracked: true, // For now, we just mark all files as tracked (we could enhance this later)
+      isTracked: trackedFiles.has(filepath),
     }));
 
     const duration = Date.now() - startTime;
