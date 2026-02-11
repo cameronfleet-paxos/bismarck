@@ -19,6 +19,7 @@ export {
   cancelHeadlessDiscussion,
   startRalphLoopDiscussion,
   cancelRalphLoopDiscussion,
+  getActiveDiscussionTerminalIds,
 } from './standalone'
 
 // Team (plan-aware) headless agents

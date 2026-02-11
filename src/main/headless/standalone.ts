@@ -957,6 +957,26 @@ interface HeadlessDiscussionState {
 const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map()
 
 /**
+ * Get terminal IDs of active headless discussions (including Ralph loop discussions).
+ * Used to exclude these terminals from cleanup when the window closes,
+ * so that discussions can complete and spawn headless agents.
+ */
+export function getActiveDiscussionTerminalIds(): Set<string> {
+  const ids = new Set<string>()
+  for (const state of activeHeadlessDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  for (const state of activeRalphLoopDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  return ids
+}
+
+/**
  * Start a headless discussion session
  *
  * This creates an interactive Claude session to gather requirements from the user,
