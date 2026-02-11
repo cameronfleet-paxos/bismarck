@@ -31,7 +31,7 @@ import { getWorkspaces, deleteWorkspace } from '../config'
 import { getPlanDir, BeadTask } from '../bd-client'
 import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
 import { headlessAgents, headlessAgentInfo, tasksWithSuccessfulBdClose, isBdCloseListenerSetup, setBdCloseListenerSetup } from './state'
-import { addPendingCriticTask, removePendingCriticTask } from '../teams/state'
+import { withPlanLock } from '../config'
 import { emitHeadlessAgentUpdate, emitHeadlessAgentEvent } from './events'
 import type { HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, PlanWorktree, Repository, TaskAssignment } from '../../shared/types'
 
@@ -313,19 +313,16 @@ export async function startHeadlessTaskAgent(
               await savePlan(activePlan!)
               onEmitPlanUpdate?.(activePlan!)
             }
-            removePendingCriticTask(task.id)
             await onTaskReadyForReview?.(planId, originalTaskId)
           } else {
             // Critic will be spawned — pending critic cleared by critic.ts
             await onCriticNeeded?.(planId, originalTaskId)
           }
         } else {
-          removePendingCriticTask(task.id)
           await onTaskReadyForReview?.(planId, task.id)
         }
       } else {
         // Critic task completed OR critics disabled → handle critic completion
-        removePendingCriticTask(task.id)
         if (isCriticTask(task)) {
           await onCriticCompleted?.(planId, task)
         } else {
@@ -333,7 +330,6 @@ export async function startHeadlessTaskAgent(
         }
       }
     } else {
-      removePendingCriticTask(task.id)
       onAddPlanActivity?.(planId, 'error', `Task ${task.id} failed`, result.error)
     }
   })
@@ -403,9 +399,17 @@ export function setupBdCloseListener(): void {
     tasksWithSuccessfulBdClose.add(taskId)
 
     // Only mark non-critic tasks as pending critic — critic tasks don't spawn further critics
+    // Set criticStatus directly on the worktree (immune to task ID mismatch with fix-ups)
     const info = headlessAgentInfo.get(taskId)
     if (info?.agentType !== 'critic') {
-      addPendingCriticTask(taskId)
+      await withPlanLock(planId, async () => {
+        const plan = getPlanById(planId)
+        const wt = plan?.worktrees?.find(w => w.path === info?.worktreePath)
+        if (wt && wt.criticStatus !== 'approved') {
+          wt.criticStatus = 'pending'
+          await savePlan(plan!)
+        }
+      })
     }
 
     logger.info('proxy', 'Scheduling container stop after 3s grace period', logCtx)

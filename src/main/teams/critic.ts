@@ -25,7 +25,6 @@ import { getSelectedDockerImage, loadSettings } from '../settings-manager'
 import { buildPrompt } from '../prompt-templates'
 import type { Plan, TaskAssignment, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent } from '../../shared/types'
 import { addPlanActivity, emitPlanUpdate, emitTaskAssignmentUpdate } from './events'
-import { removePendingCriticTask } from './state'
 import { markWorktreeReadyForReview } from './git-strategy'
 // Import headless state/events
 import { headlessAgents, headlessAgentInfo, tasksWithSuccessfulBdClose } from '../headless/state'
@@ -56,7 +55,6 @@ export async function spawnCriticAgent(planId: string, originalTaskId: string): 
     // Check if max iterations exceeded → auto-approve
     if (currentIteration >= maxIterations) {
       logger.info('plan', 'Max critic iterations reached, auto-approving', logCtx, { currentIteration, maxIterations })
-      removePendingCriticTask(originalTaskId)
       addPlanActivity(planId, 'info', `Max critic iterations reached for ${originalTaskId}, auto-approving`)
       worktree.criticStatus = 'approved'
       await savePlan(plan)
@@ -118,14 +116,11 @@ export async function spawnCriticAgent(planId: string, originalTaskId: string): 
       }
     })
 
-    // Critic blocker registered in beads — clear pending critic state
-    removePendingCriticTask(originalTaskId)
   } catch (err) {
     logger.warn('plan', 'Failed to create critic task in beads', logCtx, {
       error: err instanceof Error ? err.message : 'Unknown error',
     })
     // Fallback: auto-approve on error
-    removePendingCriticTask(originalTaskId)
     addPlanActivity(planId, 'warning', `Failed to create critic task for ${originalTaskId}, auto-approving`)
     await withPlanLock(planId, async () => {
       const plan = getPlanById(planId)

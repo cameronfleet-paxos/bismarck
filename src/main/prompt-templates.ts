@@ -378,7 +378,10 @@ All these commands work normally (they are proxied to the host automatically):
 
 === COMMIT STYLE ===
 Keep commits simple and direct:
-- Use: git commit -m "Brief description of change"
+- Use: git commit -m "Brief description of change
+
+  Co-Authored-By: Claude <noreply@anthropic.com>"
+- ALWAYS include the Co-Authored-By trailer in every commit
 - Do NOT use HEREDOC, --file, or multi-step verification
 - Commit once when work is complete, don't overthink it
 
@@ -423,9 +426,11 @@ For trivial tasks (typo fixes, single-line changes, simple renames), skip planni
 === COMPLETION REQUIREMENTS ===
 {{completionCriteria}}When you complete your work:
 
-1. Commit your changes:
+1. Commit your changes (ALWAYS include Co-Authored-By trailer):
    git add <files>
-   git commit -m "Brief description of change"
+   git commit -m "Brief description of change
+
+   Co-Authored-By: Claude <noreply@anthropic.com>"
 
 2. Push your branch:
    git push -u origin {{branchName}}
@@ -464,9 +469,11 @@ For simple follow-ups, skip planning and just do the work directly.
 === COMPLETION REQUIREMENTS ===
 {{completionCriteria}}1. Review the previous commits above to understand what was done
 
-2. Make your changes and commit:
+2. Make your changes and commit (ALWAYS include Co-Authored-By trailer):
    git add <files>
-   git commit -m "Brief description of change"
+   git commit -m "Brief description of change
+
+   Co-Authored-By: Claude <noreply@anthropic.com>"
 
 3. Push your changes:
    git push origin {{branchName}}
