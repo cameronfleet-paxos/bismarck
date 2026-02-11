@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronRight, Play, X, Clock, CheckCircle2, AlertCircle, Loader2, Activity, Check, GitBranch, GitPullRequest, Maximize2, GitCommit, ExternalLink, MessageSquare, RotateCcw, Copy, Eye } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, X, Clock, CheckCircle2, AlertCircle, Loader2, Activity, Check, GitBranch, GitPullRequest, Maximize2, GitCommit, ExternalLink, MessageSquare, RotateCcw, Copy, Eye, ArrowUpCircle, Users } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
-import type { Plan, TaskAssignment, Agent, PlanActivity } from '@/shared/types'
+import type { Plan, TaskAssignment, Agent, PlanActivity, TeamMode } from '@/shared/types'
 
 interface PlanCardProps {
   plan: Plan
@@ -11,7 +11,7 @@ interface PlanCardProps {
   isActive: boolean
   isSelected?: boolean
   onToggleSelect?: () => void
-  onExecute: (referenceAgentId: string) => void | Promise<void>
+  onExecute: (referenceAgentId: string, teamMode: TeamMode) => void | Promise<void>
   onStartDiscussion: (referenceAgentId: string) => void
   onCancelDiscussion: () => Promise<void>
   onCancel: () => Promise<void>
@@ -98,6 +98,7 @@ export function PlanCard({
 }: PlanCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [selectedReference, setSelectedReference] = useState<string>('')
+  const [selectedTeamMode, setSelectedTeamMode] = useState<TeamMode>('top-down')
   const [activityLogExpanded, setActivityLogExpanded] = useState(true)
   const [isCancelling, setIsCancelling] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
@@ -249,6 +250,28 @@ export function PlanCard({
                     </option>
                   ))}
               </select>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeamMode('top-down') }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                    selectedTeamMode === 'top-down' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <ArrowUpCircle className="h-3 w-3" />
+                  Top-Down
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeamMode('bottom-up') }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                    selectedTeamMode === 'bottom-up' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <Users className="h-3 w-3" />
+                  Bottom-Up
+                </button>
+              </div>
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -274,7 +297,7 @@ export function PlanCard({
                     if (selectedReference && !isExecuting) {
                       setIsExecuting(true)
                       try {
-                        await onExecute(selectedReference)
+                        await onExecute(selectedReference, selectedTeamMode)
                       } finally {
                         setIsExecuting(false)
                       }
@@ -346,16 +369,38 @@ export function PlanCard({
                     </option>
                   ))}
               </select>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeamMode('top-down') }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                    selectedTeamMode === 'top-down' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <ArrowUpCircle className="h-3 w-3" />
+                  Top-Down
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedTeamMode('bottom-up') }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                    selectedTeamMode === 'bottom-up' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <Users className="h-3 w-3" />
+                  Bottom-Up
+                </button>
+              </div>
               <Button
                 size="sm"
-                className="cursor-pointer"
+                className="cursor-pointer w-full"
                 disabled={!selectedReference || isExecuting}
                 onClick={async (e) => {
                   e.stopPropagation()
                   if (selectedReference && !isExecuting) {
                     setIsExecuting(true)
                     try {
-                      await onExecute(selectedReference)
+                      await onExecute(selectedReference, selectedTeamMode)
                     } finally {
                       setIsExecuting(false)
                     }

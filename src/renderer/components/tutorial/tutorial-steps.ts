@@ -66,8 +66,8 @@ export const tutorialSteps: TutorialStepDefinition[] = [
   },
   {
     id: 'team-mode',
-    title: 'Plans & Team Mode',
-    description: 'Click the **Plans** button to create and manage multi-agent plans. Plans let you coordinate multiple agents working in parallel on complex tasks.\n\nEach plan runs in isolated git worktrees to prevent conflicts.',
+    title: 'Teams',
+    description: 'Click the **Teams** button to create and manage multi-agent plans. Teams let you coordinate multiple agents working in parallel on complex tasks.\n\nEach plan runs in isolated git worktrees to prevent conflicts.',
     target: 'plan-mode',
     placement: 'left',
     condition: (operatingMode) => operatingMode === 'team',

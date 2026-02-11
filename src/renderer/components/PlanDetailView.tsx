@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Check, X, Loader2, Activity, GitBranch, GitPullRequest, Clock, CheckCircle2, AlertCircle, ExternalLink, GitCommit, MessageSquare, Play, FileText, Network, Plus } from 'lucide-react'
+import { ArrowLeft, Check, X, Loader2, Activity, GitBranch, GitPullRequest, Clock, CheckCircle2, AlertCircle, ExternalLink, GitCommit, MessageSquare, Play, FileText, Network, Plus, ArrowUpCircle, Users } from 'lucide-react'
+import type { TeamMode } from '@/shared/types'
 import { Button } from '@/renderer/components/ui/button'
 import { TaskCard } from '@/renderer/components/TaskCard'
 import { DependencyProgressBar } from '@/renderer/components/DependencyProgressBar'
@@ -17,7 +18,7 @@ interface PlanDetailViewProps {
   onComplete: () => Promise<void>
   onCancel: () => Promise<void>
   onCancelDiscussion?: () => Promise<void>
-  onExecute?: (referenceAgentId: string) => void
+  onExecute?: (referenceAgentId: string, teamMode: TeamMode) => void
   onRequestFollowUps?: () => Promise<void>
 }
 
@@ -182,6 +183,7 @@ export function PlanDetailView({
   const [isExecuting, setIsExecuting] = useState(false)
   const [isRequestingFollowUps, setIsRequestingFollowUps] = useState(false)
   const [selectedReference, setSelectedReference] = useState<string>(plan.referenceAgentId || '')
+  const [selectedTeamMode, setSelectedTeamMode] = useState<TeamMode>(plan.teamMode ?? 'top-down')
   const [beadTasks, setBeadTasks] = useState<BeadTask[]>([])
   const [localAssignments, setLocalAssignments] = useState<TaskAssignment[]>([])
   const [graphModalOpen, setGraphModalOpen] = useState(false)
@@ -318,7 +320,7 @@ export function PlanDetailView({
           <p className="text-xs text-muted-foreground">{plan.description}</p>
         )}
 
-        {/* Branch strategy badge */}
+        {/* Branch strategy and team mode badges */}
         <div className="flex items-center gap-2 text-xs">
           {plan.branchStrategy === 'feature_branch' ? (
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-500">
@@ -329,6 +331,17 @@ export function PlanDetailView({
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-500">
               <GitPullRequest className="h-3 w-3" />
               Raise PRs
+            </span>
+          )}
+          {(plan.teamMode ?? 'top-down') === 'top-down' ? (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-500">
+              <ArrowUpCircle className="h-3 w-3" />
+              Top-Down
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-500">
+              <Users className="h-3 w-3" />
+              Bottom-Up
             </span>
           )}
         </div>
@@ -387,16 +400,38 @@ export function PlanDetailView({
                   </option>
                 ))}
             </select>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setSelectedTeamMode('top-down')}
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                  selectedTeamMode === 'top-down' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                }`}
+              >
+                <ArrowUpCircle className="h-3 w-3" />
+                Top-Down
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTeamMode('bottom-up')}
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                  selectedTeamMode === 'bottom-up' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                }`}
+              >
+                <Users className="h-3 w-3" />
+                Bottom-Up
+              </button>
+            </div>
             <Button
               size="sm"
               disabled={!selectedReference || isExecuting}
-              className="cursor-pointer"
+              className="cursor-pointer w-full"
               onClick={async () => {
                 if (selectedReference && !isExecuting) {
                   setIsExecuting(true)
-                  devLog('[PlanDetailView] Execute clicked, calling onExecute with:', selectedReference)
+                  devLog('[PlanDetailView] Execute clicked, calling onExecute with:', selectedReference, selectedTeamMode)
                   try {
-                    await onExecute(selectedReference)
+                    await onExecute(selectedReference, selectedTeamMode)
                   } catch (err) {
                     console.error('[PlanDetailView] Execute failed:', err)
                   } finally {
