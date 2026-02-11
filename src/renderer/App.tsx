@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -40,7 +40,7 @@ import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, TeamMode } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -162,6 +162,11 @@ function App() {
 
   // Ralph Loop state
   const [ralphLoops, setRalphLoops] = useState<Map<string, RalphLoopState>>(new Map())
+
+  // Plain terminal state (non-agent shell terminals)
+  const [plainTerminals, setPlainTerminals] = useState<Map<string, PlainTerminal>>(new Map())
+  const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null)
+  const [editingTerminalName, setEditingTerminalName] = useState('')
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -936,11 +941,25 @@ function App() {
 
   const setupEventListeners = () => {
     // Listen for initial state from main process
-    window.electronAPI?.onInitialState?.((state: AppState) => {
+    window.electronAPI?.onInitialState?.(async (state: AppState) => {
       setTabs(state.tabs || [])
       setActiveTabId(state.activeTabId)
       if (state.focusedWorkspaceId) {
         setFocusedAgentId(state.focusedWorkspaceId)
+      }
+      // Restore plain terminals: spawn PTYs now that renderer is loaded
+      if (state.plainTerminals?.length) {
+        const restoredTerminals = new Map<string, typeof state.plainTerminals[0]>()
+        for (const pt of state.plainTerminals) {
+          const result = await window.electronAPI.restorePlainTerminal(pt)
+          if (result) {
+            restoredTerminals.set(result.plainId, { ...pt, id: result.plainId, terminalId: result.terminalId })
+          }
+        }
+        setPlainTerminals(restoredTerminals)
+        // Refresh tabs since workspace IDs were swapped
+        const newState = await window.electronAPI.getState()
+        setTabs(newState.tabs || [])
       }
       // Resume active agents
       if (state.activeWorkspaceIds.length > 0) {
@@ -1105,6 +1124,18 @@ function App() {
       setTabs(state.tabs || [])
       if (state.activeTabId) {
         setActiveTabId(state.activeTabId)
+      }
+      // Sync plain terminals from state
+      if (state.plainTerminals) {
+        setPlainTerminals(prev => {
+          const next = new Map(prev)
+          for (const pt of state.plainTerminals!) {
+            if (!next.has(pt.id)) {
+              next.set(pt.id, pt)
+            }
+          }
+          return next
+        })
       }
 
       // Clean up maximized state for workspaces that no longer exist in any tab
@@ -1701,6 +1732,58 @@ function App() {
     }
   }
 
+  // Open plain terminal handler (non-agent shell terminal)
+  const handleOpenTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    try {
+      const terminalName = `Terminal — ${agent.name}`
+      const result = await window.electronAPI?.createPlainTerminal?.(agent.directory, terminalName)
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Terminal — ${agent.name}`,
+          directory: agent.directory,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+
+        // Refresh state to pick up the new workspace slot and active tab
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to open plain terminal:', err)
+    }
+  }
+
+  // Close a plain terminal and remove it from the grid
+  const handleClosePlainTerminal = async (plainTerminal: PlainTerminal) => {
+    await window.electronAPI?.closePlainTerminal?.(plainTerminal.terminalId)
+    setPlainTerminals(prev => {
+      const next = new Map(prev)
+      next.delete(plainTerminal.id)
+      return next
+    })
+    // Refresh tabs to pick up workspace removal
+    const state = await window.electronAPI.getState()
+    setTabs(state.tabs || [])
+  }
+
+  // Rename a plain terminal
+  const handleRenamePlainTerminal = async (terminalId: string, name: string) => {
+    await window.electronAPI?.renamePlainTerminal?.(terminalId, name)
+    setPlainTerminals(prev => {
+      const next = new Map(prev)
+      const pt = [...next.values()].find(p => p.terminalId === terminalId)
+      if (pt) next.set(pt.id, { ...pt, name })
+      return next
+    })
+  }
+
   // Start standalone headless agent handler
   const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => {
     // Generate a unique spawning ID for this placeholder
@@ -1841,6 +1924,17 @@ function App() {
     // Mark the tab as closing to show spinner
     setClosingTabIds((prev) => new Set(prev).add(tabId))
     try {
+      // Close any plain terminals in this tab
+      const plainTerminal = Array.from(plainTerminals.values()).find(t => t.tabId === tabId)
+      if (plainTerminal) {
+        await window.electronAPI?.closePlainTerminal?.(plainTerminal.terminalId)
+        setPlainTerminals(prev => {
+          const next = new Map(prev)
+          next.delete(plainTerminal.id)
+          return next
+        })
+      }
+
       const result = await window.electronAPI?.deleteTab?.(tabId)
       if (result?.success) {
         // Stop all agents in the deleted tab
@@ -3674,6 +3768,160 @@ function App() {
                       )
                     })}
 
+                    {/* Render plain terminals in grid slots */}
+                    {tabWorkspaceIds.map((wsId, position) => {
+                      if (!wsId || !wsId.startsWith('plain-')) return null
+                      const terminalId = wsId.replace('plain-', '')
+                      const pt = Array.from(plainTerminals.values()).find(t => t.terminalId === terminalId)
+                      if (!pt) return null
+                      if (position >= gridConfig.maxAgents) return null
+                      const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
+                      const isExpanded = expandedAgentId === wsId
+                      const isDropTarget = dropTargetPosition === position && isActiveTab
+                      const isDragging = draggedWorkspaceId === wsId
+
+                      return (
+                        <div
+                          key={`plain-terminal-${pt.id}-${tab.id}`}
+                          style={{ gridRow, gridColumn: gridCol }}
+                          draggable={!expandedAgentId}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('workspaceId', wsId)
+                            setDraggedWorkspaceId(wsId)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedWorkspaceId(null)
+                            setDropTargetPosition(null)
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            if (!expandedAgentId) {
+                              setDropTargetPosition(position)
+                            }
+                          }}
+                          onDragLeave={() => setDropTargetPosition(null)}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const sourceId = e.dataTransfer.getData('workspaceId')
+                            if (sourceId && sourceId !== wsId && !expandedAgentId) {
+                              handleReorderInTab(sourceId, position)
+                            }
+                            setDropTargetPosition(null)
+                            setDraggedWorkspaceId(null)
+                          }}
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                          } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
+                            isDragging ? 'opacity-50' : ''
+                          } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
+                            !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
+                          }`}
+                        >
+                          <div className="group/term-header px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <TerminalSquare className="w-4 h-4 text-muted-foreground" />
+                              {editingTerminalId === pt.terminalId ? (
+                                <input
+                                  autoFocus
+                                  value={editingTerminalName}
+                                  onChange={(e) => setEditingTerminalName(e.target.value)}
+                                  onBlur={() => {
+                                    if (editingTerminalName.trim()) {
+                                      handleRenamePlainTerminal(pt.terminalId, editingTerminalName.trim())
+                                    }
+                                    setEditingTerminalId(null)
+                                    setEditingTerminalName('')
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      if (editingTerminalName.trim()) {
+                                        handleRenamePlainTerminal(pt.terminalId, editingTerminalName.trim())
+                                      }
+                                      setEditingTerminalId(null)
+                                      setEditingTerminalName('')
+                                    } else if (e.key === 'Escape') {
+                                      setEditingTerminalId(null)
+                                      setEditingTerminalName('')
+                                    }
+                                  }}
+                                  className="w-40 px-1 py-0 text-sm bg-transparent border-b border-primary outline-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <>
+                                  <span
+                                    className="truncate cursor-default hover:underline hover:decoration-dotted hover:decoration-muted-foreground"
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingTerminalId(pt.terminalId)
+                                      setEditingTerminalName(pt.name)
+                                    }}
+                                    title="Double-click to rename"
+                                  >
+                                    {pt.name}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingTerminalId(pt.terminalId)
+                                      setEditingTerminalName(pt.name)
+                                    }}
+                                    title="Rename terminal"
+                                    className="h-5 w-5 p-0 opacity-0 group-hover/term-header:opacity-100 transition-opacity"
+                                  >
+                                    <Pencil className="h-3 w-3 text-muted-foreground" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (isExpanded) {
+                                    setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: null }))
+                                  } else {
+                                    setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: wsId }))
+                                  }
+                                }}
+                                title={isExpanded ? 'Minimize' : 'Maximize'}
+                                className="h-6 w-6 p-0"
+                              >
+                                {isExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleClosePlainTerminal(pt)
+                                }}
+                                title="Close terminal"
+                                className="h-6 w-6 p-0"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex-1 relative" style={{ height: 'calc(100% - 33px)' }}>
+                            <Terminal
+                              terminalId={pt.terminalId}
+                              theme="gray"
+                              isBooting={false}
+                              isVisible={currentView === 'main' && !!shouldShowTab}
+                              registerWriter={registerWriter}
+                              unregisterWriter={unregisterWriter}
+                              getBufferedContent={getBufferedContent}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+
                     {/* Render spawning placeholders */}
                     {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }, index) => {
                       // Position after existing workspaces
@@ -3964,6 +4212,7 @@ function App() {
         onStartHeadlessDiscussion={handleStartHeadlessDiscussion}
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
+        onOpenTerminal={handleOpenTerminal}
         onStartRalphLoop={handleStartRalphLoop}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />

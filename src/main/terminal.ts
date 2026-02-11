@@ -486,6 +486,65 @@ export function waitForTerminalOutput(
 }
 
 /**
+ * Create a plain terminal (shell only, no Claude agent).
+ * Used for the "Open Terminal" feature accessible via CMD-K.
+ */
+export function createPlainTerminal(
+  directory: string,
+  mainWindow: BrowserWindow | null,
+): string {
+  const terminalId = `plain-terminal-${Date.now()}`
+  const shell = process.env.SHELL || '/bin/zsh'
+
+  // Validate directory exists, fall back to home if not
+  let cwd = directory
+  if (!fs.existsSync(cwd)) {
+    console.warn(`Directory ${cwd} does not exist, using home directory`)
+    cwd = os.homedir()
+  }
+
+  // Spawn interactive shell (no Claude)
+  const ptyProcess = pty.spawn(shell, ['-l'], {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    },
+  })
+
+  // Create emitter for terminal output listening
+  const emitter = new EventEmitter()
+
+  terminals.set(terminalId, {
+    pty: ptyProcess,
+    workspaceId: `plain-${terminalId}`, // Use a synthetic workspaceId
+    emitter,
+  })
+
+  // Forward data to renderer (uses same 'terminal-data' channel as agent terminals)
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', terminalId, data)
+    }
+  })
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
+    }
+    terminals.delete(terminalId)
+  })
+
+  return terminalId
+}
+
+/**
  * Setup terminal process (no workspace, ephemeral)
  */
 interface SetupTerminalProcess {
