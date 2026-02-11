@@ -81,6 +81,28 @@ export async function withGitPushLock<T>(planId: string, fn: () => Promise<T>): 
   }
 }
 
+/**
+ * Execute a function with exclusive access to git operations on a repo.
+ * Prevents concurrent worktree creation on the same repository.
+ */
+const repoMutexes: Map<string, Promise<void>> = new Map()
+
+export async function withRepoLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
+  const pending = repoMutexes.get(repoPath) || Promise.resolve()
+  let resolve: () => void
+  const newPending = new Promise<void>((r) => { resolve = r })
+  repoMutexes.set(repoPath, newPending)
+  try {
+    await pending
+    return await fn()
+  } finally {
+    resolve!()
+    if (repoMutexes.get(repoPath) === newPending) {
+      repoMutexes.delete(repoPath)
+    }
+  }
+}
+
 export function getConfigDir(): string {
   const homeDir = app?.getPath('home') || process.env.HOME || ''
   return path.join(homeDir, CONFIG_DIR_NAME)

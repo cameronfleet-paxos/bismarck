@@ -89,15 +89,8 @@ function handleStopEvent(event: StopEvent): void {
     notification.show()
   }
 
-  // Notify renderer
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    devLog(`[StopEvent] Sending agent-waiting event to renderer`)
-    mainWindow.webContents.send('agent-waiting', workspaceId)
-    // Don't auto-focus - let the renderer's expand mode handle visibility
-  } else {
-    devLog(`[StopEvent] WARNING: mainWindow not available`)
-  }
-
+  // Notify renderer via waiting queue (single source of truth)
+  // Don't send separate agent-waiting event to avoid duplicate state updates that cause flicker
   notifyWaitingCountChanged()
 }
 

@@ -97,6 +97,21 @@ const VARIABLE_DESCRIPTIONS: Record<PromptType, { name: string; description: str
     { name: '{{taskDescription}}', description: 'Task description for analysis' },
     { name: '{{guidance}}', description: 'Repository-specific guidance' },
   ],
+  manager: [
+    { name: '{{taskList}}', description: 'List of tasks to triage' },
+    { name: '{{memoryPath}}', description: 'Path to manager memory directory' },
+    { name: '{{planDescription}}', description: 'Description of the plan' },
+    { name: '{{planTitle}}', description: 'Title of the plan' },
+    { name: '{{planId}}', description: 'Plan identifier' },
+  ],
+  architect: [
+    { name: '{{taskList}}', description: 'List of tasks to decompose' },
+    { name: '{{memoryPath}}', description: 'Path to architect memory directory' },
+    { name: '{{planDescription}}', description: 'Description of the plan' },
+    { name: '{{planTitle}}', description: 'Title of the plan' },
+    { name: '{{planId}}', description: 'Plan identifier' },
+    { name: '{{codebasePath}}', description: 'Path to the codebase' },
+  ],
 }
 
 const PROMPT_LABELS: Record<PromptType, string> = {
@@ -110,6 +125,8 @@ const PROMPT_LABELS: Record<PromptType, string> = {
   critic: 'Critic Agent',
   ralph_loop_discussion: 'Ralph Loop Discussion',
   plan_phase: 'Plan Phase',
+  manager: 'Manager Agent',
+  architect: 'Architect Agent',
 }
 
 export function PromptEditor({ type, isOpen, onClose, onSave }: PromptEditorProps) {

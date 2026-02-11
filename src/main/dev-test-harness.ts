@@ -40,8 +40,7 @@ import type {
 } from '../shared/types'
 import { createTab, addWorkspaceToTab, getState, setActiveTab } from './state-manager'
 import { savePlan } from './config'
-import { registerHeadlessAgentInfo, emitHeadlessAgentUpdatePublic, emitHeadlessAgentEventPublic } from './plan-manager'
-import { HeadlessAgent } from './headless-agent'
+import { registerHeadlessAgentInfo, emitHeadlessAgentUpdatePublic, emitHeadlessAgentEventPublic, HeadlessAgent } from './headless'
 import { MOCK_IMAGE, checkImageExists } from './docker-sandbox'
 
 // Use shared exec utility with extended PATH for bd commands

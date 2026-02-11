@@ -2,7 +2,7 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { devLog } from './utils/dev-log'
 import {
@@ -40,7 +40,7 @@ import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -255,6 +255,7 @@ function App() {
 
   // Discussion execute state - maps planId to selected agent id
   const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
+  const [discussionExecuteTeamMode, setDiscussionExecuteTeamMode] = useState<Record<string, TeamMode>>({})
   const [discussionExecuting, setDiscussionExecuting] = useState<Record<string, boolean>>({})
 
 
@@ -964,33 +965,21 @@ function App() {
       })
     })
 
-    // Listen for waiting queue changes
+    // Single source of truth for waiting queue changes
+    // Auto-acknowledge any agents that the user is already focused on
     window.electronAPI?.onWaitingQueueChanged?.((queue: string[]) => {
+      const focusedId = focusedAgentIdRef.current
+      if (focusedId && queue.includes(focusedId)) {
+        devLog(`[Renderer] Agent ${focusedId} already focused, auto-acknowledging`)
+        window.electronAPI?.acknowledgeWaiting?.(focusedId)
+        // Filter out the focused agent from the queue locally
+        const filtered = queue.filter(id => id !== focusedId)
+        setWaitingQueue(filtered)
+        window.electronAPI?.updateTray?.(filtered.length)
+        return
+      }
       setWaitingQueue(queue)
       window.electronAPI?.updateTray?.(queue.length)
-    })
-
-    // Listen for agent waiting events
-    window.electronAPI?.onAgentWaiting?.((agentId: string) => {
-      devLog(`[Renderer] Received agent-waiting event for ${agentId}`)
-      // Check if user is already focused on this agent using the ref
-      if (focusedAgentIdRef.current === agentId) {
-        devLog(`[Renderer] Agent ${agentId} already focused, auto-acknowledging`)
-        window.electronAPI?.acknowledgeWaiting?.(agentId)
-        return  // Don't add to waiting queue or trigger attention
-      }
-
-      // Add to waiting queue since user isn't focused on this agent
-      setWaitingQueue((prev) => {
-        devLog(`[Renderer] Current queue: ${JSON.stringify(prev)}`)
-        if (!prev.includes(agentId)) {
-          const newQueue = [...prev, agentId]
-          devLog(`[Renderer] Updated queue: ${JSON.stringify(newQueue)}`)
-          window.electronAPI?.updateTray?.(newQueue.length)
-          return newQueue
-        }
-        return prev
-      })
     })
 
     // Global terminal data listener - routes data to the appropriate terminal writer
@@ -2132,11 +2121,11 @@ function App() {
     await window.electronAPI?.createPlan?.(title, description, options)
   }
 
-  const handleExecutePlan = async (planId: string, referenceAgentId: string) => {
-    devLog('[App] handleExecutePlan called:', { planId, referenceAgentId })
+  const handleExecutePlan = async (planId: string, referenceAgentId: string, teamMode?: TeamMode) => {
+    devLog('[App] handleExecutePlan called:', { planId, referenceAgentId, teamMode })
     devLog('[App] electronAPI available:', !!window.electronAPI)
     devLog('[App] executePlan available:', !!window.electronAPI?.executePlan)
-    const result = await window.electronAPI?.executePlan?.(planId, referenceAgentId)
+    const result = await window.electronAPI?.executePlan?.(planId, referenceAgentId, teamMode)
     devLog('[App] executePlan result:', result)
 
     // Navigate to the plan's tab
@@ -2436,7 +2425,7 @@ function App() {
               onClick={handleTogglePlanSidebar}
             >
               <ListTodo className="h-4 w-4 mr-1" />
-              Plans
+              Teams
               {activePlansCount > 0 && (
                 <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
                   {activePlansCount}
@@ -2712,6 +2701,7 @@ function App() {
                     const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {
                       const selectedAgentId = discussionExecuteAgent[discussedPlan.id] || ''
+                      const selectedTeamMode = discussionExecuteTeamMode[discussedPlan.id] || 'top-down'
                       const isExecuting = discussionExecuting[discussedPlan.id] || false
                       return (
                         <div className="h-full flex flex-col items-center justify-center text-center gap-4 p-8">
@@ -2740,6 +2730,32 @@ function App() {
                               ))}
                           </select>
 
+                          {/* Team mode selector */}
+                          <div className="flex gap-2 w-64">
+                            <button
+                              type="button"
+                              onClick={() => setDiscussionExecuteTeamMode(prev => ({ ...prev, [discussedPlan.id]: 'top-down' }))}
+                              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 border rounded transition-colors ${
+                                selectedTeamMode === 'top-down' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                              }`}
+                              disabled={isExecuting}
+                            >
+                              <ArrowUpCircle className="h-4 w-4" />
+                              Top-Down
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDiscussionExecuteTeamMode(prev => ({ ...prev, [discussedPlan.id]: 'bottom-up' }))}
+                              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 border rounded transition-colors ${
+                                selectedTeamMode === 'bottom-up' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/50'
+                              }`}
+                              disabled={isExecuting}
+                            >
+                              <Users className="h-4 w-4" />
+                              Bottom-Up
+                            </button>
+                          </div>
+
                           <div className="flex gap-2">
                             <Button
                               size="sm"
@@ -2757,9 +2773,14 @@ function App() {
                                 if (!selectedAgentId) return
                                 setDiscussionExecuting(prev => ({ ...prev, [discussedPlan.id]: true }))
                                 try {
-                                  const result = await handleExecutePlan(discussedPlan.id, selectedAgentId)
+                                  const result = await handleExecutePlan(discussedPlan.id, selectedAgentId, selectedTeamMode)
                                   // Clean up state
                                   setDiscussionExecuteAgent(prev => {
+                                    const next = { ...prev }
+                                    delete next[discussedPlan.id]
+                                    return next
+                                  })
+                                  setDiscussionExecuteTeamMode(prev => {
                                     const next = { ...prev }
                                     delete next[discussedPlan.id]
                                     return next
