@@ -2,11 +2,12 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as crypto from 'crypto'
 import { logger, type LogContext } from '../logger'
-import { getPlanById } from '../config'
+import { getPlanById, getWorkspaces } from '../config'
 import { getPlanDir, type BeadTask } from '../bd-client'
 import { HeadlessAgent } from '../headless'
 import { getSelectedDockerImage } from '../settings-manager'
 import { getPreferences } from '../state-manager'
+import { getRepositoryById } from '../repository-manager'
 import { buildPrompt } from '../prompt-templates'
 import type { HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent } from '../../shared/types'
 import { addPlanActivity } from './events'
@@ -39,12 +40,24 @@ export async function spawnManager(planId: string, triageTasks: BeadTask[]): Pro
   // Build task list string
   const taskList = triageTasks.map(t => `- ${t.id}: ${t.title}`).join('\n')
 
+  // Resolve reference repo name for assignment labels
+  const allAgents = getWorkspaces()
+  const referenceAgent = plan.referenceAgentId
+    ? allAgents.find(a => a.id === plan.referenceAgentId)
+    : null
+  let referenceRepoName = 'default'
+  if (referenceAgent?.repositoryId) {
+    const repo = await getRepositoryById(referenceAgent.repositoryId)
+    if (repo) referenceRepoName = repo.name
+  }
+
   const prompt = await buildPrompt('manager', {
     taskList,
     memoryPath: '/plan-output/manager-memories',
     planDescription: plan.description,
     planTitle: plan.title,
     planId: plan.id,
+    referenceRepoName,
   })
 
   const taskId = `manager-${crypto.randomUUID().substring(0, 8)}`

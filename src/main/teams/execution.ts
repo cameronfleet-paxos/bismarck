@@ -152,20 +152,28 @@ export async function executePlan(planId: string, referenceAgentId: string, team
       const repoNames = allRepos.map(r => r.name).join(', ')
       const taskAssignmentInstructions = `
 === TASK ASSIGNMENT (Bottom-Up Mode) ===
-In bottom-up mode, YOU are responsible for assigning tasks to repositories and worktrees.
-There is no separate orchestrator. When creating tasks:
+In bottom-up mode, YOU are responsible for initial task labeling. Use three categories:
 
-For well-scoped tasks you can fully specify:
-1. Assign each task a repository: bd --sandbox update <task-id> --add-label "repo:<repo-name>"
-2. Assign a unique worktree name: bd --sandbox update <task-id> --add-label "worktree:<name>"
-3. Mark as ready: bd --sandbox update <task-id> --add-label bismarck-ready
+**1. Simple, well-scoped tasks → bismarck-ready**
+Only for tasks where you are CONFIDENT about exactly what needs to change:
+  bd --sandbox update <task-id> --add-label "repo:<repo-name>" --add-label "worktree:<name>" --add-label bismarck-ready
 
-You can combine all labels in one command:
-  bd --sandbox update <task-id> --add-label "repo:<name>" --add-label "worktree:<name>" --add-label bismarck-ready
+**2. Medium/uncertain tasks → needs-triage (recommended default)**
+For tasks where scope, approach, or dependencies are not fully clear:
+  bd --sandbox update <task-id> --add-label needs-triage
+The Manager agent will assess these, determine the right approach, and either mark them ready or send to the Architect.
 
-For complex tasks that need further decomposition by an Architect agent, label them needs-architect instead:
+**3. Large/complex tasks → needs-architect**
+For tasks that clearly need decomposition into subtasks:
   bd --sandbox update <task-id> --add-label needs-architect
-The Architect will analyze the codebase and break them into smaller implementation tasks.
+The Architect agent will analyze the codebase and create properly-scoped subtasks with dependencies.
+
+**IMPORTANT: Err on the side of triage.** When in doubt between bismarck-ready and needs-triage, choose needs-triage. It's better for the Manager to quickly approve a simple task than for a worker to struggle with an under-specified one.
+
+Guideline: aim for roughly:
+- ~30% of tasks → needs-triage (Manager reviews)
+- ~10% of tasks → needs-architect (Architect decomposes)
+- ~60% of tasks → bismarck-ready (direct execution)
 
 Available repositories: ${repoNames}
 Use descriptive worktree names (e.g., "fix-auth-bug", "add-validation").

@@ -46,6 +46,11 @@ export async function spawnArchitect(planId: string, tasks: BeadTask[]): Promise
   // Build task list string
   const taskList = tasks.map(t => `- ${t.id}: ${t.title}`).join('\n')
 
+  // Build discussion context if available
+  const discussionContext = plan.discussion?.status === 'approved' && plan.discussionOutputPath
+    ? `\n=== DISCUSSION OUTPUT ===\nThe team discussed this plan before execution. Read the discussion output at /plan-output/discussion-output.md for broader context on requirements and decisions.\n`
+    : ''
+
   const prompt = await buildPrompt('architect', {
     taskList,
     memoryPath: '/plan-output/architect-memories',
@@ -53,6 +58,7 @@ export async function spawnArchitect(planId: string, tasks: BeadTask[]): Promise
     planTitle: plan.title,
     planId: plan.id,
     codebasePath: codebasePath ? '/workspace' : undefined,
+    discussionContext,
   })
 
   const taskId = `architect-${crypto.randomUUID().substring(0, 8)}`
