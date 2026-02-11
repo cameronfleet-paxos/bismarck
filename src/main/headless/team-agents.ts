@@ -402,8 +402,11 @@ export function setupBdCloseListener(): void {
     // Mark this task as having successfully closed via bd
     tasksWithSuccessfulBdClose.add(taskId)
 
-    // Mark as pending critic so dependents aren't dispatched before critic is registered
-    addPendingCriticTask(taskId)
+    // Only mark non-critic tasks as pending critic — critic tasks don't spawn further critics
+    const info = headlessAgentInfo.get(taskId)
+    if (info?.agentType !== 'critic') {
+      addPendingCriticTask(taskId)
+    }
 
     logger.info('proxy', 'Scheduling container stop after 3s grace period', logCtx)
 
