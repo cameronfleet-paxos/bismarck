@@ -115,13 +115,13 @@ class CDPHelper {
       this.pendingMessages.set(id, { resolve, reject });
       this.ws.send(JSON.stringify({ id, method, params }));
 
-      // Timeout after 30 seconds
+      // Timeout after 5 minutes (to support long-running mock flows through proxied commands)
       setTimeout(() => {
         if (this.pendingMessages.has(id)) {
           this.pendingMessages.delete(id);
           reject(new Error(`CDP command timed out: ${method}`));
         }
-      }, 30000);
+      }, 300000);
     });
   }
 

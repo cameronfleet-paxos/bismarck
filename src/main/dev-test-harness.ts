@@ -399,8 +399,7 @@ export class MockOrchestrator extends EventEmitter {
   private async checkTaskStatus(): Promise<void> {
     try {
       // List all tasks (including closed ones)
-      const dbPath = path.join(this.planDir, '.beads', 'beads.db')
-      const { stdout } = await execAsync(`bd --sandbox --db "${dbPath}" list --all`)
+      const { stdout } = await execAsync(`bd --sandbox list --all`, { cwd: this.planDir })
       const tasks = this.parseTasks(stdout)
 
       // Check for newly completed tasks
@@ -466,13 +465,11 @@ export class MockOrchestrator extends EventEmitter {
 
   private async markDependentTasksReady(completedTaskId: string, tasks: Array<{ id: string; status: string; blockedBy: string[] }>): Promise<void> {
     // Find tasks that were blocked by the completed task and can now be started
-    const dbPath = path.join(this.planDir, '.beads', 'beads.db')
-
     for (const task of tasks) {
       if (task.status !== 'completed') {
         // Check if this task's blockers are all complete
         try {
-          const { stdout: depOutput } = await execAsync(`bd --sandbox --db "${dbPath}" dep list "${task.id}"`)
+          const { stdout: depOutput } = await execAsync(`bd --sandbox dep list "${task.id}"`, { cwd: this.planDir })
 
           // Parse dependencies - look for "via blocks" entries
           // Format: "  task-id: Subject [P2] (closed) via blocks" or "(open) via blocks"
@@ -481,7 +478,7 @@ export class MockOrchestrator extends EventEmitter {
 
           if (!hasOpenBlockers) {
             // All blockers are closed (or no blockers), mark as ready
-            await execAsync(`bd --sandbox --db "${dbPath}" label add "${task.id}" bismarck-ready`)
+            await execAsync(`bd --sandbox label add "${task.id}" bismarck-ready`, { cwd: this.planDir })
             devLog('[MockOrchestrator] Marked task ready:', task.id, '(blocker completed:', completedTaskId, ')')
             this.emitActivity('info', `Marked task ready: ${task.id}`)
             if (this.onTaskReadyCallback) {
@@ -541,11 +538,12 @@ export interface MockFlowOptions {
 }
 
 /**
- * Helper to run bd commands with the correct --db path
+ * Helper to run bd commands in the plan directory context.
+ * Uses cwd-based execution (not --db path) so commands work correctly
+ * when proxied to a host machine (e.g., Docker environments).
  */
-function bdCmd(planDir: string, subcommand: string): string {
-  const dbPath = path.join(planDir, '.beads', 'beads.db')
-  return `bd --sandbox --db "${dbPath}" ${subcommand}`
+function bdExec(planDir: string, subcommand: string): Promise<{ stdout: string; stderr: string }> {
+  return execAsync(`bd --sandbox ${subcommand}`, { cwd: planDir })
 }
 
 /**
@@ -921,7 +919,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
 
     // Create all tasks first (no deps yet)
     for (let i = 0; i < definitions.length; i++) {
-      const { stdout } = await execAsync(bdCmd(planDir, `create "${definitions[i].subject}"`))
+      const { stdout } = await bdExec(planDir, `create "${definitions[i].subject}"`);
       tasks[i].id = extractTaskId(stdout)
 
       if ((i + 1) % 50 === 0) {
@@ -936,7 +934,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
         const blockerId = tasks[blockerIdx].id
         const dependentId = tasks[i].id
         try {
-          await execAsync(bdCmd(planDir, `dep add "${blockerId}" --blocks "${dependentId}"`))
+          await bdExec(planDir, `dep add "${blockerId}" --blocks "${dependentId}"`);
           tasks[i].blockedBy.push(blockerId)
         } catch (err) {
           devLog(`[MockPlanSetup] Warning: failed to add dep ${blockerId} -> ${dependentId}:`, err)
@@ -950,7 +948,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
       if (def.labels && def.labels.length > 0) {
         for (const label of def.labels) {
           try {
-            await execAsync(bdCmd(planDir, `label add "${tasks[i].id}" ${label}`))
+            await bdExec(planDir, `label add "${tasks[i].id}" ${label}`);
           } catch {
             // ignore label add failures
           }
@@ -958,7 +956,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
       } else if (def.blockedByIndices.length === 0) {
         // Root tasks with no blockers get bismarck-ready
         try {
-          await execAsync(bdCmd(planDir, `label add "${tasks[i].id}" bismarck-ready`))
+          await bdExec(planDir, `label add "${tasks[i].id}" bismarck-ready`);
         } catch {
           // ignore
         }
@@ -971,8 +969,8 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
         (definitions[i].blockedByIndices.length === 0 && !definitions[i].labels)
       if (hasReady) {
         try {
-          await execAsync(bdCmd(planDir, `label add "${tasks[i].id}" repo:mock-repo`))
-          await execAsync(bdCmd(planDir, `label add "${tasks[i].id}" worktree:task-${i + 1}`))
+          await bdExec(planDir, `label add "${tasks[i].id}" repo:mock-repo`)
+          await bdExec(planDir, `label add "${tasks[i].id}" worktree:task-${i + 1}`)
         } catch {
           // ignore
         }
@@ -996,7 +994,7 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
     // Create tasks with bd
     for (let i = 0; i < tasks.length; i++) {
       const deps = (!parallelTasks && i > 0) ? `--deps "blocks:${tasks[i - 1].id}"` : ''
-      const { stdout } = await execAsync(bdCmd(planDir, `create "${tasks[i].subject}" ${deps}`))
+      const { stdout } = await bdExec(planDir, `create "${tasks[i].subject}" ${deps}`)
       tasks[i].id = extractTaskId(stdout)
 
       if (i > 0 && !parallelTasks) {
@@ -1009,10 +1007,10 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
     // Mark first task as bismarck-ready (simulates orchestrator marking it)
     if (parallelTasks) {
       for (const task of tasks) {
-        await execAsync(bdCmd(planDir, `label add "${task.id}" bismarck-ready`))
+        await bdExec(planDir, `label add "${task.id}" bismarck-ready`)
       }
     } else {
-      await execAsync(bdCmd(planDir, `label add "${tasks[0].id}" bismarck-ready`))
+      await bdExec(planDir, `label add "${tasks[0].id}" bismarck-ready`)
     }
   }
 
@@ -1098,8 +1096,7 @@ export async function startMockAgent(
       activeAgents.delete(taskId)
       // Close the beads task so orchestrator can detect completion
       try {
-        const dbPath = path.join(worktreePath, '.beads', 'beads.db')
-        await execAsync(`bd --sandbox --db "${dbPath}" close "${taskId}"`)
+        await execAsync(`bd --sandbox close "${taskId}"`, { cwd: worktreePath })
         devLog('[DevHarness] Closed bd task:', taskId)
       } catch (error) {
         console.error('[DevHarness] Failed to close bd task:', taskId, error)
@@ -1225,8 +1222,7 @@ export async function startMockAgentWithDocker(
 
     // Close the beads task so orchestrator can detect completion
     try {
-      const dbPath = path.join(worktreePath, '.beads', 'beads.db')
-      await execAsync(`bd --sandbox --db "${dbPath}" close "${taskId}"`)
+      await execAsync(`bd --sandbox close "${taskId}"`, { cwd: worktreePath })
       devLog('[DevHarness] Closed bd task:', taskId)
     } catch (error) {
       console.error('[DevHarness] Failed to close bd task:', taskId, error)
