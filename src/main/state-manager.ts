@@ -1,5 +1,5 @@
 import { loadState, saveState, getDefaultPreferences } from './config'
-import type { AppState, AgentTab, AppPreferences } from '../shared/types'
+import type { AppState, AgentTab, AppPreferences, PlainTerminal } from '../shared/types'
 import { getGridConfig } from '../shared/grid-utils'
 
 function getMaxAgentsPerTab(): number {
@@ -457,4 +457,43 @@ export function getActivePlanId(): string | null {
 export function setActivePlanId(planId: string | null): void {
   currentState.activePlanId = planId
   persistState()
+}
+
+// Plain terminal persistence
+export function addPlainTerminal(pt: PlainTerminal): void {
+  if (!currentState.plainTerminals) {
+    currentState.plainTerminals = []
+  }
+  currentState.plainTerminals.push(pt)
+  persistState()
+}
+
+export function removePlainTerminal(terminalId: string): void {
+  if (currentState.plainTerminals) {
+    currentState.plainTerminals = currentState.plainTerminals.filter(pt => pt.terminalId !== terminalId)
+    persistState()
+  }
+}
+
+export function renamePlainTerminal(terminalId: string, name: string): void {
+  const pt = currentState.plainTerminals?.find(p => p.terminalId === terminalId)
+  if (pt) {
+    pt.name = name
+    persistState()
+  }
+}
+
+export function getPlainTerminals(): PlainTerminal[] {
+  return currentState.plainTerminals || []
+}
+
+export function swapWorkspaceInTab(oldId: string, newId: string): void {
+  for (const tab of currentState.tabs) {
+    const idx = tab.workspaceIds.indexOf(oldId)
+    if (idx !== -1) {
+      tab.workspaceIds[idx] = newId
+      persistState()
+      return
+    }
+  }
 }

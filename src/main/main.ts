@@ -71,6 +71,7 @@ import {
   addWorkspaceToTab,
   removeWorkspaceFromTab,
   getOrCreateTabForWorkspace,
+  getOrCreateTabForWorkspaceWithPreference,
   getPreferences,
   setPreferences,
   reorderWorkspaceInTab,
@@ -79,6 +80,11 @@ import {
   getTabs,
   setPlanSidebarOpen,
   setActivePlanId,
+  addPlainTerminal,
+  removePlainTerminal,
+  renamePlainTerminal,
+  getPlainTerminals,
+  swapWorkspaceInTab,
 } from './state-manager'
 import {
   createPlan,
@@ -474,18 +480,50 @@ function registerIpcHandlers() {
   })
 
   // Plain terminal management (non-agent shell terminals)
-  ipcMain.handle('create-plain-terminal', async (_event, directory: string) => {
+  ipcMain.handle('create-plain-terminal', async (_event, directory: string, name?: string) => {
     const terminalId = createPlainTerminal(directory, mainWindow)
+    const plainId = `plain-${terminalId}`
 
-    // Create a dedicated terminal tab
-    const tab = createTab('Terminal', { isTerminalTab: true })
+    // Place in next available grid slot (prefer active tab, same as headless agents)
+    const state = getState()
+    const tab = getOrCreateTabForWorkspaceWithPreference(plainId, state.activeTabId || undefined)
+    addWorkspaceToTab(plainId, tab.id)
     setActiveTab(tab.id)
+
+    // Persist plain terminal info for restoration on restart
+    addPlainTerminal({ id: plainId, terminalId, tabId: tab.id, name: name || '', directory })
 
     return { terminalId, tabId: tab.id }
   })
 
+  ipcMain.handle('rename-plain-terminal', (_event, terminalId: string, name: string) => {
+    renamePlainTerminal(terminalId, name)
+  })
+
   ipcMain.handle('close-plain-terminal', (_event, terminalId: string) => {
+    const plainId = `plain-${terminalId}`
+    removeWorkspaceFromTab(plainId)
+    removePlainTerminal(terminalId)
     closeTerminal(terminalId)
+  })
+
+  // Restore a plain terminal from a previous session (called by renderer after it's loaded)
+  ipcMain.handle('restore-plain-terminal', (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => {
+    try {
+      const newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      const newPlainId = `plain-${newTerminalId}`
+      // Swap workspace ID in tabs
+      swapWorkspaceInTab(pt.id, newPlainId)
+      // Update persisted plain terminal entry
+      removePlainTerminal(pt.terminalId)
+      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId })
+      return { terminalId: newTerminalId, plainId: newPlainId }
+    } catch (err) {
+      console.error(`Failed to restore plain terminal in ${pt.directory}:`, err)
+      removePlainTerminal(pt.terminalId)
+      removeWorkspaceFromTab(pt.id)
+      return null
+    }
   })
 
   // Tab management

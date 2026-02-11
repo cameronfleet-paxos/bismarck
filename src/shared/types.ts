@@ -210,6 +210,8 @@ export interface AppState {
   activePlanId?: string | null
   // Tutorial state
   tutorialState?: TutorialState
+  // Plain terminals (non-agent shell sessions)
+  plainTerminals?: PlainTerminal[]
 }
 
 // Theme presets
