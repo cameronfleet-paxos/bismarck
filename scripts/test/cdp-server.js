@@ -468,6 +468,69 @@ async function handleRequest(req, res) {
         break;
       }
 
+      case '/perf': {
+        // Performance measurement endpoint
+        // Measures renderer memory, DOM node count, and re-render frequency
+        await ensureConnected();
+
+        const perfResult = await cdp.evaluate(`
+          (function() {
+            try {
+              const mem = process.memoryUsage();
+              const domNodes = document.querySelectorAll('*').length;
+              const planTaskCards = document.querySelectorAll('[class*="TaskCard"], [data-testid*="task-card"]').length;
+
+              return {
+                memory: {
+                  heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+                  heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+                  rssMB: Math.round(mem.rss / 1024 / 1024),
+                },
+                dom: {
+                  totalNodes: domNodes,
+                  taskCards: planTaskCards,
+                },
+                timestamp: new Date().toISOString(),
+              };
+            } catch (error) {
+              return { error: error.message };
+            }
+          })()
+        `);
+
+        sendJson(res, perfResult);
+        break;
+      }
+
+      case '/stress-mock': {
+        // Start a stress mock flow directly from CDP
+        await ensureConnected();
+        const body = await parseBody(req);
+        const scenario = body.scenario || 'wide-parallel';
+        const count = body.taskCount || 200;
+        const eventInterval = body.eventIntervalMs || 500;
+        const teamMode = body.teamMode || 'top-down';
+
+        const result = await cdp.evaluate(`
+          (async function() {
+            try {
+              const result = await window.electronAPI.devRunMockFlow({
+                scenario: '${scenario}',
+                taskCount: ${count},
+                eventIntervalMs: ${eventInterval},
+                teamMode: '${teamMode}',
+              });
+              return { success: true, planId: result.planId, taskCount: result.tasks.length };
+            } catch (error) {
+              return { success: false, error: error.message };
+            }
+          })()
+        `);
+
+        sendJson(res, result);
+        break;
+      }
+
       default:
         sendError(res, `Unknown endpoint: ${path}`, 404);
     }
