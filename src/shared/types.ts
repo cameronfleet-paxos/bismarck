@@ -747,3 +747,36 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// ============================================
+// File Browser Types
+// ============================================
+
+// Node in a file tree (file or directory)
+export interface FileTreeNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  extension?: string
+  children?: FileTreeNode[]
+}
+
+// File content with metadata for code editor
+export interface FileContent {
+  content: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  size: number
+  error?: string
+}
+
+// Git commit information for history display
+export interface GitCommitInfo {
+  hash: string
+  shortHash: string
+  author: string
+  date: string
+  message: string
+}

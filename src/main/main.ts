@@ -215,6 +215,7 @@ import {
   type MockFlowOptions,
 } from './dev-test-harness'
 import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { getDirectoryTree, readFileContent, getGitLog } from './file-browser'
 import {
   setAuthCheckerWindow,
   startToolAuthChecks,
@@ -889,6 +890,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('revert-all-files', async (_event, directory: string) => {
     return revertAllFiles(directory)
+  })
+
+  // File browser operations
+  ipcMain.handle('get-directory-tree', async (_event, directory: string, options?: { maxDepth?: number }) => {
+    return getDirectoryTree(directory, options)
+  })
+
+  ipcMain.handle('read-file-content', async (_event, directory: string, filepath: string, options?: { force?: boolean }) => {
+    return readFileContent(directory, filepath, options)
+  })
+
+  ipcMain.handle('get-git-log', async (_event, directory: string, filepath?: string, options?: { limit?: number }) => {
+    return getGitLog(directory, filepath, options)
   })
 
   // Setup wizard

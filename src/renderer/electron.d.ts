@@ -154,6 +154,11 @@ export interface ElectronAPI {
   writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
   revertAllFiles: (directory: string) => Promise<void>
 
+  // File browser operations
+  getDirectoryTree: (directory: string, options?: { maxDepth?: number }) => Promise<import('../shared/types').FileTreeNode>
+  readFileContent: (directory: string, filepath: string, options?: { force?: boolean }) => Promise<import('../shared/types').FileContent>
+  getGitLog: (directory: string, filepath?: string, options?: { limit?: number }) => Promise<import('../shared/types').GitCommitInfo[]>
+
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>
   setupWizardGetCommonRepoPaths: () => Promise<string[]>
