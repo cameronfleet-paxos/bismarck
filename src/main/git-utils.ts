@@ -758,7 +758,8 @@ export async function rebaseOntoRemoteBranch(
     const isConflict = err.message.includes('CONFLICT') ||
                        err.message.includes('could not apply') ||
                        err.message.includes('Resolve all conflicts') ||
-                       err.message.includes('fix conflicts');
+                       err.message.includes('fix conflicts') ||
+                       err.message.includes('untracked working tree file');
 
     if (isConflict) {
       logger.warn('git', 'Rebase conflict detected, aborting rebase', ctx);

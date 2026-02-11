@@ -439,10 +439,10 @@ export function RepositoriesSettings({ onSettingsChange }: RepositoriesSettingsP
                 {/* Divider */}
                 <div className="border-t" />
 
-                {/* Acceptance Criteria */}
+                {/* Completion Criteria */}
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <Label htmlFor={`completion-${selectedRepo.id}`} className="text-sm font-medium">Acceptance Criteria</Label>
+                    <Label htmlFor={`completion-${selectedRepo.id}`} className="text-sm font-medium">Completion Criteria</Label>
                     <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
                       <Zap className="h-3 w-3" />
                       Injected into standalone & PR-mode task agent prompts

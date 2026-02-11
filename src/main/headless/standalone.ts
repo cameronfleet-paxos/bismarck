@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { devLog } from './dev-log'
+import { devLog } from '../dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneHeadlessAgentInfoPath,
@@ -22,10 +22,10 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
-} from './config'
-import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from './state-manager'
-import { getSelectedDockerImage, loadSettings } from './settings-manager'
+} from '../config'
+import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from '../state-manager'
+import { getSelectedDockerImage, loadSettings } from '../settings-manager'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -33,14 +33,14 @@ import {
   removeWorktree,
   deleteLocalBranch,
   getCommitsBetween,
-} from './git-utils'
-import { startToolProxy, isProxyRunning } from './tool-proxy'
-import { getRepositoryById, getRepositoryByPath } from './repository-manager'
-import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
-import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
-import { runPlanPhase, wrapPromptWithPlan } from './plan-phase'
-import { queueTerminalCreation } from './terminal-queue'
-import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
+} from '../git-utils'
+import { startToolProxy, isProxyRunning } from '../tool-proxy'
+import { getRepositoryById, getRepositoryByPath } from '../repository-manager'
+import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../../shared/types'
+import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from '../prompt-templates'
+import { runPlanPhase, wrapPromptWithPlan } from '../plan-phase'
+import { queueTerminalCreation } from '../terminal-queue'
+import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
 import * as fsPromises from 'fs/promises'
 
 // Word lists for fun random names
@@ -149,7 +149,7 @@ function emitHeadlessAgentEvent(headlessId: string, event: StreamEvent): void {
 function emitStateUpdate(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Import here to avoid circular dependency
-    const { getState } = require('./state-manager')
+    const { getState } = require('../state-manager')
     mainWindow.webContents.send('state-update', getState())
   }
 }
@@ -955,6 +955,26 @@ interface HeadlessDiscussionState {
 }
 
 const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map()
+
+/**
+ * Get terminal IDs of active headless discussions (including Ralph loop discussions).
+ * Used to exclude these terminals from cleanup when the window closes,
+ * so that discussions can complete and spawn headless agents.
+ */
+export function getActiveDiscussionTerminalIds(): Set<string> {
+  const ids = new Set<string>()
+  for (const state of activeHeadlessDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  for (const state of activeRalphLoopDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  return ids
+}
 
 /**
  * Start a headless discussion session

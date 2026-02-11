@@ -1,7 +1,7 @@
 import type { AgentIconName } from './constants'
 
 // Customizable prompt types (available in settings)
-export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic' | 'manager' | 'architect'
 
 // All prompt types (including internal/non-customizable prompts)
 export type PromptType = CustomizablePromptType | 'ralph_loop_discussion' | 'plan_phase'
@@ -15,6 +15,9 @@ export interface CustomPrompt {
   template: string
   isCustom: boolean
 }
+
+// Team mode for plan execution
+export type TeamMode = 'top-down' | 'bottom-up'
 
 // Branch strategy for plan execution
 export type BranchStrategy = 'feature_branch' | 'raise_prs'
@@ -302,6 +305,7 @@ export interface PlanWorktree {
   criticIteration?: number                                    // Current review iteration (0-based)
   criticStatus?: 'pending' | 'reviewing' | 'approved' | 'rejected'
   criticTaskId?: string                                       // Current critic task ID in beads
+  totalFixupCount?: number                                     // Cumulative fix-up tasks across all critic iterations
 }
 
 // Plan definition for team mode coordination
@@ -325,6 +329,9 @@ export interface Plan {
   // Worktree tracking for new plan execution model
   worktrees?: PlanWorktree[]
   maxParallelAgents?: number    // Default: 4
+
+  // Team mode configuration
+  teamMode?: TeamMode              // 'top-down' (default) or 'bottom-up'
 
   // Branch/PR strategy configuration
   branchStrategy: BranchStrategy   // How task agents handle git operations
@@ -496,7 +503,7 @@ export interface HeadlessAgentInfo {
   userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
   planText?: string  // Plan generated during planning phase (for Eye modal display)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
-  agentType?: 'task' | 'critic' | 'merge'  // Type of headless agent (default: task)
+  agentType?: 'task' | 'critic' | 'merge' | 'manager' | 'architect'  // Type of headless agent (default: task)
 }
 
 // Extended Agent type to support both execution modes

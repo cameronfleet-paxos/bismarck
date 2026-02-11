@@ -66,6 +66,8 @@ export interface AppSettings {
     standalone_followup: string | null  // Follow-up agents on existing worktrees
     headless_discussion: string | null  // Headless discussion (Discuss: Headless Agent)
     critic: string | null              // Critic review agents
+    manager: string | null             // Manager triage agents (bottom-up mode)
+    architect: string | null           // Architect decomposition agents (bottom-up mode)
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -91,6 +93,7 @@ export interface AppSettings {
   critic: {
     enabled: boolean              // Enable critic review of completed tasks
     maxIterations: number         // Maximum critic review cycles per task
+    maxFixupsPerTask: number      // Maximum cumulative fix-up tasks per worktree
   }
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
@@ -189,6 +192,8 @@ export function getDefaultSettings(): AppSettings {
       standalone_followup: null,
       headless_discussion: null,
       critic: null,
+      manager: null,
+      architect: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -214,6 +219,7 @@ export function getDefaultSettings(): AppSettings {
     critic: {
       enabled: true,
       maxIterations: 2,
+      maxFixupsPerTask: 5,
     },
     _internal: {
       lastLogPurgeVersion: null,

@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, TeamMode, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Tool auth status from the auth checker
@@ -80,9 +80,9 @@ export interface ElectronAPI {
   setPreferences: (preferences: Partial<AppPreferences>) => Promise<AppPreferences>
 
   // Plan management (Team Mode)
-  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy }) => Promise<Plan>
+  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy; teamMode?: TeamMode }) => Promise<Plan>
   getPlans: () => Promise<Plan[]>
-  executePlan: (planId: string, referenceAgentId: string) => Promise<Plan | null>
+  executePlan: (planId: string, referenceAgentId: string, teamMode?: TeamMode) => Promise<Plan | null>
   startDiscussion: (planId: string, referenceAgentId: string) => Promise<Plan | null>
   cancelDiscussion: (planId: string) => Promise<Plan | null>
   cancelPlan: (planId: string) => Promise<Plan | null>
@@ -215,7 +215,7 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; ralph_loop_discussion: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; ralph_loop_discussion: string | null; manager: string | null; architect: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 

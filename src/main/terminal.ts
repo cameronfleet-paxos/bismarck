@@ -330,8 +330,9 @@ export function closeTerminal(terminalId: string): void {
   }
 }
 
-export function closeAllTerminals(): void {
+export function closeAllTerminals(excludeIds?: Set<string>): void {
   for (const [id] of terminals) {
+    if (excludeIds && excludeIds.has(id)) continue
     closeTerminal(id)
   }
 }
