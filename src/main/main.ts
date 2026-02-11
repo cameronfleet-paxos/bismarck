@@ -105,6 +105,7 @@ import {
   getHeadlessAgentInfo,
   getHeadlessAgentInfoForPlan,
   stopHeadlessTaskAgent,
+  nudgeHeadlessTaskAgent,
   destroyHeadlessAgent,
   setHeadlessMainWindow,
 } from './headless'
@@ -167,6 +168,7 @@ import {
   startStandaloneHeadlessAgent,
   getStandaloneHeadlessAgents,
   stopStandaloneHeadlessAgent,
+  nudgeStandaloneHeadlessAgent,
   setMainWindowForStandaloneHeadless,
   initStandaloneHeadless,
   confirmStandaloneAgentDone,
@@ -710,6 +712,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('destroy-headless-agent', async (_event, taskId: string, isStandalone: boolean) => {
     return destroyHeadlessAgent(taskId, isStandalone)
+  })
+
+  ipcMain.handle('nudge-headless-agent', async (_event, taskId: string, message: string, isStandalone: boolean) => {
+    if (isStandalone) {
+      return nudgeStandaloneHeadlessAgent(taskId, message)
+    } else {
+      return nudgeHeadlessTaskAgent(taskId, message)
+    }
   })
 
   // Standalone headless agent management

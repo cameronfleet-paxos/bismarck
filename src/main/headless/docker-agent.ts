@@ -91,6 +91,7 @@ export class HeadlessAgent extends EventEmitter {
   private options: HeadlessAgentOptions | null = null
   private events: StreamEvent[] = []
   private startTime: number = 0
+  private useStreamJsonInput: boolean = false
 
   constructor() {
     super()
@@ -144,6 +145,9 @@ export class HeadlessAgent extends EventEmitter {
       // Retrieve GitHub token from settings so containers can access private registries
       const githubToken = await getGitHubToken()
 
+      // Use stream-json input mode to enable nudges (multi-turn messaging)
+      this.useStreamJsonInput = !options.useEntrypoint
+
       // Build container config
       const containerConfig: ContainerConfig = {
         image: options.image || DEFAULT_IMAGE,
@@ -158,6 +162,7 @@ export class HeadlessAgent extends EventEmitter {
           BISMARCK_TASK_ID: options.taskId || '',
         },
         useEntrypoint: options.useEntrypoint,
+        inputMode: this.useStreamJsonInput ? 'stream-json' : undefined,
         sharedCacheDir: options.sharedCacheDir,
         sharedModCacheDir: options.sharedModCacheDir,
         planOutputDir: options.planOutputDir,
@@ -167,6 +172,17 @@ export class HeadlessAgent extends EventEmitter {
       startTimer(`agent:container-spawn:${taskLabel}`, 'agent')
       this.container = await spawnContainerAgent(containerConfig)
       endTimer(`agent:container-spawn:${taskLabel}`)
+
+      // For stream-json input mode, send the initial prompt via stdin
+      if (this.useStreamJsonInput && this.container.stdin) {
+        const initialMessage = JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: options.prompt },
+        })
+        this.container.stdin.write(initialMessage + '\n')
+        logger.debug('agent', 'Sent initial prompt via stream-json stdin', this.getLogContext())
+      }
+
       this.setStatus('running')
 
       // Set up stream parser
@@ -267,6 +283,35 @@ export class HeadlessAgent extends EventEmitter {
 
     this.setStatus('completed')
     logger.info('agent', 'HeadlessAgent.stop() finished', logCtx, { finalStatus: this.status })
+  }
+
+  /**
+   * Send a nudge message to the running agent via stdin.
+   * Uses the stream-json protocol to inject a user message.
+   */
+  nudge(message: string): boolean {
+    if (this.status !== 'running') {
+      logger.warn('agent', `Cannot nudge agent in status: ${this.status}`, this.getLogContext())
+      return false
+    }
+
+    if (!this.useStreamJsonInput || !this.container?.stdin) {
+      logger.warn('agent', 'Cannot nudge: stream-json input not available', this.getLogContext())
+      return false
+    }
+
+    try {
+      const nudgeMessage = JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: message },
+      })
+      this.container.stdin.write(nudgeMessage + '\n')
+      logger.info('agent', `Nudge sent (${message.length} chars)`, this.getLogContext())
+      return true
+    } catch (error) {
+      logger.error('agent', 'Failed to send nudge', this.getLogContext(), { error: String(error) })
+      return false
+    }
   }
 
   private setStatus(status: HeadlessAgentStatus): void {

@@ -564,6 +564,19 @@ export async function stopStandaloneHeadlessAgent(headlessId: string): Promise<v
 }
 
 /**
+ * Send a nudge message to a running standalone headless agent.
+ * Returns true if the nudge was sent successfully.
+ */
+export function nudgeStandaloneHeadlessAgent(headlessId: string, message: string): boolean {
+  const agent = standaloneHeadlessAgents.get(headlessId)
+  if (!agent) {
+    devLog('[StandaloneHeadless] nudge: agent not found:', headlessId)
+    return false
+  }
+  return agent.nudge(message)
+}
+
+/**
  * Initialize standalone headless module - load persisted agent info
  * Mark any agents that were running when the app closed as interrupted
  */

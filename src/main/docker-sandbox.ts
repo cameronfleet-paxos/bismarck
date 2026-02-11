@@ -12,7 +12,7 @@
  */
 
 import { ChildProcess } from 'child_process'
-import { Readable, PassThrough } from 'stream'
+import { Readable, Writable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
 import { getProxyUrl } from './tool-proxy'
@@ -35,11 +35,13 @@ export interface ContainerConfig {
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
   mode?: 'plan' // If 'plan', run in plan mode (stream-json output)
+  inputMode?: 'prompt' | 'stream-json' // If 'stream-json', use --input-format stream-json and deliver prompt via stdin (keeps stdin open for nudges)
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
 }
 
 export interface ContainerResult {
   containerId: string
+  stdin: Writable | null
   stdout: PassThrough
   stderr: PassThrough
   stop: () => Promise<void>
@@ -230,7 +232,13 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
       // Execution mode: full permissions, stream-json output
       args.push('claude')
       args.push('--dangerously-skip-permissions')
-      args.push('-p', config.prompt)
+      if (config.inputMode === 'stream-json') {
+        // stream-json input: prompt is delivered via stdin, enables multi-turn nudges
+        args.push('--input-format', 'stream-json')
+      } else {
+        // Default: prompt passed as CLI argument
+        args.push('-p', config.prompt)
+      }
       args.push('--output-format', 'stream-json')
       args.push('--verbose')
 
@@ -288,9 +296,12 @@ export async function spawnContainerAgent(
     stdio: ['pipe', 'pipe', 'pipe'],
   })
 
-  // Close stdin immediately - Claude Code with -p flag doesn't need stdin
-  // and leaving it open may prevent the process from starting properly
-  dockerProcess.stdin?.end()
+  // For stream-json input mode, keep stdin open so we can send nudge messages later.
+  // For prompt mode (-p flag), close stdin immediately.
+  const stdinStream: Writable | null = config.inputMode === 'stream-json' ? dockerProcess.stdin ?? null : null
+  if (config.inputMode !== 'stream-json') {
+    dockerProcess.stdin?.end()
+  }
 
   // Create pass-through streams for stdout/stderr
   const stdout = new PassThrough()
@@ -371,6 +382,7 @@ export async function spawnContainerAgent(
 
   return {
     containerId: containerId || trackingId,
+    stdin: stdinStream,
     stdout,
     stderr,
     stop,
