@@ -57,6 +57,10 @@ let onCriticCompleted: ((planId: string, criticTask: BeadTask) => Promise<void>)
 let onAddPlanActivity: ((planId: string, type: string, message: string, details?: string) => void) | null = null
 let onEmitTaskAssignmentUpdate: ((assignment: TaskAssignment) => void) | null = null
 let onEmitPlanUpdate: ((plan: any) => void) | null = null
+let onContextExhaustionRetry: ((planId: string, taskId: string, worktree: PlanWorktree, repository: Repository) => Promise<void>) | null = null
+
+/** Max retries per task for context exhaustion recovery */
+const MAX_CONTEXT_EXHAUSTION_RETRIES = 2
 
 export function setOnCriticNeeded(cb: (planId: string, taskId: string) => Promise<void>): void {
   onCriticNeeded = cb
@@ -80,6 +84,10 @@ export function setOnEmitTaskAssignmentUpdate(cb: (assignment: TaskAssignment) =
 
 export function setOnEmitPlanUpdate(cb: (plan: any) => void): void {
   onEmitPlanUpdate = cb
+}
+
+export function setOnContextExhaustionRetry(cb: (planId: string, taskId: string, worktree: PlanWorktree, repository: Repository) => Promise<void>): void {
+  onContextExhaustionRetry = cb
 }
 
 // --- Exported functions ---
@@ -334,7 +342,50 @@ export async function startHeadlessTaskAgent(
       }
     } else {
       removePendingCriticTask(task.id)
-      onAddPlanActivity?.(planId, 'error', `Task ${task.id} failed`, result.error)
+
+      // Context exhaustion detection: agent failed without bd close and had events
+      const isContextExhaustion = !bdCloseSucceeded &&
+        agentInfo.events.length > 0 &&
+        !isCriticTask(task) &&
+        !isFixupTask(task)
+
+      if (isContextExhaustion) {
+        // Check retry limit
+        const activePlan = getPlanById(planId)
+        const wt = activePlan?.worktrees?.find(w => w.taskId === task.id)
+        const retries = wt?.contextExhaustionRetries ?? 0
+
+        if (retries < MAX_CONTEXT_EXHAUSTION_RETRIES && onContextExhaustionRetry && wt) {
+          // Increment retry counter
+          wt.contextExhaustionRetries = retries + 1
+          savePlan(activePlan!)
+          onEmitPlanUpdate?.(activePlan!)
+
+          onAddPlanActivity?.(planId, 'warning',
+            `Task ${task.id} context exhausted (retry ${retries + 1}/${MAX_CONTEXT_EXHAUSTION_RETRIES})`,
+            `Agent had ${agentInfo.events.length} events before exhaustion. Spawning continuation.`)
+
+          const repository = await getRepositoryById(wt.repositoryId)
+          if (repository) {
+            try {
+              await onContextExhaustionRetry(planId, task.id, wt, repository)
+            } catch (retryErr) {
+              logger.error('agent', 'Context exhaustion retry failed', { planId, taskId: task.id },
+                { error: retryErr instanceof Error ? retryErr.message : String(retryErr) })
+              onAddPlanActivity?.(planId, 'error', `Context exhaustion retry failed for ${task.id}`,
+                retryErr instanceof Error ? retryErr.message : 'Unknown error')
+            }
+          } else {
+            onAddPlanActivity?.(planId, 'error', `Cannot retry ${task.id}: repository not found`)
+          }
+        } else {
+          onAddPlanActivity?.(planId, 'error',
+            `Task ${task.id} context exhausted (max retries reached)`,
+            result.error)
+        }
+      } else {
+        onAddPlanActivity?.(planId, 'error', `Task ${task.id} failed`, result.error)
+      }
     }
   })
 

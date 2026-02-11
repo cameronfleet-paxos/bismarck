@@ -1,8 +1,9 @@
 // Wire cross-module callbacks to break circular dependencies
-import { setOnCriticNeeded, setOnTaskReadyForReview, setOnCriticCompleted, setOnAddPlanActivity, setOnEmitTaskAssignmentUpdate, setOnEmitPlanUpdate } from '../headless/team-agents'
+import { setOnCriticNeeded, setOnTaskReadyForReview, setOnCriticCompleted, setOnAddPlanActivity, setOnEmitTaskAssignmentUpdate, setOnEmitPlanUpdate, setOnContextExhaustionRetry } from '../headless/team-agents'
 import { spawnCriticAgent, handleCriticCompletion } from './critic'
 import { markWorktreeReadyForReview } from './git-strategy'
 import { addPlanActivity, emitTaskAssignmentUpdate, emitPlanUpdate } from './events'
+import { handleContextExhaustionRetry } from './context-exhaustion'
 
 setOnCriticNeeded(spawnCriticAgent)
 setOnTaskReadyForReview(markWorktreeReadyForReview)
@@ -10,6 +11,7 @@ setOnCriticCompleted(handleCriticCompletion)
 setOnAddPlanActivity(addPlanActivity as (planId: string, type: string, message: string, details?: string) => void)
 setOnEmitTaskAssignmentUpdate(emitTaskAssignmentUpdate)
 setOnEmitPlanUpdate(emitPlanUpdate)
+setOnContextExhaustionRetry(handleContextExhaustionRetry)
 
 // Re-export everything that was previously exported from plan-manager.ts
 export { setPlanManagerWindow, createPlan, getPlans, getTaskAssignments, deletePlanById, deletePlansById, clonePlan, updatePlanStatus } from './crud'
