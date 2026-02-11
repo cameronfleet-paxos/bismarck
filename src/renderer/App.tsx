@@ -1600,7 +1600,10 @@ function App() {
     const headlessId = followUpInfo?.taskId
     if (!headlessId) return
 
+    // Close modal immediately — loading state is shown on the agent card via startingFollowUpIds
     setStartingFollowUpIds(prev => new Set(prev).add(headlessId))
+    setFollowUpInfo(null)
+
     try {
       const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model)
       if (result) {
@@ -1615,8 +1618,6 @@ function App() {
         // Refresh tabs
         const state = await window.electronAPI.getState()
         setTabs(state.tabs || [])
-        // Close the modal
-        setFollowUpInfo(null)
       }
     } finally {
       setStartingFollowUpIds(prev => {
