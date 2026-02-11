@@ -770,17 +770,11 @@ export async function startFollowUpAgent(
   // Save the workspace
   saveWorkspace(newAgent)
 
-  // Clean up old workspace so its grid slot is freed
-  let preferredTabId: string | undefined
-  if (existingWorkspace) {
-    const oldTab = getTabForWorkspace(existingWorkspace.id)
-    preferredTabId = oldTab?.id
-    removeActiveWorkspace(existingWorkspace.id)
-    removeWorkspaceFromTab(existingWorkspace.id)
-    deleteWorkspace(existingWorkspace.id)
-  }
-
-  // Place new agent in the same tab/slot as old workspace (or next available)
+  // Keep original workspace visible so users can reference its terminal output.
+  // Place follow-up in the same tab if there's room, otherwise next available slot.
+  const preferredTabId = existingWorkspace
+    ? getTabForWorkspace(existingWorkspace.id)?.id
+    : undefined
   const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId, preferredTabId)
   addWorkspaceToTab(workspaceId, tab.id)
   setActiveTab(tab.id)
@@ -802,8 +796,7 @@ export async function startFollowUpAgent(
   }
   standaloneHeadlessAgentInfo.set(newHeadlessId, agentInfo)
 
-  // Remove old agent info (worktree is now owned by new agent)
-  standaloneHeadlessAgentInfo.delete(headlessId)
+  // Keep old agent info so its terminal output remains accessible
 
   // Emit initial state
   emitHeadlessAgentUpdate(agentInfo)

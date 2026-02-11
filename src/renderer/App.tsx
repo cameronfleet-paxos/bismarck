@@ -1638,13 +1638,7 @@ function App() {
     try {
       const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model)
       if (result) {
-        // Remove old agent info from map
-        setHeadlessAgents((prev) => {
-          const newMap = new Map(prev)
-          newMap.delete(headlessId)
-          return newMap
-        })
-        // Reload agents to pick up the new workspace
+        // Reload agents to pick up both old and new workspaces
         await loadAgents()
         // Refresh tabs
         const state = await window.electronAPI.getState()
