@@ -1,13 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Check, X, Loader2, Activity, GitBranch, GitPullRequest, Clock, CheckCircle2, AlertCircle, ExternalLink, GitCommit, MessageSquare, Play, FileText, Network, Plus, ArrowUpCircle, Users } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { ArrowLeft, Check, X, Loader2, Activity, GitBranch, GitPullRequest, Clock, CheckCircle2, AlertCircle, ExternalLink, GitCommit, MessageSquare, Play, FileText, Network, Plus, ArrowUpCircle, Users, ChevronDown } from 'lucide-react'
 import type { TeamMode } from '@/shared/types'
 import { Button } from '@/renderer/components/ui/button'
 import { TaskCard } from '@/renderer/components/TaskCard'
 import { DependencyProgressBar } from '@/renderer/components/DependencyProgressBar'
 import { DependencyGraphModal } from '@/renderer/components/DependencyGraphModal'
 import { buildDependencyGraph, calculateGraphStats } from '@/renderer/utils/build-dependency-graph'
-import type { Plan, TaskAssignment, Agent, PlanActivity, DependencyGraph, GraphStats, BeadTask, PlanWorktree } from '@/shared/types'
+import type { Plan, TaskAssignment, Agent, PlanActivity, DependencyGraph, GraphStats, BeadTask, PlanWorktree, TaskNode } from '@/shared/types'
 import { devLog } from '../utils/dev-log'
+
+/** Max number of activities shown initially before "Show More" */
+const INITIAL_ACTIVITY_COUNT = 50
+
+/** Max number of tasks per status group before collapsing */
+const COLLAPSE_THRESHOLD = 20
 
 interface PlanDetailViewProps {
   plan: Plan
@@ -166,6 +172,82 @@ function CriticBadge({ worktree }: { worktree?: PlanWorktree }) {
   )
 }
 
+/**
+ * Renders a group of tasks with a header, collapsing to show only first COLLAPSE_THRESHOLD
+ * when there are many tasks. Uses details/summary for completed tasks.
+ */
+function TaskStatusGroup({
+  label,
+  colorClass,
+  nodes,
+  getAgentById,
+  getWorktreeForTask,
+  defaultCollapsed = false,
+}: {
+  label: string
+  colorClass: string
+  nodes: TaskNode[]
+  getAgentById: (id: string) => Agent | undefined
+  getWorktreeForTask: (taskId: string) => PlanWorktree | undefined
+  defaultCollapsed?: boolean
+}) {
+  const [showAll, setShowAll] = useState(false)
+  if (nodes.length === 0) return null
+
+  const shouldCollapse = nodes.length > COLLAPSE_THRESHOLD && !showAll
+  const visibleNodes = shouldCollapse ? nodes.slice(0, COLLAPSE_THRESHOLD) : nodes
+
+  const content = (
+    <>
+      <div className="space-y-1">
+        {visibleNodes.map((node) => (
+          <div key={node.id} className="flex items-center gap-1">
+            <div className="flex-1">
+              <TaskCard
+                node={node}
+                assignment={node.assignment}
+                agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
+              />
+            </div>
+            <CriticBadge worktree={getWorktreeForTask(node.id)} />
+          </div>
+        ))}
+      </div>
+      {shouldCollapse && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-1 text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+        >
+          <ChevronDown className="h-3 w-3" />
+          Show {nodes.length - COLLAPSE_THRESHOLD} more
+        </button>
+      )}
+    </>
+  )
+
+  if (defaultCollapsed) {
+    return (
+      <details className="group">
+        <summary className={`text-[10px] font-medium ${colorClass} mb-1 cursor-pointer list-none flex items-center gap-1`}>
+          <span className="group-open:rotate-90 transition-transform">▶</span>
+          {label} ({nodes.length})
+        </summary>
+        <div className="mt-1">{content}</div>
+      </details>
+    )
+  }
+
+  return (
+    <div>
+      <div className={`text-[10px] font-medium ${colorClass} mb-1`}>
+        {label} ({nodes.length})
+      </div>
+      {content}
+    </div>
+  )
+}
+
 export function PlanDetailView({
   plan,
   activities,
@@ -211,11 +293,20 @@ export function PlanDetailView({
     }
   }, [plan.id, plan.status])
 
-  // Listen for bead tasks updated event from main process
+  // Listen for bead tasks updated event from main process (debounced)
+  const pendingRefresh = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
-    const handleBeadTasksUpdated = async (planId: string) => {
-      if (planId === plan.id) {
-        devLog('[PlanDetailView] Received bead-tasks-updated event, refreshing tasks')
+    const handleBeadTasksUpdated = (planId: string) => {
+      if (planId !== plan.id) return
+
+      // Debounce: batch rapid task updates into a single refresh
+      if (pendingRefresh.current) {
+        clearTimeout(pendingRefresh.current)
+      }
+      pendingRefresh.current = setTimeout(async () => {
+        pendingRefresh.current = null
+        devLog('[PlanDetailView] Debounced refresh - fetching bead tasks')
         try {
           const [tasks, assignments] = await Promise.all([
             window.electronAPI.getBeadTasks(plan.id),
@@ -227,12 +318,16 @@ export function PlanDetailView({
         } catch (err) {
           console.error('Failed to refresh plan data:', err)
         }
-      }
+      }, 500) // 500ms debounce
     }
 
     window.electronAPI?.onBeadTasksUpdated?.(handleBeadTasksUpdated)
 
-    // Cleanup handled by preload removeAllListeners
+    return () => {
+      if (pendingRefresh.current) {
+        clearTimeout(pendingRefresh.current)
+      }
+    }
   }, [plan.id])
 
   // Build dependency graph from bead tasks and local assignments
@@ -276,14 +371,31 @@ export function PlanDetailView({
     await onCancelDiscussion()
   }
 
-  const getAgentById = (id: string) => agents.find((a) => a.id === id)
-  const referenceAgent = plan.referenceAgentId ? getAgentById(plan.referenceAgentId) : null
-  const getWorktreeForTask = (taskId: string) => {
-    return plan.worktrees?.find(w => w.taskId === taskId)
-  }
+  const [activityLimit, setActivityLimit] = useState(INITIAL_ACTIVITY_COUNT)
 
-  // Reverse activities for newest-first display
-  const reversedActivities = [...activities].reverse()
+  const getAgentById = useCallback((id: string) => agents.find((a) => a.id === id), [agents])
+  const referenceAgent = plan.referenceAgentId ? getAgentById(plan.referenceAgentId) : null
+  const getWorktreeForTask = useCallback((taskId: string) => {
+    return plan.worktrees?.find(w => w.taskId === taskId)
+  }, [plan.worktrees])
+
+  // Memoized task groups by status
+  const taskGroups = useMemo(() => {
+    const nodes = Array.from(graph.nodes.values())
+    return {
+      inProgress: nodes.filter(n => n.status === 'in_progress'),
+      sent: nodes.filter(n => n.status === 'sent' || n.status === 'pending'),
+      ready: nodes.filter(n => n.status === 'ready'),
+      blocked: nodes.filter(n => n.status === 'blocked'),
+      failed: nodes.filter(n => n.status === 'failed'),
+      completed: nodes.filter(n => n.status === 'completed'),
+    }
+  }, [graph])
+
+  // Reverse activities for newest-first display, paginated
+  const reversedActivities = useMemo(() => [...activities].reverse(), [activities])
+  const visibleActivities = useMemo(() => reversedActivities.slice(0, activityLimit), [reversedActivities, activityLimit])
+  const hasMoreActivities = reversedActivities.length > activityLimit
 
   return (
     <div className="flex flex-col h-full">
@@ -666,172 +778,12 @@ export function PlanDetailView({
 
           {/* Task lists organized by status */}
           <div className="space-y-3">
-            {/* In Progress tasks */}
-            {(() => {
-              const inProgressNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'in_progress'
-              )
-              if (inProgressNodes.length === 0) return null
-              return (
-                <div>
-                  <div className="text-[10px] font-medium text-yellow-500 mb-1">
-                    In Progress ({inProgressNodes.length})
-                  </div>
-                  <div className="space-y-1">
-                    {inProgressNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard
-                            node={node}
-                            assignment={node.assignment}
-                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                          />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Sent tasks (dispatched but not picked up) */}
-            {(() => {
-              const sentNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'sent' || n.status === 'pending'
-              )
-              if (sentNodes.length === 0) return null
-              return (
-                <div>
-                  <div className="text-[10px] font-medium text-blue-500 mb-1">
-                    Sent ({sentNodes.length})
-                  </div>
-                  <div className="space-y-1">
-                    {sentNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard
-                            node={node}
-                            assignment={node.assignment}
-                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                          />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Ready tasks (can start now) */}
-            {(() => {
-              const readyNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'ready'
-              )
-              if (readyNodes.length === 0) return null
-              return (
-                <div>
-                  <div className="text-[10px] font-medium text-blue-500 mb-1">
-                    Ready ({readyNodes.length})
-                  </div>
-                  <div className="space-y-1">
-                    {readyNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard node={node} />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Blocked tasks */}
-            {(() => {
-              const blockedNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'blocked'
-              )
-              if (blockedNodes.length === 0) return null
-              return (
-                <div>
-                  <div className="text-[10px] font-medium text-muted-foreground mb-1">
-                    Blocked ({blockedNodes.length})
-                  </div>
-                  <div className="space-y-1">
-                    {blockedNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard node={node} />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Failed tasks */}
-            {(() => {
-              const failedNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'failed'
-              )
-              if (failedNodes.length === 0) return null
-              return (
-                <div>
-                  <div className="text-[10px] font-medium text-red-500 mb-1">
-                    Failed ({failedNodes.length})
-                  </div>
-                  <div className="space-y-1">
-                    {failedNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard
-                            node={node}
-                            assignment={node.assignment}
-                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                          />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Completed tasks (collapsed by default) */}
-            {(() => {
-              const completedNodes = Array.from(graph.nodes.values()).filter(
-                (n) => n.status === 'completed'
-              )
-              if (completedNodes.length === 0) return null
-              return (
-                <details className="group">
-                  <summary className="text-[10px] font-medium text-green-500 mb-1 cursor-pointer list-none flex items-center gap-1">
-                    <span className="group-open:rotate-90 transition-transform">▶</span>
-                    Completed ({completedNodes.length})
-                  </summary>
-                  <div className="space-y-1 mt-1">
-                    {completedNodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <TaskCard
-                            node={node}
-                            assignment={node.assignment}
-                            agent={node.assignment ? getAgentById(node.assignment.agentId) : undefined}
-                          />
-                        </div>
-                        <CriticBadge worktree={getWorktreeForTask(node.id)} />
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )
-            })()}
+            <TaskStatusGroup label="In Progress" colorClass="text-yellow-500" nodes={taskGroups.inProgress} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} />
+            <TaskStatusGroup label="Sent" colorClass="text-blue-500" nodes={taskGroups.sent} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} />
+            <TaskStatusGroup label="Ready" colorClass="text-blue-500" nodes={taskGroups.ready} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} />
+            <TaskStatusGroup label="Blocked" colorClass="text-muted-foreground" nodes={taskGroups.blocked} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} />
+            <TaskStatusGroup label="Failed" colorClass="text-red-500" nodes={taskGroups.failed} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} />
+            <TaskStatusGroup label="Completed" colorClass="text-green-500" nodes={taskGroups.completed} getAgentById={getAgentById} getWorktreeForTask={getWorktreeForTask} defaultCollapsed />
           </div>
         </div>
       )}
@@ -861,30 +813,44 @@ export function PlanDetailView({
               No activity yet
             </div>
           ) : (
-            <div className="divide-y divide-border/50">
-              {reversedActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="px-3 py-1.5 text-xs hover:bg-muted/30"
-                  title={activity.details || undefined}
-                >
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-muted-foreground font-mono shrink-0">
-                      {formatActivityTime(activity.timestamp)}
-                    </span>
-                    <span className="shrink-0">{activityIcons[activity.type]}</span>
-                    <span className={activityColors[activity.type]}>
-                      {activity.message}
-                    </span>
-                  </div>
-                  {activity.details && (
-                    <div className="ml-16 text-muted-foreground truncate">
-                      {activity.details}
+            <>
+              <div className="divide-y divide-border/50">
+                {visibleActivities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="px-3 py-1.5 text-xs hover:bg-muted/30"
+                    title={activity.details || undefined}
+                  >
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-muted-foreground font-mono shrink-0">
+                        {formatActivityTime(activity.timestamp)}
+                      </span>
+                      <span className="shrink-0">{activityIcons[activity.type]}</span>
+                      <span className={activityColors[activity.type]}>
+                        {activity.message}
+                      </span>
                     </div>
-                  )}
+                    {activity.details && (
+                      <div className="ml-16 text-muted-foreground truncate">
+                        {activity.details}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {hasMoreActivities && (
+                <div className="px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setActivityLimit(prev => prev + INITIAL_ACTIVITY_COUNT)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                    Show {Math.min(INITIAL_ACTIVITY_COUNT, reversedActivities.length - activityLimit)} more ({reversedActivities.length - activityLimit} remaining)
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
