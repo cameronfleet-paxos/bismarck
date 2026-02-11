@@ -902,15 +902,12 @@ export async function setupMockPlan(options?: SetupMockPlanOptions): Promise<Moc
   const scenario = options?.scenario
   const teamMode = options?.teamMode ?? 'top-down'
 
-  // Create a temp directory for the plan
+  // Create plan using the real beads infrastructure
   const planId = `mock-plan-${Date.now()}`
-  const planDir = path.join(os.tmpdir(), 'bismarck-mock-plans', planId)
+  const { ensureBeadsRepo: ensureBeadsRepoFn } = await import('./bd-client')
+  const planDir = await ensureBeadsRepoFn(planId)
 
-  // Ensure directory exists
-  await fs.promises.mkdir(planDir, { recursive: true })
-
-  // Initialize beads repo (must run from within the directory)
-  await execAsync(`cd "${planDir}" && bd --sandbox init`)
+  devLog('[MockPlanSetup] Plan directory:', planDir)
 
   let tasks: Array<{ id: string; subject: string; blockedBy: string[] }>
 

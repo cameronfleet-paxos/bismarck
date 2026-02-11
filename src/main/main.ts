@@ -1187,8 +1187,8 @@ function registerIpcHandlers() {
     })
   })
 
-  // Dev test harness (development mode only)
-  if (process.env.NODE_ENV === 'development') {
+  // Dev test harness (non-packaged builds)
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     ipcMain.handle('dev-run-mock-flow', async (_event, options?: Partial<MockFlowOptions>) => {
       return runMockFlow(options)
     })

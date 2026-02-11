@@ -46,8 +46,18 @@ export async function ensureBeadsRepo(planId: string): Promise<string> {
     }
 
     // Initialize beads with bismarck prefix
-    const { stdout, stderr } = await execAsync('bd --sandbox init --prefix bismarck', { cwd: planDir })
-    logger.info('bd', 'Beads repository initialized', { planId }, { stdout: stdout.substring(0, 100) })
+    // Use --db to explicitly target this directory's database and prevent walking up to parent directories
+    const dbPath = path.join(beadsDir, 'beads.db')
+    try {
+      const { stdout, stderr } = await execAsync(`bd --sandbox --db "${dbPath}" init --prefix bismarck`, { cwd: planDir })
+      logger.info('bd', 'Beads repository initialized', { planId }, { stdout: stdout.substring(0, 100) })
+    } catch (initError) {
+      // If bd init fails (e.g., parent db found), try without init
+      // The --db flag in subsequent commands will create the database on first use
+      logger.warn('bd', 'bd init failed, will rely on --db for lazy initialization', { planId }, {
+        error: initError instanceof Error ? initError.message.substring(0, 200) : String(initError)
+      })
+    }
 
     // Create .claude directory and settings.json to pre-allow bd commands
     const claudeDir = path.join(planDir, '.claude')
