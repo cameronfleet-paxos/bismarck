@@ -1,6 +1,6 @@
-import { useEffect, useRef, useMemo, useState } from 'react'
-import { EditorView, basicSetup } from 'codemirror'
-import { EditorState, Extension } from '@codemirror/state'
+import { useEffect, useMemo, useState } from 'react'
+import CodeMirror from '@uiw/react-codemirror'
+import { Extension } from '@codemirror/state'
 import { LanguageDescription } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -31,9 +31,6 @@ export function CodeEditorViewer({
   onLoadAnyway,
   filepath,
 }: CodeEditorViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const editorViewRef = useRef<EditorView | null>(null)
-  const [isInitialized, setIsInitialized] = useState(false)
   const [languageSupport, setLanguageSupport] = useState<Extension | null>(null)
 
   // Memoize language detection
@@ -65,58 +62,14 @@ export function CodeEditorViewer({
     }
   }, [languageDesc])
 
-  // Create editor when content changes
-  useEffect(() => {
-    if (!containerRef.current) return
-    if (isLoading || error || isBinary || isTooLarge) return
-
-    const container = containerRef.current
-
-    // Clean up previous instance
-    if (editorViewRef.current) {
-      editorViewRef.current.destroy()
-      editorViewRef.current = null
+  // Build extensions for CodeMirror
+  const extensions = useMemo(() => {
+    const exts: Extension[] = []
+    if (languageSupport) {
+      exts.push(languageSupport)
     }
-
-    // Clear container
-    container.innerHTML = ''
-
-    // Build extensions
-    const extensions = [
-      basicSetup,
-      oneDark,
-      ...(languageSupport ? [languageSupport] : []),
-      ...(readOnly ? [EditorState.readOnly.of(true)] : []),
-      ...(!readOnly && onContentChange ? [
-        EditorView.updateListener.of(update => {
-          if (update.docChanged) {
-            onContentChange(update.state.doc.toString())
-          }
-        }),
-      ] : []),
-    ]
-
-    const state = EditorState.create({
-      doc: content,
-      extensions,
-    })
-
-    const view = new EditorView({
-      state,
-      parent: container,
-    })
-
-    editorViewRef.current = view
-    setIsInitialized(true)
-
-    // Cleanup on unmount
-    return () => {
-      if (editorViewRef.current) {
-        editorViewRef.current.destroy()
-        editorViewRef.current = null
-      }
-    }
-  }, [content, languageSupport, isLoading, error, isBinary, isTooLarge, readOnly, onContentChange])
+    return exts
+  }, [languageSupport])
 
   // Loading state
   if (isLoading) {
@@ -195,14 +148,46 @@ export function CodeEditorViewer({
           )}
         </div>
       )}
-      <div
-        ref={containerRef}
-        className="flex-1 w-full bg-[#282c34] overflow-auto"
-        style={{
-          // Prevent layout shift by reserving space
-          minHeight: isInitialized ? 'auto' : '100%',
-        }}
-      />
+      <div className="flex-1 w-full overflow-auto">
+        <CodeMirror
+          value={content}
+          theme={oneDark}
+          extensions={extensions}
+          editable={!readOnly}
+          readOnly={readOnly}
+          onChange={onContentChange}
+          basicSetup={{
+            lineNumbers: true,
+            highlightActiveLineGutter: true,
+            highlightSpecialChars: true,
+            history: true,
+            foldGutter: true,
+            drawSelection: true,
+            dropCursor: true,
+            allowMultipleSelections: true,
+            indentOnInput: true,
+            syntaxHighlighting: true,
+            bracketMatching: true,
+            closeBrackets: true,
+            autocompletion: true,
+            rectangularSelection: true,
+            crosshairCursor: true,
+            highlightActiveLine: true,
+            highlightSelectionMatches: true,
+            closeBracketsKeymap: true,
+            defaultKeymap: true,
+            searchKeymap: true,
+            historyKeymap: true,
+            foldKeymap: true,
+            completionKeymap: true,
+            lintKeymap: true,
+          }}
+          style={{
+            height: '100%',
+            width: '100%',
+          }}
+        />
+      </div>
     </div>
   )
 }
