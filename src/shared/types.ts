@@ -747,3 +747,29 @@ export interface FileDiffContent {
   isTooLarge: boolean
   error?: string
 }
+
+// ============================================
+// Git Browse Types
+// ============================================
+
+// Individual file entry in file tree
+export interface FileTreeEntry {
+  path: string
+  isTracked: boolean
+}
+
+// Complete file tree result
+export interface FileTreeResult {
+  files: FileTreeEntry[]
+  totalFiles: number
+  truncated: boolean
+}
+
+// File content with metadata
+export interface FileContent {
+  content: string
+  language: string
+  isBinary: boolean
+  isTooLarge: boolean
+  error?: string
+}
