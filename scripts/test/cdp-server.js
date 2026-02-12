@@ -485,8 +485,8 @@ async function handleRequest(req, res) {
 // Create and start server
 const server = http.createServer(handleRequest);
 
-server.listen(PORT, () => {
-  console.log(`CDP Server running on http://localhost:${PORT}`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`CDP Server running on http://127.0.0.1:${PORT}`);
   console.log('');
   console.log('Endpoints:');
   console.log('  GET  /health                      - Check server status');
