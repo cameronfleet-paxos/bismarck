@@ -139,7 +139,6 @@ export interface ElectronAPI {
   deleteRalphLoopPreset: (id: string) => Promise<boolean>
 
   // OAuth token management
-  getOAuthToken: () => Promise<string | null>
   setOAuthToken: (token: string) => Promise<boolean>
   hasOAuthToken: () => Promise<boolean>
   runOAuthSetup: () => Promise<string>
