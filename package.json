@@ -94,7 +94,11 @@
       "owner": "cameronfleet-paxos",
       "repo": "bismarck"
     },
-    "asar": false
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "**/*.node"
+    ]
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
