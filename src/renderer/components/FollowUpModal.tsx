@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ExternalLink, GitPullRequest, MessageSquare } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ExternalLink, GitPullRequest, MessageSquare, HelpCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,8 @@ import {
 } from '@/renderer/components/ui/dialog'
 import { Button } from '@/renderer/components/ui/button'
 import { Textarea } from '@/renderer/components/ui/textarea'
+import { Switch } from '@/renderer/components/ui/switch'
+import { Tooltip } from '@/renderer/components/ui/tooltip'
 import type { HeadlessAgentInfo, AgentModel } from '@/shared/types'
 import { extractPRUrls } from '@/shared/pr-utils'
 
@@ -16,13 +18,21 @@ interface FollowUpModalProps {
   info: HeadlessAgentInfo | null
   defaultModel: AgentModel
   onClose: () => void
-  onSubmit: (prompt: string, model: AgentModel) => void
+  onSubmit: (prompt: string, model: AgentModel, planPhase: boolean) => void
   isSubmitting?: boolean
 }
 
 export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitting }: FollowUpModalProps) {
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<AgentModel>(defaultModel)
+  const [planPhase, setPlanPhase] = useState(true)
+
+  // Reset planPhase default when info changes (infer from whether original agent used a plan)
+  useEffect(() => {
+    if (info) {
+      setPlanPhase(!!info.planText)
+    }
+  }, [info])
 
   const userPrompt = info?.userPrompt || info?.originalPrompt
   // Extract PR URLs from events first, fall back to scanning the original prompt text
@@ -36,7 +46,7 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
 
   const handleSubmit = () => {
     if (!prompt.trim()) return
-    onSubmit(prompt.trim(), model)
+    onSubmit(prompt.trim(), model, planPhase)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -146,6 +156,27 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
                 Opus
               </button>
             </div>
+          </div>
+
+          {/* Plan phase toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Tooltip
+                content="Agent will create a read-only plan before coding. You cannot interact with it — use discussion mode to collaborate on a plan."
+                side="top"
+                className="!whitespace-normal w-72"
+              >
+                <label
+                  htmlFor="followup-plan-toggle"
+                  className="text-sm font-medium cursor-pointer flex items-center gap-1"
+                >Plan phase <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" /></label>
+              </Tooltip>
+            </div>
+            <Switch
+              id="followup-plan-toggle"
+              checked={planPhase}
+              onCheckedChange={setPlanPhase}
+            />
           </div>
         </div>
 

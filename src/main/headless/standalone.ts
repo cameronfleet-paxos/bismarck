@@ -705,8 +705,9 @@ export async function restartStandaloneHeadlessAgent(
 export async function startFollowUpAgent(
   headlessId: string,
   prompt: string,
-  model?: 'opus' | 'sonnet'
-): Promise<{ headlessId: string; workspaceId: string }> {
+  model?: 'opus' | 'sonnet',
+  startOptions?: { skipPlanPhase?: boolean }
+): Promise<{ headlessId: string; workspaceId: string; tabId: string }> {
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
     throw new Error(`No worktree info for agent ${headlessId}`)
@@ -859,44 +860,46 @@ export async function startFollowUpAgent(
   const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
   const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
-  // Run plan phase before execution
-  agentInfo.status = 'planning'
-  emitHeadlessAgentUpdate(agentInfo)
-
-  const followUpPlanOutputDir = path.join(getStandaloneHeadlessDir(), newHeadlessId)
-  const planResult = await runPlanPhase({
-    taskDescription: prompt,
-    worktreePath,
-    image: selectedImage,
-    planDir: getStandaloneHeadlessDir(),
-    planId: repoPath,
-    guidance: repository?.guidance,
-    sharedCacheDir,
-    sharedModCacheDir,
-    planOutputDir: followUpPlanOutputDir,
-    enabled: true,
-    onEvent: (event) => {
-      emitHeadlessAgentEvent(newHeadlessId, event)
-    },
-  })
-
   let executionPrompt = enhancedPrompt
-  if (planResult.success && planResult.plan) {
-    executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
-    agentInfo.planText = planResult.plan
-    emitHeadlessAgentEvent(newHeadlessId, {
-      type: 'system',
-      message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
-      timestamp: new Date().toISOString(),
-    } as StreamEvent)
-    devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
-  } else {
-    emitHeadlessAgentEvent(newHeadlessId, {
-      type: 'system',
-      message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
-      timestamp: new Date().toISOString(),
-    } as StreamEvent)
-    devLog(`[StandaloneHeadless] Follow-up plan phase failed, proceeding with original prompt`, { error: planResult.error })
+  if (!startOptions?.skipPlanPhase) {
+    // Run plan phase before execution
+    agentInfo.status = 'planning'
+    emitHeadlessAgentUpdate(agentInfo)
+
+    const followUpPlanOutputDir = path.join(getStandaloneHeadlessDir(), newHeadlessId)
+    const planResult = await runPlanPhase({
+      taskDescription: prompt,
+      worktreePath,
+      image: selectedImage,
+      planDir: getStandaloneHeadlessDir(),
+      planId: repoPath,
+      guidance: repository?.guidance,
+      sharedCacheDir,
+      sharedModCacheDir,
+      planOutputDir: followUpPlanOutputDir,
+      enabled: true,
+      onEvent: (event) => {
+        emitHeadlessAgentEvent(newHeadlessId, event)
+      },
+    })
+
+    if (planResult.success && planResult.plan) {
+      executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+      agentInfo.planText = planResult.plan
+      emitHeadlessAgentEvent(newHeadlessId, {
+        type: 'system',
+        message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
+    } else {
+      emitHeadlessAgentEvent(newHeadlessId, {
+        type: 'system',
+        message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Follow-up plan phase failed, proceeding with original prompt`, { error: planResult.error })
+    }
   }
 
   // Store the full resolved prompt (for Eye modal display)
@@ -932,7 +935,7 @@ export async function startFollowUpAgent(
     throw error
   }
 
-  return { headlessId: newHeadlessId, workspaceId }
+  return { headlessId: newHeadlessId, workspaceId, tabId: tab.id }
 }
 
 /**
