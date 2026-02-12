@@ -3,7 +3,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles, Info } from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles, Info, ShieldCheck, ExternalLink, Zap } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 import { SetupTerminal } from './SetupTerminal'
 import { devLog } from '../utils/dev-log'
@@ -38,12 +38,25 @@ function getRelativeTime(isoDate: string | undefined): string | null {
   return `${Math.floor(diffDays / 365)} years ago`
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`
+  return `${(bytes / 1e3).toFixed(0)} KB`
+}
+
+// Client-side GitHub token validation (mirrors exec-utils.ts)
+function isValidGitHubToken(value: string): boolean {
+  if (!value || value.length < 10) return false
+  const validPrefixes = ['ghp_', 'gho_', 'ghs_', 'ghu_', 'github_pat_']
+  return validPrefixes.some(prefix => value.startsWith(prefix))
+}
+
 interface SetupWizardProps {
   onComplete: (agents: Agent[]) => void
   onSkip: () => void
 }
 
-type WizardStep = 'deps' | 'tools' | 'path' | 'repos' | 'descriptions' | 'plan-mode'
+type WizardStep = 'deps' | 'tools' | 'headless-agents' | 'path' | 'repos' | 'desc-choice' | 'descriptions' | 'finish'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('deps')
@@ -74,15 +87,32 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [isDetectingToken, setIsDetectingToken] = useState(false)
   const [tokenDetectResult, setTokenDetectResult] = useState<{ success: boolean; source: string | null; reason?: string } | null>(null)
   const [isReloadingToken, setIsReloadingToken] = useState(false)
+  // Custom GitHub token input state
+  const [showCustomTokenInput, setShowCustomTokenInput] = useState(false)
+  const [customGitHubToken, setCustomGitHubToken] = useState('')
+  const [savingCustomToken, setSavingCustomToken] = useState(false)
   // Fix with Claude terminal modal state
   const [showFixTerminal, setShowFixTerminal] = useState(false)
   const [fixTerminalId, setFixTerminalId] = useState<string | null>(null)
   const [isSettingUpOAuth, setIsSettingUpOAuth] = useState(false)
   const [oauthSetupResult, setOAuthSetupResult] = useState<{ success: boolean; error?: string } | null>(null)
+  // Docker image verification state
+  const [isVerifyingImage, setIsVerifyingImage] = useState(false)
   // Docker image pull state
   const [isPullingImage, setIsPullingImage] = useState(false)
   const [pullProgress, setPullProgress] = useState<string | null>(null)
   const [pullResult, setPullResult] = useState<{ success: boolean; error?: string } | null>(null)
+  // Docker image choice state
+  const [useCustomImage, setUseCustomImage] = useState(false)
+  const [customImageName, setCustomImageName] = useState('')
+  const [imageCheckResult, setImageCheckResult] = useState<{
+    exists: boolean
+    digest?: string
+    verified?: boolean
+    version?: string
+    size?: number
+    labels?: Record<string, string>
+  } | null>(null)
   // Ref to prevent double-clicks during async operations
   const isCreatingRef = useRef(false)
 
@@ -108,6 +138,29 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setIsCheckingDeps(false)
     }
   }
+
+  // Check image status when dependencies load with an available image
+  useEffect(() => {
+    if (dependencies?.dockerImage.available && dependencies.docker.installed) {
+      setIsVerifyingImage(true)
+      window.electronAPI.checkDockerImageStatus(dependencies.dockerImage.imageName).then((result) => {
+        if (result.exists) {
+          setImageCheckResult({
+            exists: true,
+            digest: result.digest,
+            verified: result.verified,
+            version: result.labels?.['org.opencontainers.image.version'],
+            size: result.size,
+            labels: result.labels,
+          })
+        }
+      }).catch(() => {
+        // Ignore errors - metadata is supplementary
+      }).finally(() => {
+        setIsVerifyingImage(false)
+      })
+    }
+  }, [dependencies?.dockerImage.available, dependencies?.dockerImage.imageName, dependencies?.docker.installed])
 
   // Cleanup fact interval on unmount
   useEffect(() => {
@@ -214,6 +267,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       return
     }
 
+    devLog('[SetupWizard] Starting description generation for', selectedRepos.size, 'repos')
     setError(null)
     setIsGenerating(true)
     setStep('descriptions')
@@ -231,6 +285,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     // Set up progress listener
     window.electronAPI.onDescriptionGenerationProgress((event: DescriptionProgressEvent) => {
+      devLog('[SetupWizard] Progress event:', event.repoName, event.status, event.error || '')
       setRepoStatuses(prev => {
         const next = new Map(prev)
         next.set(event.repoPath, event)
@@ -247,6 +302,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
       // Update local state with results as they come in
       if (event.status === 'completed' && event.result) {
+        devLog('[SetupWizard] Got result for', event.repoName, '- purpose length:', event.result.purpose.length, 'criteria length:', event.result.completionCriteria.length)
         setRepoPurposes(prev => {
           const next = new Map(prev)
           next.set(event.repoPath, event.result!.purpose)
@@ -267,13 +323,16 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
     try {
       const reposToGenerate = discoveredRepos.filter(r => selectedRepos.has(r.path))
+      devLog('[SetupWizard] Calling generateDescriptions with', reposToGenerate.length, 'repos:', reposToGenerate.map(r => r.name))
       const results = await window.electronAPI.setupWizardGenerateDescriptions(reposToGenerate)
+      devLog('[SetupWizard] Generation complete, got', results.length, 'results')
 
       // Convert results to Maps (final state, though we've already updated incrementally)
       const purposeMap = new Map<string, string>()
       const criteriaMap = new Map<string, string>()
       const branchesMap = new Map<string, string[]>()
       for (const result of results) {
+        devLog('[SetupWizard] Result:', result.repoPath, '- purpose:', (result.purpose || '').substring(0, 50), '- error:', result.error || 'none')
         purposeMap.set(result.repoPath, result.purpose)
         criteriaMap.set(result.repoPath, result.completionCriteria)
         branchesMap.set(result.repoPath, result.protectedBranches)
@@ -282,6 +341,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setRepoCompletionCriteria(criteriaMap)
       setRepoProtectedBranches(branchesMap)
     } catch (err) {
+      devLog('[SetupWizard] Generation failed:', err)
       console.error('Failed to generate descriptions:', err)
       // On error, just set empty values - user can edit manually
       const emptyPurposeMap = new Map<string, string>()
@@ -363,11 +423,27 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     })
   }
 
-  // Navigate from descriptions to plan-mode step
-  const handleContinueToPlanMode = async () => {
+  // Skip descriptions and go straight to finish with empty defaults
+  const handleSkipDescriptions = () => {
+    const emptyPurposeMap = new Map<string, string>()
+    const emptyCriteriaMap = new Map<string, string>()
+    const emptyBranchesMap = new Map<string, string[]>()
+    for (const repoPath of selectedRepos) {
+      emptyPurposeMap.set(repoPath, '')
+      emptyCriteriaMap.set(repoPath, '')
+      emptyBranchesMap.set(repoPath, [])
+    }
+    setRepoPurposes(emptyPurposeMap)
+    setRepoCompletionCriteria(emptyCriteriaMap)
+    setRepoProtectedBranches(emptyBranchesMap)
     setError(null)
-    setStep('plan-mode')
-    // Dependencies were already checked on mount, no need to re-check
+    setStep('finish')
+  }
+
+  // Navigate from descriptions to finish step
+  const handleContinueToFinish = async () => {
+    setError(null)
+    setStep('finish')
   }
 
   // Final step: save plan mode preference and create agents
@@ -384,10 +460,15 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       await window.electronAPI.setupWizardEnablePlanMode(planModeEnabled)
       devLog('[SetupWizard] Plan mode preference saved')
 
-      // Auto-save detected GitHub token if not already configured in settings
-      if (planModeEnabled && dependencies?.githubToken.detected && !dependencies?.githubToken.configured) {
-        console.log('[SetupWizard] Auto-saving detected GitHub token...')
-        await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+      // Save GitHub token if not already configured
+      if (planModeEnabled && !dependencies?.githubToken.configured) {
+        if (showCustomTokenInput && isValidGitHubToken(customGitHubToken.trim())) {
+          console.log('[SetupWizard] Saving custom GitHub token...')
+          await window.electronAPI.setGitHubToken(customGitHubToken.trim())
+        } else if (dependencies?.githubToken.detected) {
+          console.log('[SetupWizard] Auto-saving detected GitHub token...')
+          await window.electronAPI.setupWizardDetectAndSaveGitHubToken()
+        }
       }
 
       // Auto-enable bb proxied tool if detected during setup
@@ -469,6 +550,26 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
+  // Save a manually-entered GitHub token
+  const handleSaveCustomGitHubToken = async () => {
+    const token = customGitHubToken.trim()
+    if (!isValidGitHubToken(token)) return
+    setSavingCustomToken(true)
+    try {
+      await window.electronAPI.setGitHubToken(token)
+      // Refresh dependencies to update token status
+      const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
+      setDependencies(deps)
+      // Reset custom input state
+      setShowCustomTokenInput(false)
+      setCustomGitHubToken('')
+    } catch (err) {
+      console.error('Failed to save custom GitHub token:', err)
+    } finally {
+      setSavingCustomToken(false)
+    }
+  }
+
   // Open the "Fix with Claude" terminal modal
   const handleFixWithClaude = async () => {
     try {
@@ -514,21 +615,62 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     }
   }
 
-  // Pull Docker image
+  // Pull Docker image (official or custom)
   const handlePullDockerImage = async () => {
     setIsPullingImage(true)
     setPullProgress(null)
     setPullResult(null)
+    setImageCheckResult(null)
+
+    const imageName = useCustomImage ? customImageName.trim() : dependencies?.dockerImage.imageName
+    if (!imageName) {
+      setPullResult({ success: false, error: 'No image name specified' })
+      setIsPullingImage(false)
+      return
+    }
+
     try {
       window.electronAPI.onDockerPullProgress((message: string) => {
         setPullProgress(message)
       })
-      const result = await window.electronAPI.setupWizardPullDockerImage()
+
+      let result: { success: boolean; output: string }
+      if (useCustomImage) {
+        // Pull custom image, then add to settings and select it
+        result = await window.electronAPI.pullDockerImage(imageName)
+        if (result.success) {
+          await window.electronAPI.addDockerImage(imageName)
+          await window.electronAPI.setSelectedDockerImage(imageName)
+        }
+      } else {
+        // Pull official image via setup wizard helper
+        result = await window.electronAPI.setupWizardPullDockerImage()
+      }
+
       if (result.success) {
         setPullResult({ success: true })
         // Refresh dependencies to update image status
         const deps = await window.electronAPI.setupWizardCheckPlanModeDeps()
         setDependencies(deps)
+        // Check full image metadata
+        setIsVerifyingImage(true)
+        try {
+          const info = await window.electronAPI.checkDockerImageStatus(imageName)
+          if (info.exists) {
+            setImageCheckResult({
+              exists: true,
+              digest: info.digest,
+              verified: info.verified,
+              version: info.labels?.['org.opencontainers.image.version'],
+              size: info.size,
+              labels: info.labels,
+            })
+          }
+        } catch {
+          // Metadata check is supplementary
+        } finally {
+          setIsVerifyingImage(false)
+        }
       } else {
         setPullResult({ success: false, error: result.output.substring(0, 200) })
       }
@@ -542,13 +684,22 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   }
 
   const handleGoBack = () => {
-    if (step === 'plan-mode') {
-      setStep('descriptions')
+    if (step === 'finish') {
+      // Go back to desc-choice if OAuth configured, otherwise repos
+      if (dependencies?.claudeOAuthToken.configured) {
+        setStep('desc-choice')
+      } else {
+        setStep('repos')
+      }
     } else if (step === 'descriptions') {
+      setStep('desc-choice')
+    } else if (step === 'desc-choice') {
       setStep('repos')
     } else if (step === 'repos') {
       setStep('path')
     } else if (step === 'path') {
+      setStep('headless-agents')
+    } else if (step === 'headless-agents') {
       setStep('tools')
     } else if (step === 'tools') {
       setStep('deps')
@@ -558,7 +709,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background py-8">
-      <div className={`w-full mx-auto px-4 ${step === 'repos' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+      <div className={`w-full mx-auto px-4 ${step === 'repos' || step === 'descriptions' ? 'max-w-4xl' : 'max-w-2xl'}`}>
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-foreground mb-2">
@@ -783,6 +934,444 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   Back
                 </Button>
                 <Button
+                  onClick={() => setStep('headless-agents')}
+                >
+                  Continue
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Headless Agents */}
+          {step === 'headless-agents' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Enable Headless Agents
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Headless agents run AI agents in parallel using Docker containers. Bismarck runs entirely on your machine — tokens and configuration never leave your device.
+                </p>
+              </div>
+
+              {/* Headless Agents Toggle */}
+              <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
+                <div className="flex-1">
+                  <Label htmlFor="plan-mode-toggle" className="text-sm font-medium text-foreground">
+                    Enable Headless Agents
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Run parallel agents in isolated Docker containers
+                  </p>
+                </div>
+                <button
+                  id="plan-mode-toggle"
+                  role="switch"
+                  aria-checked={planModeEnabled}
+                  onClick={() => setPlanModeEnabled(!planModeEnabled)}
+                  className={`
+                    relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+                    transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+                    ${planModeEnabled ? 'bg-primary' : 'bg-muted'}
+                  `}
+                >
+                  <span
+                    className={`
+                      pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0
+                      transition duration-200 ease-in-out
+                      ${planModeEnabled ? 'translate-x-5' : 'translate-x-0'}
+                    `}
+                  />
+                </button>
+              </div>
+
+              {/* Docker Image Section */}
+              {planModeEnabled && dependencies && dependencies.docker.installed && (
+                <div className="border border-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">Docker Image</span>
+                  </div>
+
+                  {/* Image source selector */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { setUseCustomImage(false); setPullResult(null); setImageCheckResult(null) }}
+                      className={`rounded-lg border p-3 text-left transition-all ${
+                        !useCustomImage
+                          ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-foreground block">Official Image</span>
+                      <span className="text-xs text-muted-foreground mt-0.5 block">
+                        {dependencies.dockerImage.imageName}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => { setUseCustomImage(true); setPullResult(null); setImageCheckResult(null) }}
+                      className={`rounded-lg border p-3 text-left transition-all ${
+                        useCustomImage
+                          ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-foreground block">Custom Image</span>
+                      <span className="text-xs text-muted-foreground mt-0.5 block">Use your own image</span>
+                    </button>
+                  </div>
+
+                  {/* Custom image input */}
+                  {useCustomImage && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="myregistry/my-agent:latest"
+                        value={customImageName}
+                        onChange={(e) => setCustomImageName(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        See{' '}
+                        <a
+                          href="https://hub.docker.com/r/bismarckapp/bismarck-agent"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-0.5"
+                        >
+                          bismarckapp/bismarck-agent
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                        {' '}as a base for your custom image.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Image status metadata */}
+                  {isVerifyingImage && !imageCheckResult && !useCustomImage && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">Verifying...</span>
+                    </div>
+                  )}
+                  {(dependencies.dockerImage.available && !useCustomImage || imageCheckResult?.exists) && !isVerifyingImage && (
+                    <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                      <span className="text-green-600 dark:text-green-400">Installed</span>
+                      {(imageCheckResult?.version || dependencies.dockerImage.version) && (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-muted-foreground">v{imageCheckResult?.version || dependencies.dockerImage.version}</span>
+                        </>
+                      )}
+                      {imageCheckResult?.verified === true && !useCustomImage && (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400" title="Image digest verified against Docker Hub registry">
+                            <ShieldCheck className="h-3 w-3" />
+                            Verified
+                          </span>
+                        </>
+                      )}
+                      {(imageCheckResult?.digest || dependencies.dockerImage.digest) && (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-muted-foreground font-mono">{(imageCheckResult?.digest || dependencies.dockerImage.digest)!.substring(7, 19)}</span>
+                        </>
+                      )}
+                      {imageCheckResult?.size != null && (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-muted-foreground">{formatBytes(imageCheckResult.size)}</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Not installed indicator */}
+                  {!dependencies.dockerImage.available && !useCustomImage && !isPullingImage && !pullResult?.success && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                      <span className="text-muted-foreground">Image not found locally. Pull to get started.</span>
+                    </div>
+                  )}
+
+                  {/* Pull progress */}
+                  {isPullingImage && pullProgress && (
+                    <p className="text-xs text-muted-foreground font-mono truncate" title={pullProgress}>
+                      {pullProgress}
+                    </p>
+                  )}
+
+                  {/* Pull result messages */}
+                  {pullResult?.success && (
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      Image pulled successfully
+                    </p>
+                  )}
+                  {pullResult && !pullResult.success && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      Failed to pull: {pullResult.error}
+                    </p>
+                  )}
+
+                  {/* Pull button */}
+                  {((!dependencies.dockerImage.available && !useCustomImage) || useCustomImage) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handlePullDockerImage}
+                      disabled={isPullingImage || (useCustomImage && !customImageName.trim())}
+                    >
+                      {isPullingImage ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          Pulling...
+                        </>
+                      ) : (
+                        'Pull Image'
+                      )}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* GitHub Token Section */}
+              {planModeEnabled && dependencies && (
+                <div className="border border-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    {dependencies.githubToken.configured ? (
+                      <Check className="h-5 w-5 text-green-500" />
+                    ) : dependencies.githubToken.detected ? (
+                      <Check className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium text-foreground">GitHub Token</span>
+                    <span className="text-xs text-muted-foreground">(optional)</span>
+                  </div>
+
+                  {dependencies.githubToken.configured ? (
+                    <p className="text-xs text-muted-foreground">
+                      Token configured
+                    </p>
+                  ) : dependencies.githubToken.detected ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Requires <code className="text-[10px] bg-muted px-1 py-0.5 rounded">repo</code> and <code className="text-[10px] bg-muted px-1 py-0.5 rounded">read:packages</code> scopes for creating PRs and accessing packages.
+                      </p>
+
+                      {/* Token source selector - two equal cards */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setShowCustomTokenInput(false)}
+                          className={`rounded-lg border p-3 text-left transition-all ${
+                            !showCustomTokenInput
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                        >
+                          <span className="text-sm font-medium text-foreground block">Use detected token</span>
+                          <span className="text-xs text-muted-foreground mt-0.5 block">
+                            From {dependencies.githubToken.source}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => setShowCustomTokenInput(true)}
+                          className={`rounded-lg border p-3 text-left transition-all ${
+                            showCustomTokenInput
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                        >
+                          <span className="text-sm font-medium text-foreground block">Use a different token</span>
+                          <span className="text-xs text-muted-foreground mt-0.5 block">Provide a fine-grained PAT</span>
+                        </button>
+                      </div>
+
+                      {/* Custom token: input + save */}
+                      {showCustomTokenInput && (
+                        <div className="space-y-2">
+                          <Input
+                            type="password"
+                            placeholder="ghp_... or github_pat_..."
+                            value={customGitHubToken}
+                            onChange={(e) => setCustomGitHubToken(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && isValidGitHubToken(customGitHubToken.trim())) {
+                                handleSaveCustomGitHubToken()
+                              }
+                            }}
+                            className="text-sm"
+                          />
+                          {customGitHubToken.trim() && !isValidGitHubToken(customGitHubToken.trim()) && (
+                            <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                              Token must start with ghp_, gho_, ghs_, ghu_, or github_pat_
+                            </p>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleSaveCustomGitHubToken}
+                            disabled={savingCustomToken || !isValidGitHubToken(customGitHubToken.trim())}
+                          >
+                            {savingCustomToken ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              'Save token'
+                            )}
+                          </Button>
+                        </div>
+                      )}
+
+                      {tokenDetectResult?.success && (
+                        <p className="text-xs text-green-600 dark:text-green-400">
+                          Token saved successfully
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {tokenDetectResult?.reason === 'command_substitution' ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Token appears to be set via a command (e.g., <code className="text-[10px] bg-muted px-1 py-0.5 rounded">$(op ...)</code>).
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            For security, we can't execute shell commands. Please configure the token manually in Settings &gt; Tools.
+                          </p>
+                        </>
+                      ) : tokenDetectResult?.reason === 'unresolved_ref' ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Found <code className="text-[10px] bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in your shell profile,
+                            but it references another variable that isn't exported.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            If it's set by a secrets manager (1Password, Doppler, etc.),
+                            copy the token value and configure manually in Settings → Tools.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            No token found in environment or shell profile.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Add to your shell profile (<code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.zshrc</code> or <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.bashrc</code>):
+                          </p>
+                          <pre className="text-[10px] bg-muted text-muted-foreground px-2 py-1.5 rounded overflow-x-auto">
+                            export GITHUB_TOKEN="ghp_your_token_here"
+                          </pre>
+                          <p className="text-xs text-muted-foreground">
+                            Then reload to detect the token.
+                          </p>
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleReloadToken}
+                        disabled={isReloadingToken}
+                      >
+                        {isReloadingToken ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Reloading...
+                          </>
+                        ) : (
+                          'Reload'
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">Note:</span> If your org uses SAML SSO, headless agents won't be able to use <code className="text-[10px] bg-muted px-1 py-0.5 rounded">gh auth</code>.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        You can also configure manually in Settings &gt; Tools.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Claude OAuth Token Section */}
+              {planModeEnabled && dependencies && (
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {dependencies.claudeOAuthToken.configured ? (
+                          <Check className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">Claude OAuth Token</span>
+                          <span className="text-xs text-muted-foreground">(required for headless agents)</span>
+                        </div>
+                        {dependencies.claudeOAuthToken.configured ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Token configured
+                          </p>
+                        ) : (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              OAuth token is required for headless agents to authenticate with Claude.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={handleSetupOAuth}
+                              disabled={isSettingUpOAuth}
+                            >
+                              {isSettingUpOAuth ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Setting up...
+                                </>
+                              ) : (
+                                'Setup OAuth Token'
+                              )}
+                            </Button>
+                            {oauthSetupResult?.success && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                OAuth token saved successfully
+                              </p>
+                            )}
+                            {oauthSetupResult?.error && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                Failed: {oauthSetupResult.error}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
                   onClick={() => setStep('path')}
                 >
                   Continue
@@ -792,7 +1381,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Path Selection */}
+          {/* Step 4: Path Selection */}
           {step === 'path' && (
             <div className="space-y-6">
               <div>
@@ -1016,7 +1605,19 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     Back
                   </Button>
                   <Button
-                    onClick={handleContinueToDescriptions}
+                    onClick={() => {
+                      if (selectedRepos.size === 0) {
+                        setError('Please select at least one repository')
+                        return
+                      }
+                      setError(null)
+                      // Skip desc-choice if no OAuth token configured (can't run claude -p)
+                      if (dependencies?.claudeOAuthToken.configured) {
+                        setStep('desc-choice')
+                      } else {
+                        handleSkipDescriptions()
+                      }
+                    }}
                     disabled={selectedRepos.size === 0}
                   >
                     Continue
@@ -1027,7 +1628,62 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Descriptions */}
+          {/* Step: Description Choice */}
+          {step === 'desc-choice' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Repository Descriptions
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Descriptions help the orchestrator allocate tasks to the right repos and tell agents when their work is done.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Auto-generate card */}
+                <button
+                  onClick={handleContinueToDescriptions}
+                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Auto-generate with Claude</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Claude will analyze each repository and generate purpose descriptions and completion criteria automatically.
+                  </p>
+                </button>
+
+                {/* Skip card */}
+                <button
+                  onClick={handleSkipDescriptions}
+                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold text-foreground">Skip, configure later</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You can add descriptions later in Settings. Agents will still work, but task allocation may be less accurate.
+                  </p>
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Descriptions */}
           {step === 'descriptions' && (
             <div className="space-y-6">
               {isGenerating ? (
@@ -1136,8 +1792,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     </p>
                   </div>
 
-                  {/* Descriptions list - 2 column grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto">
+                  {/* Descriptions list - single column */}
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                     {discoveredRepos
                       .filter(r => selectedRepos.has(r.path))
                       .map((repo) => (
@@ -1153,9 +1809,18 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
                           {/* Purpose */}
                           <div>
-                            <Label className="text-xs text-muted-foreground block mb-1">
-                              Purpose
-                            </Label>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Purpose
+                              </Label>
+                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+                                <Zap className="h-3 w-3" />
+                                Used for task allocation
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mb-1.5">
+                              Used by the orchestrator to determine which repo handles which tasks, and for grouping repos in the sidebar.
+                            </p>
                             <textarea
                               className="w-full min-h-[100px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                               placeholder="What does this repository do?"
@@ -1166,9 +1831,18 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
 
                           {/* Completion Criteria */}
                           <div>
-                            <Label className="text-xs text-muted-foreground block mb-1">
-                              Completion Criteria
-                            </Label>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Completion Criteria
+                              </Label>
+                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+                                <Zap className="h-3 w-3" />
+                                Injected into standalone & PR-mode task agent prompts
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mb-1.5">
+                              Agents validate work against these before creating PRs. They iterate until all criteria pass.
+                            </p>
                             <textarea
                               className="w-full min-h-[120px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
                               placeholder="- Tests pass&#10;- Code is linted&#10;- Build succeeds"
@@ -1213,7 +1887,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                       Back
                     </Button>
                     <Button
-                      onClick={handleContinueToPlanMode}
+                      onClick={handleContinueToFinish}
                     >
                       Continue
                       <ChevronRight className="h-4 w-4 ml-2" />
@@ -1224,290 +1898,18 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 5: Headless Agents */}
-          {step === 'plan-mode' && (
+          {/* Step: Finish - Create Agents */}
+          {step === 'finish' && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Enable Headless Agents
+                  Ready to Create Agents
                 </h2>
                 <p className="text-muted-foreground text-sm">
-                  Headless agents run AI agents in parallel using Docker containers.
+                  {selectedRepos.size} {selectedRepos.size === 1 ? 'repository' : 'repositories'} selected.
+                  {planModeEnabled ? ' Headless agents are enabled.' : ' Headless agents are disabled.'}
                 </p>
               </div>
-
-              {/* Headless Agents Toggle */}
-              <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
-                <div className="flex-1">
-                  <Label htmlFor="plan-mode-toggle" className="text-sm font-medium text-foreground">
-                    Enable Headless Agents
-                  </Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Run parallel agents in isolated Docker containers
-                  </p>
-                </div>
-                <button
-                  id="plan-mode-toggle"
-                  role="switch"
-                  aria-checked={planModeEnabled}
-                  onClick={() => setPlanModeEnabled(!planModeEnabled)}
-                  className={`
-                    relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-                    transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
-                    ${planModeEnabled ? 'bg-primary' : 'bg-muted'}
-                  `}
-                >
-                  <span
-                    className={`
-                      pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0
-                      transition duration-200 ease-in-out
-                      ${planModeEnabled ? 'translate-x-5' : 'translate-x-0'}
-                    `}
-                  />
-                </button>
-              </div>
-
-              {/* Docker Image Section */}
-              {planModeEnabled && dependencies && dependencies.docker.installed && (
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5">
-                        {dependencies.dockerImage.available ? (
-                          <Check className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">Docker Image</span>
-                        </div>
-                        {dependencies.dockerImage.available ? (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {dependencies.dockerImage.imageName} available locally
-                          </p>
-                        ) : (
-                          <div className="mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              The agent image needs to be pulled from Docker Hub.
-                            </p>
-                            {isPullingImage && pullProgress && (
-                              <p className="text-xs text-muted-foreground mt-1 font-mono truncate" title={pullProgress}>
-                                {pullProgress}
-                              </p>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              onClick={handlePullDockerImage}
-                              disabled={isPullingImage}
-                            >
-                              {isPullingImage ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                  Pulling...
-                                </>
-                              ) : (
-                                'Pull Image'
-                              )}
-                            </Button>
-                            {pullResult?.success && (
-                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                Image pulled successfully
-                              </p>
-                            )}
-                            {pullResult && !pullResult.success && (
-                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                                Failed to pull: {pullResult.error}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* GitHub Token Section */}
-              {planModeEnabled && dependencies && (
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5">
-                        {dependencies.githubToken.configured ? (
-                          <Check className="h-5 w-5 text-green-500" />
-                        ) : dependencies.githubToken.detected ? (
-                          <Check className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">GitHub Token</span>
-                          <span className="text-xs text-muted-foreground">(optional)</span>
-                        </div>
-                        {dependencies.githubToken.configured ? (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Token configured
-                          </p>
-                        ) : dependencies.githubToken.detected ? (
-                          <div className="mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              Found token from {dependencies.githubToken.source}
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              onClick={handleDetectAndSaveToken}
-                              disabled={isDetectingToken}
-                            >
-                              {isDetectingToken ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                  Saving...
-                                </>
-                              ) : (
-                                'Use detected token'
-                              )}
-                            </Button>
-                            {tokenDetectResult?.success && (
-                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                Token saved successfully
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="mt-1">
-                            {tokenDetectResult?.reason === 'command_substitution' ? (
-                              <>
-                                <p className="text-xs text-muted-foreground">
-                                  Token appears to be set via a command (e.g., <code className="text-[10px] bg-muted px-1 py-0.5 rounded">$(op ...)</code>).
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  For security, we can't execute shell commands. Please configure the token manually in Settings &gt; Tools.
-                                </p>
-                              </>
-                            ) : tokenDetectResult?.reason === 'unresolved_ref' ? (
-                              <>
-                                <p className="text-xs text-muted-foreground">
-                                  Found <code className="text-[10px] bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in your shell profile,
-                                  but it references another variable that isn't exported.
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  If it's set by a secrets manager (1Password, Doppler, etc.),
-                                  copy the token value and configure manually in Settings → Tools.
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-xs text-muted-foreground">
-                                  No token found in environment or shell profile.
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  Add to your shell profile (<code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.zshrc</code> or <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.bashrc</code>):
-                                </p>
-                                <pre className="text-[10px] bg-muted text-muted-foreground px-2 py-1.5 rounded mt-1 overflow-x-auto">
-                                  export GITHUB_TOKEN="ghp_your_token_here"
-                                </pre>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  Then reload to detect the token.
-                                </p>
-                              </>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              onClick={handleReloadToken}
-                              disabled={isReloadingToken}
-                            >
-                              {isReloadingToken ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                  Reloading...
-                                </>
-                              ) : (
-                                'Reload'
-                              )}
-                            </Button>
-                            <p className="text-xs text-muted-foreground mt-3">
-                              <span className="font-medium">Note:</span> If your org uses SAML SSO, headless agents won't be able to use <code className="text-[10px] bg-muted px-1 py-0.5 rounded">gh auth</code>.
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              You can also configure manually in Settings &gt; Tools.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Claude OAuth Token Section */}
-              {planModeEnabled && dependencies && (
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5">
-                        {dependencies.claudeOAuthToken.configured ? (
-                          <Check className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">Claude OAuth Token</span>
-                          <span className="text-xs text-muted-foreground">(required for headless agents)</span>
-                        </div>
-                        {dependencies.claudeOAuthToken.configured ? (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Token configured
-                          </p>
-                        ) : (
-                          <div className="mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              OAuth token is required for headless agents to authenticate with Claude.
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              onClick={handleSetupOAuth}
-                              disabled={isSettingUpOAuth}
-                            >
-                              {isSettingUpOAuth ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                  Setting up...
-                                </>
-                              ) : (
-                                'Setup OAuth Token'
-                              )}
-                            </Button>
-                            {oauthSetupResult?.success && (
-                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                OAuth token saved successfully
-                              </p>
-                            )}
-                            {oauthSetupResult?.error && (
-                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                                Failed: {oauthSetupResult.error}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Error Message */}
               {error && (
@@ -1546,7 +1948,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         </div>
 
         {/* Skip link at bottom */}
-        {(step === 'deps' || step === 'tools' || step === 'path') && (
+        {(step === 'deps' || step === 'tools' || step === 'headless-agents' || step === 'path') && (
           <div className="text-center mt-4">
             <button
               onClick={onSkip}
