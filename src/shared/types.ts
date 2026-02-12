@@ -519,6 +519,7 @@ export interface SpawningHeadlessInfo {
   id: string                  // Temporary ID like "spawning-1234567890"
   referenceAgentId: string    // The agent used as reference
   tabId: string               // Which tab to show the placeholder in
+  position: number            // Grid slot index within the tab
   prompt: string              // Prompt being executed
   model: 'opus' | 'sonnet'    // Model being used
   startedAt: number           // Timestamp for display purposes
