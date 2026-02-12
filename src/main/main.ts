@@ -19,6 +19,7 @@ import {
 initBenchmark()
 import {
   ensureConfigDirExists,
+  getConfigDir,
   getWorkspaces,
   saveWorkspace,
   deleteWorkspace,
@@ -898,10 +899,35 @@ function registerIpcHandlers() {
     }
   })
 
+  // Path validation for file IPC handlers.
+  // Restricts file access to the config directory (~/.bismarck) and
+  // known workspace/repository directories.
+  function isPathAllowed(requestedPath: string): boolean {
+    const resolved = path.resolve(requestedPath)
+    // Allow paths within the config directory (~/.bismarck)
+    const configDir = path.resolve(getConfigDir())
+    if (resolved.startsWith(configDir + path.sep) || resolved === configDir) {
+      return true
+    }
+    // Allow paths within known workspace directories
+    const workspaces = getWorkspaces()
+    for (const ws of workspaces) {
+      const wsDir = path.resolve(ws.directory)
+      if (resolved.startsWith(wsDir + path.sep) || resolved === wsDir) {
+        return true
+      }
+    }
+    return false
+  }
+
   // File reading (for discussion output, etc.)
   ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
-      const content = await fs.promises.readFile(filePath, 'utf-8')
+      const resolved = path.resolve(filePath)
+      if (!isPathAllowed(resolved)) {
+        return { success: false, error: 'Access denied: path is outside allowed directories' }
+      }
+      const content = await fs.promises.readFile(resolved, 'utf-8')
       return { success: true, content }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -951,6 +977,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('write-file-content', async (_event, directory: string, filepath: string, content: string) => {
+    const resolvedDir = path.resolve(directory)
+    if (!isPathAllowed(resolvedDir)) {
+      throw new Error('Access denied: directory is outside allowed paths')
+    }
     return writeFileContent(directory, filepath, content)
   })
 
