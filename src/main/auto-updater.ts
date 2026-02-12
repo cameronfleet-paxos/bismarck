@@ -9,6 +9,8 @@
 import { app, ipcMain, BrowserWindow, clipboard } from 'electron'
 import { loadSettings, updateSettings } from './settings-manager'
 import * as https from 'https'
+import * as crypto from 'crypto'
+import * as fs from 'fs'
 import { devLog } from './dev-log'
 
 // GitHub repository info
@@ -19,7 +21,7 @@ const GITHUB_REPO = 'bismarck'
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean; sha256: string | null }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -111,9 +113,28 @@ function isSignificantlyOutdated(currentVersion: string, latestVersion: string):
 }
 
 /**
+ * Extract SHA-256 checksum from a release body.
+ * Looks for the pattern: **SHA-256:** `<hex>`
+ */
+function extractChecksumFromBody(body: string): string | null {
+  const match = body.match(/\*\*SHA-256:\*\*\s*`([a-f0-9]{64})`/i)
+  return match ? match[1] : null
+}
+
+/**
+ * Verify the SHA-256 checksum of a downloaded file
+ */
+function verifyChecksum(filePath: string, expectedChecksum: string): boolean {
+  const fileBuffer = fs.readFileSync(filePath)
+  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+  devLog(`[AutoUpdater] Checksum verification: expected=${expectedChecksum}, actual=${hash}`)
+  return hash === expectedChecksum
+}
+
+/**
  * Fetch the latest release from GitHub API
  */
-async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: string } | null> {
+async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: string; sha256: string | null } | null> {
   devLog('[AutoUpdater] fetchLatestRelease: starting request to GitHub API')
   return new Promise((resolve, reject) => {
     const options = {
@@ -155,9 +176,12 @@ async function fetchLatestRelease(): Promise<{ version: string; releaseUrl: stri
         try {
           const release = JSON.parse(data)
           devLog('[AutoUpdater] fetchLatestRelease: parsed release tag_name:', release.tag_name)
+          const sha256 = extractChecksumFromBody(release.body || '')
+          devLog('[AutoUpdater] fetchLatestRelease: extracted sha256:', sha256 ?? '(none)')
           resolve({
             version: release.tag_name,
-            releaseUrl: release.html_url
+            releaseUrl: release.html_url,
+            sha256
           })
         } catch (e) {
           devLog('[AutoUpdater] fetchLatestRelease: failed to parse JSON:', data.substring(0, 200))
@@ -215,7 +239,8 @@ async function checkForUpdates(): Promise<UpdateStatus> {
         version: latestVersion,
         releaseUrl: latestRelease.releaseUrl,
         currentVersion,
-        significantlyOutdated
+        significantlyOutdated,
+        sha256: latestRelease.sha256
       }
       sendStatusToRenderer(status)
       return status

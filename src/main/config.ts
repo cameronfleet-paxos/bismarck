@@ -81,6 +81,28 @@ export async function withGitPushLock<T>(planId: string, fn: () => Promise<T>): 
   }
 }
 
+/**
+ * Execute a function with exclusive access to git operations on a repo.
+ * Prevents concurrent worktree creation on the same repository.
+ */
+const repoMutexes: Map<string, Promise<void>> = new Map()
+
+export async function withRepoLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
+  const pending = repoMutexes.get(repoPath) || Promise.resolve()
+  let resolve: () => void
+  const newPending = new Promise<void>((r) => { resolve = r })
+  repoMutexes.set(repoPath, newPending)
+  try {
+    await pending
+    return await fn()
+  } finally {
+    resolve!()
+    if (repoMutexes.get(repoPath) === newPending) {
+      repoMutexes.delete(repoPath)
+    }
+  }
+}
+
 export function getConfigDir(): string {
   const homeDir = app?.getPath('home') || process.env.HOME || ''
   return path.join(homeDir, CONFIG_DIR_NAME)
@@ -154,7 +176,7 @@ export function ensureConfigDirExists(): void {
 
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     }
   }
 
@@ -209,10 +231,10 @@ export function getDefaultPreferences(): AppPreferences {
 }
 
 // Atomic write to prevent corruption
-export function writeConfigAtomic(filePath: string, data: unknown | string): void {
+export function writeConfigAtomic(filePath: string, data: unknown | string, mode?: number): void {
   const tempPath = `${filePath}.tmp`
   const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-  fs.writeFileSync(tempPath, content)
+  fs.writeFileSync(tempPath, content, { mode: mode ?? 0o644 })
   fs.renameSync(tempPath, filePath)
 }
 
@@ -470,7 +492,7 @@ export function setClaudeOAuthToken(token: string): void {
     token,
     createdAt: new Date().toISOString(),
   }
-  writeConfigAtomic(tokenPath, data)
+  writeConfigAtomic(tokenPath, data, 0o600)
 }
 
 /**
@@ -520,7 +542,7 @@ export function setConfiguredGitHubToken(token: string): void {
     token,
     createdAt: new Date().toISOString(),
   }
-  writeConfigAtomic(tokenPath, data)
+  writeConfigAtomic(tokenPath, data, 0o600)
 }
 
 /**

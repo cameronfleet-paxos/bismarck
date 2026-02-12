@@ -10,6 +10,18 @@ import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
 import type { CustomizablePromptType } from '../shared/types'
 
+const OFFICIAL_IMAGE_REPO = 'bismarckapp/bismarck-agent'
+
+function getVersionedImage(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const version = require('electron').app.getVersion()
+    return `${OFFICIAL_IMAGE_REPO}:${version}`
+  } catch {
+    return `${OFFICIAL_IMAGE_REPO}:latest`
+  }
+}
+
 /**
  * Tool configuration for proxying host commands into Docker containers
  */
@@ -56,6 +68,9 @@ export interface AppSettings {
     sharedBuildCache: {
       enabled: boolean     // Enable shared Go build cache across agents (per-repo)
     }
+    imageDigests: Record<string, string>     // { "image:tag": "sha256:abc..." } - tracks pulled digests
+    upstreamTemplateDigest: string | null    // last known digest of official image template
+    upstreamTemplateVersion: string | null   // last known version label (e.g. "0.7.8")
   }
   prompts: {
     orchestrator: string | null  // null = use default
@@ -66,6 +81,8 @@ export interface AppSettings {
     standalone_followup: string | null  // Follow-up agents on existing worktrees
     headless_discussion: string | null  // Headless discussion (Discuss: Headless Agent)
     critic: string | null              // Critic review agents
+    manager: string | null             // Manager triage agents (bottom-up mode)
+    architect: string | null           // Architect decomposition agents (bottom-up mode)
   }
   planMode: {
     enabled: boolean       // Whether plan mode (parallel agents) is enabled
@@ -133,8 +150,8 @@ export function getDefaultSettings(): AppSettings {
       git: null,
     },
     docker: {
-      images: ['bismarckapp/bismarck-agent:latest'],
-      selectedImage: 'bismarckapp/bismarck-agent:latest',
+      images: [getVersionedImage()],
+      selectedImage: getVersionedImage(),
       resourceLimits: {
         cpu: '4',
         memory: '8g',
@@ -180,6 +197,9 @@ export function getDefaultSettings(): AppSettings {
       sharedBuildCache: {
         enabled: true,   // Share Go build cache across agents per-repo
       },
+      imageDigests: {},
+      upstreamTemplateDigest: null,
+      upstreamTemplateVersion: null,
     },
     prompts: {
       orchestrator: null,
@@ -190,6 +210,8 @@ export function getDefaultSettings(): AppSettings {
       standalone_followup: null,
       headless_discussion: null,
       critic: null,
+      manager: null,
+      architect: null,
     },
     planMode: {
       enabled: false,  // Disabled by default, wizard can enable
@@ -266,6 +288,12 @@ export async function loadSettings(): Promise<AppSettings> {
           ...defaults.docker.sharedBuildCache,
           ...(loaded.docker?.sharedBuildCache || {}),
         },
+        imageDigests: {
+          ...defaults.docker.imageDigests,
+          ...(loaded.docker?.imageDigests || {}),
+        },
+        upstreamTemplateDigest: loaded.docker?.upstreamTemplateDigest ?? defaults.docker.upstreamTemplateDigest,
+        upstreamTemplateVersion: loaded.docker?.upstreamTemplateVersion ?? defaults.docker.upstreamTemplateVersion,
       },
       prompts: { ...defaults.prompts, ...(loaded.prompts || {}) },
       planMode: { ...defaults.planMode, ...(loaded.planMode || {}) },
@@ -350,6 +378,17 @@ export async function loadSettings(): Promise<AppSettings> {
       needsMigration = true
     }
 
+    // Migration: Pin official images to current app version
+    if (merged.docker.selectedImage?.startsWith(`${OFFICIAL_IMAGE_REPO}:`) &&
+        merged.docker.selectedImage !== getVersionedImage()) {
+      const oldImage = merged.docker.selectedImage
+      merged.docker.images = merged.docker.images.map(img =>
+        img === oldImage ? getVersionedImage() : img
+      )
+      merged.docker.selectedImage = getVersionedImage()
+      needsMigration = true
+    }
+
     // Migration: Move GitHub token from settings.json to dedicated github-token.json
     if (loaded.tools?.githubToken && typeof loaded.tools.githubToken === 'string') {
       if (!getConfiguredGitHubToken()) {
@@ -428,6 +467,12 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
         ...(updates.docker?.sharedBuildCache || {}),
       },
+      imageDigests: {
+        ...(currentSettings.docker.imageDigests || defaults.docker.imageDigests),
+        ...(updates.docker?.imageDigests || {}),
+      },
+      upstreamTemplateDigest: updates.docker?.upstreamTemplateDigest ?? currentSettings.docker.upstreamTemplateDigest ?? defaults.docker.upstreamTemplateDigest,
+      upstreamTemplateVersion: updates.docker?.upstreamTemplateVersion ?? currentSettings.docker.upstreamTemplateVersion ?? defaults.docker.upstreamTemplateVersion,
     },
     prompts: {
       ...(currentSettings.prompts || defaults.prompts),
@@ -592,7 +637,7 @@ export async function setSelectedDockerImage(image: string): Promise<void> {
  */
 export async function getSelectedDockerImage(): Promise<string> {
   const settings = await loadSettings()
-  return settings.docker.selectedImage || 'bismarckapp/bismarck-agent:latest'
+  return settings.docker.selectedImage || getVersionedImage()
 }
 
 /**

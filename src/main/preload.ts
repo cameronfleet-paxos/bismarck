@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, TeamMode, BeadTask, PromptType, DiscoveredRepo, PlanModeDependencies, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Workspace management
@@ -28,6 +28,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopWorkspace: (workspaceId: string): Promise<void> =>
     ipcRenderer.invoke('stop-workspace', workspaceId),
 
+  // Plain terminal management (non-agent shell terminals)
+  createPlainTerminal: (directory: string, name?: string): Promise<{ terminalId: string; tabId: string }> =>
+    ipcRenderer.invoke('create-plain-terminal', directory, name),
+  closePlainTerminal: (terminalId: string): Promise<void> =>
+    ipcRenderer.invoke('close-plain-terminal', terminalId),
+  renamePlainTerminal: (terminalId: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('rename-plain-terminal', terminalId, name),
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }): Promise<{ terminalId: string; plainId: string } | null> =>
+    ipcRenderer.invoke('restore-plain-terminal', pt),
+
   // State management
   getState: (): Promise<AppState> => ipcRenderer.invoke('get-state'),
   setFocusedWorkspace: (workspaceId: string | undefined): Promise<void> =>
@@ -51,7 +61,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     planTitle?: string
     planStatus?: string
     isInProgress: boolean
-  }> => ipcRenderer.invoke('get-tab-plan-status', tabId),
+  }> => ipcRenderer.invoke('get-tab-team-plan-status', tabId),
   reorderTabs: (tabIds: string[]): Promise<boolean> =>
     ipcRenderer.invoke('reorder-tabs', tabIds),
   reorderWorkspaceInTab: (
@@ -80,46 +90,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-preferences', preferences),
 
   // Plan management (Team Mode)
-  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy }): Promise<Plan> =>
-    ipcRenderer.invoke('create-plan', title, description, options),
+  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy; teamMode?: TeamMode }): Promise<Plan> =>
+    ipcRenderer.invoke('create-team-plan', title, description, options),
   getPlans: (): Promise<Plan[]> =>
-    ipcRenderer.invoke('get-plans'),
-  executePlan: (planId: string, referenceAgentId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('execute-plan', planId, referenceAgentId),
+    ipcRenderer.invoke('get-team-plans'),
+  executePlan: (planId: string, referenceAgentId: string, teamMode?: string): Promise<Plan | null> =>
+    ipcRenderer.invoke('execute-team-plan', planId, referenceAgentId, teamMode),
   startDiscussion: (planId: string, referenceAgentId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('start-discussion', planId, referenceAgentId),
+    ipcRenderer.invoke('start-team-discussion', planId, referenceAgentId),
   cancelDiscussion: (planId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('cancel-discussion', planId),
+    ipcRenderer.invoke('cancel-team-discussion', planId),
   cancelPlan: (planId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('cancel-plan', planId),
+    ipcRenderer.invoke('cancel-team-plan', planId),
   restartPlan: (planId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('restart-plan', planId),
+    ipcRenderer.invoke('restart-team-plan', planId),
   completePlan: (planId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('complete-plan', planId),
+    ipcRenderer.invoke('complete-team-plan', planId),
   requestFollowUps: (planId: string): Promise<Plan | null> =>
-    ipcRenderer.invoke('request-follow-ups', planId),
+    ipcRenderer.invoke('request-team-follow-ups', planId),
   getTaskAssignments: (planId: string): Promise<TaskAssignment[]> =>
-    ipcRenderer.invoke('get-task-assignments', planId),
+    ipcRenderer.invoke('get-team-task-assignments', planId),
   getPlanActivities: (planId: string): Promise<PlanActivity[]> =>
-    ipcRenderer.invoke('get-plan-activities', planId),
+    ipcRenderer.invoke('get-team-plan-activities', planId),
   getBeadTasks: (planId: string): Promise<BeadTask[]> =>
-    ipcRenderer.invoke('get-bead-tasks', planId),
+    ipcRenderer.invoke('get-team-bead-tasks', planId),
   setPlanSidebarOpen: (open: boolean): Promise<void> =>
-    ipcRenderer.invoke('set-plan-sidebar-open', open),
+    ipcRenderer.invoke('set-team-sidebar-open', open),
   setActivePlanId: (planId: string | null): Promise<void> =>
-    ipcRenderer.invoke('set-active-plan-id', planId),
+    ipcRenderer.invoke('set-active-team-plan-id', planId),
   deletePlan: (planId: string): Promise<void> =>
-    ipcRenderer.invoke('delete-plan', planId),
+    ipcRenderer.invoke('delete-team-plan', planId),
   deletePlans: (planIds: string[]): Promise<{ deleted: string[]; errors: Array<{ planId: string; error: string }> }> =>
-    ipcRenderer.invoke('delete-plans', planIds),
+    ipcRenderer.invoke('delete-team-plans', planIds),
   clonePlan: (planId: string, options?: { includeDiscussion?: boolean }): Promise<Plan> =>
-    ipcRenderer.invoke('clone-plan', planId, options),
+    ipcRenderer.invoke('clone-team-plan', planId, options),
 
   // Headless agent management
   getHeadlessAgentInfo: (taskId: string): Promise<HeadlessAgentInfo | undefined> =>
     ipcRenderer.invoke('get-headless-agent-info', taskId),
   getHeadlessAgentsForPlan: (planId: string): Promise<HeadlessAgentInfo[]> =>
-    ipcRenderer.invoke('get-headless-agents-for-plan', planId),
+    ipcRenderer.invoke('get-headless-agents-for-team-plan', planId),
   stopHeadlessAgent: (taskId: string): Promise<void> =>
     ipcRenderer.invoke('stop-headless-agent', taskId),
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean): Promise<{ success: boolean; error?: string }> =>
@@ -134,8 +144,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
-    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model),
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet', options?: { planPhase?: boolean }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model, options),
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
@@ -170,8 +180,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('cleanup-ralph-loop', loopId),
 
   // OAuth token management
-  getOAuthToken: (): Promise<string | null> =>
-    ipcRenderer.invoke('get-oauth-token'),
   setOAuthToken: (token: string): Promise<boolean> =>
     ipcRenderer.invoke('set-oauth-token', token),
   hasOAuthToken: (): Promise<boolean> =>
@@ -224,16 +232,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Plan events (Team Mode)
   onPlanUpdate: (callback: (plan: Plan) => void): void => {
-    ipcRenderer.on('plan-update', (_event, plan) => callback(plan))
+    ipcRenderer.on('team-plan-update', (_event, plan) => callback(plan))
   },
   onPlanDeleted: (callback: (planId: string) => void): void => {
-    ipcRenderer.on('plan-deleted', (_event, planId) => callback(planId))
+    ipcRenderer.on('team-plan-deleted', (_event, planId) => callback(planId))
   },
   onTaskAssignmentUpdate: (callback: (assignment: TaskAssignment) => void): void => {
-    ipcRenderer.on('task-assignment-update', (_event, assignment) => callback(assignment))
+    ipcRenderer.on('team-task-assignment-update', (_event, assignment) => callback(assignment))
   },
   onPlanActivity: (callback: (activity: PlanActivity) => void): void => {
-    ipcRenderer.on('plan-activity', (_event, activity) => callback(activity))
+    ipcRenderer.on('team-plan-activity', (_event, activity) => callback(activity))
   },
   onStateUpdate: (callback: (state: AppState) => void): void => {
     ipcRenderer.on('state-update', (_event, state) => callback(state))
@@ -288,7 +296,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Bead task events
   onBeadTasksUpdated: (callback: (planId: string) => void): void => {
-    ipcRenderer.on('bead-tasks-updated', (_event, planId) => callback(planId))
+    ipcRenderer.on('team-bead-tasks-updated', (_event, planId) => callback(planId))
   },
 
   // Terminal queue status
@@ -383,8 +391,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('docker-pull-progress')
   },
 
+  // Base image update notification (for BYO image users)
+  onBaseImageUpdated: (callback: (data: { newVersion: string | null; newDigest: string | null }) => void): void => {
+    ipcRenderer.removeAllListeners('base-image-updated')
+    ipcRenderer.on('base-image-updated', (_event, data) => callback(data))
+  },
+  removeBaseImageUpdatedListener: (): void => {
+    ipcRenderer.removeAllListeners('base-image-updated')
+  },
+
   // Docker image status
-  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }> =>
+  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number; digest?: string; labels?: Record<string, string>; verified?: boolean }> =>
     ipcRenderer.invoke('check-docker-image-status', imageName),
   pullDockerImage: (imageName: string): Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }> =>
     ipcRenderer.invoke('pull-docker-image', imageName),
@@ -438,7 +455,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-raw-settings', settings),
 
   // Prompt management
-  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null }> =>
+  getCustomPrompts: (): Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; manager: string | null; architect: string | null }> =>
     ipcRenderer.invoke('get-custom-prompts'),
   setCustomPrompt: (type: PromptType, template: string | null): Promise<void> =>
     ipcRenderer.invoke('set-custom-prompt', type, template),
@@ -538,17 +555,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('maximize-workspace')
     ipcRenderer.removeAllListeners('waiting-queue-changed')
     ipcRenderer.removeAllListeners('initial-state')
-    ipcRenderer.removeAllListeners('plan-update')
-    ipcRenderer.removeAllListeners('plan-deleted')
-    ipcRenderer.removeAllListeners('task-assignment-update')
-    ipcRenderer.removeAllListeners('plan-activity')
+    ipcRenderer.removeAllListeners('team-plan-update')
+    ipcRenderer.removeAllListeners('team-plan-deleted')
+    ipcRenderer.removeAllListeners('team-task-assignment-update')
+    ipcRenderer.removeAllListeners('team-plan-activity')
     ipcRenderer.removeAllListeners('state-update')
     ipcRenderer.removeAllListeners('terminal-created')
     ipcRenderer.removeAllListeners('headless-agent-started')
     ipcRenderer.removeAllListeners('headless-agent-update')
     ipcRenderer.removeAllListeners('headless-agent-event')
     ipcRenderer.removeAllListeners('terminal-queue-status')
-    ipcRenderer.removeAllListeners('bead-tasks-updated')
+    ipcRenderer.removeAllListeners('team-bead-tasks-updated')
     ipcRenderer.removeAllListeners('ralph-loop-update')
     ipcRenderer.removeAllListeners('ralph-loop-event')
     ipcRenderer.removeAllListeners('description-generation-progress')
@@ -556,6 +573,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.removeAllListeners('base-image-updated')
     ipcRenderer.removeAllListeners('tool-auth-status')
     ipcRenderer.removeAllListeners('debug-log-lines')
   },

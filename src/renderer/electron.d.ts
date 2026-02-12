@@ -1,4 +1,4 @@
-import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
+import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, TeamMode, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
 
 // Tool auth status from the auth checker
@@ -14,7 +14,7 @@ export interface ToolAuthStatus {
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean; sha256: string | null }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -35,6 +35,12 @@ export interface ElectronAPI {
   ) => Promise<void>
   closeTerminal: (terminalId: string) => Promise<void>
   stopWorkspace: (workspaceId: string) => Promise<void>
+
+  // Plain terminal management (non-agent shell terminals)
+  createPlainTerminal: (directory: string, name?: string) => Promise<{ terminalId: string; tabId: string }>
+  closePlainTerminal: (terminalId: string) => Promise<void>
+  renamePlainTerminal: (terminalId: string, name: string) => Promise<void>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => Promise<{ terminalId: string; plainId: string } | null>
 
   // State management
   getState: () => Promise<AppState>
@@ -76,9 +82,9 @@ export interface ElectronAPI {
   setPreferences: (preferences: Partial<AppPreferences>) => Promise<AppPreferences>
 
   // Plan management (Team Mode)
-  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy }) => Promise<Plan>
+  createPlan: (title: string, description: string, options?: { maxParallelAgents?: number; branchStrategy?: BranchStrategy; teamMode?: TeamMode }) => Promise<Plan>
   getPlans: () => Promise<Plan[]>
-  executePlan: (planId: string, referenceAgentId: string) => Promise<Plan | null>
+  executePlan: (planId: string, referenceAgentId: string, teamMode?: TeamMode) => Promise<Plan | null>
   startDiscussion: (planId: string, referenceAgentId: string) => Promise<Plan | null>
   cancelDiscussion: (planId: string) => Promise<Plan | null>
   cancelPlan: (planId: string) => Promise<Plan | null>
@@ -105,7 +111,7 @@ export interface ElectronAPI {
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku', options?: { planPhase?: boolean }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
@@ -133,7 +139,6 @@ export interface ElectronAPI {
   deleteRalphLoopPreset: (id: string) => Promise<boolean>
 
   // OAuth token management
-  getOAuthToken: () => Promise<string | null>
   setOAuthToken: (token: string) => Promise<boolean>
   hasOAuthToken: () => Promise<boolean>
   runOAuthSetup: () => Promise<string>
@@ -182,8 +187,12 @@ export interface ElectronAPI {
   removeDockerPullProgressListener: () => void
 
   // Docker image status
-  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }>
+  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number; digest?: string; labels?: Record<string, string>; verified?: boolean }>
   pullDockerImage: (imageName: string) => Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }>
+
+  // Base image update notification (for BYO image users)
+  onBaseImageUpdated: (callback: (data: { newVersion: string | null; newDigest: string | null }) => void) => void
+  removeBaseImageUpdatedListener: () => void
 
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
@@ -211,7 +220,7 @@ export interface ElectronAPI {
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management
-  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; ralph_loop_discussion: string | null }>
+  getCustomPrompts: () => Promise<{ orchestrator: string | null; planner: string | null; discussion: string | null; task: string | null; standalone_headless: string | null; standalone_followup: string | null; headless_discussion: string | null; critic: string | null; ralph_loop_discussion: string | null; manager: string | null; architect: string | null }>
   setCustomPrompt: (type: PromptType, template: string | null) => Promise<void>
   getDefaultPrompt: (type: PromptType) => Promise<string>
 
