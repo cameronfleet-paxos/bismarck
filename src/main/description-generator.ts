@@ -336,7 +336,8 @@ async function runClaudePrompt(prompt: string, cwd?: string): Promise<string> {
 
     process.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`claude CLI exited with code ${code}: ${stderr}`))
+        devLog(`[DescriptionGenerator] claude CLI failed with code ${code}. stderr: "${stderr}" stdout: "${stdout.substring(0, 500)}"`)
+        reject(new Error(`claude CLI exited with code ${code}: ${stderr || stdout.substring(0, 200)}`))
         return
       }
 
