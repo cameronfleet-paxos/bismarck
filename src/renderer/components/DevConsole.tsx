@@ -283,7 +283,7 @@ export function DevConsole({ open, onClose, simulateNewUser, onToggleSimulateNew
                 )}
               </Button>
               <p className="text-xs text-muted-foreground mt-1">
-                View empty state without affecting data
+                Show setup wizard without affecting data
               </p>
             </div>
           )}

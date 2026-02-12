@@ -14,7 +14,7 @@ export interface ToolAuthStatus {
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean; sha256: string | null }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
@@ -111,7 +111,7 @@ export interface ElectronAPI {
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku', options?: { planPhase?: boolean }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>
 
   // Headless discussion (Discuss: Headless Agent)
@@ -188,8 +188,12 @@ export interface ElectronAPI {
   removeDockerPullProgressListener: () => void
 
   // Docker image status
-  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }>
+  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number; digest?: string; labels?: Record<string, string>; verified?: boolean }>
   pullDockerImage: (imageName: string) => Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }>
+
+  // Base image update notification (for BYO image users)
+  onBaseImageUpdated: (callback: (data: { newVersion: string | null; newDigest: string | null }) => void) => void
+  removeBaseImageUpdatedListener: () => void
 
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>
