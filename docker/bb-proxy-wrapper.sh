@@ -25,9 +25,16 @@ else
   BODY="{\"args\": ${ARGS_JSON}}"
 fi
 
+# Build auth header if token is available
+AUTH_HEADER=()
+if [ -n "$TOOL_PROXY_TOKEN" ]; then
+  AUTH_HEADER=(-H "Authorization: Bearer ${TOOL_PROXY_TOKEN}")
+fi
+
 # Make request to proxy
 RESPONSE=$(curl -s -X POST "${PROXY_URL}/bb" \
   -H "Content-Type: application/json" \
+  "${AUTH_HEADER[@]}" \
   -d "$BODY")
 
 # Extract fields from response

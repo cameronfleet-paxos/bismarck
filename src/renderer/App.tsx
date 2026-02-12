@@ -1178,22 +1178,18 @@ function App() {
     // Headless agent events
     window.electronAPI?.onHeadlessAgentStarted?.((data) => {
       devLog('[Renderer] Received headless-agent-started', data)
-      // Clear discussion completing spinner - the handoff agent has started
       setDiscussionCompletingWorkspaceId(null)
-      // Clear spawning placeholders - the real workspace is now visible
-      setSpawningHeadless(new Map())
+      // Load agents first so the real agent card can render, then clear placeholders
+      loadAgents().then(() => {
+        setSpawningHeadless(new Map())
+      })
       window.electronAPI?.getHeadlessAgentInfo?.(data.taskId).then((info) => {
-        devLog('[Renderer] getHeadlessAgentInfo returned:', info)
         if (info) {
           setHeadlessAgents((prev) => {
             const existing = prev.get(data.taskId)
-            // Preserve events that arrived before this info fetch if the info has none
             const events = existing && existing.events.length > 0 && info.events.length === 0
-              ? existing.events
-              : info.events
-            const newMap = new Map(prev).set(data.taskId, { ...info, events })
-            devLog('[Renderer] Updated headlessAgents map, size:', newMap.size)
-            return newMap
+              ? existing.events : info.events
+            return new Map(prev).set(data.taskId, { ...info, events })
           })
         }
       })
@@ -1627,7 +1623,7 @@ function App() {
   }
 
   // Execute the follow-up after user submits from modal
-  const executeFollowUp = async (prompt: string, model: AgentModel) => {
+  const executeFollowUp = async (prompt: string, model: AgentModel, planPhase: boolean) => {
     const headlessId = followUpInfo?.taskId
     if (!headlessId) return
 
@@ -1635,9 +1631,55 @@ function App() {
     setStartingFollowUpIds(prev => new Set(prev).add(headlessId))
     setFollowUpInfo(null)
 
+    // Create a spawning placeholder for the follow-up agent
+    const spawningId = `spawning-followup-${Date.now()}`
+    const referenceAgent = agents.find(a => a.taskId === headlessId)
+    let slot = findNextFreeSlot(tabs, activeTabId, gridConfig.maxAgents, spawningHeadless)
+
+    if (!slot) {
+      // All tabs full — optimistically create a temporary tab
+      const tempTabId = `tab-temp-${Date.now()}`
+      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
+      setTabs(prev => [...prev, tempTab])
+      slot = { tabId: tempTabId, position: 0 }
+    }
+
+    if (referenceAgent) {
+      const spawningInfo: SpawningHeadlessInfo = {
+        id: spawningId,
+        referenceAgentId: referenceAgent.id,
+        tabId: slot.tabId,
+        position: slot.position,
+        prompt,
+        model: model === 'haiku' ? 'sonnet' : model,
+        startedAt: Date.now(),
+        referenceName: referenceAgent.name,
+        referenceIcon: referenceAgent.icon,
+        referenceTheme: referenceAgent.theme,
+      }
+      setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
+
+      // Switch to target tab if needed
+      if (slot.tabId !== activeTabId) {
+        handleTabSelect(slot.tabId)
+      }
+    }
+
     try {
-      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model)
+      const result = await window.electronAPI?.standaloneHeadlessStartFollowup?.(headlessId, prompt, model, { planPhase })
       if (result) {
+        // Update skeleton's tabId if the actual tab differs from what we predicted
+        if (result.tabId !== slot.tabId) {
+          setSpawningHeadless(prev => {
+            const next = new Map(prev)
+            const info = next.get(spawningId)
+            if (info) {
+              next.set(spawningId, { ...info, tabId: result.tabId })
+            }
+            return next
+          })
+        }
         // Reload agents to pick up both old and new workspaces
         await loadAgents()
         // Refresh tabs
@@ -1648,6 +1690,12 @@ function App() {
       setStartingFollowUpIds(prev => {
         const next = new Set(prev)
         next.delete(headlessId)
+        return next
+      })
+      // Clear spawning placeholder
+      setSpawningHeadless(prev => {
+        const next = new Map(prev)
+        next.delete(spawningId)
         return next
       })
     }
@@ -1783,35 +1831,49 @@ function App() {
     // Generate a unique spawning ID for this placeholder
     const spawningId = `spawning-${Date.now()}`
     const referenceAgent = agents.find(a => a.id === agentId)
-    const tabId = activeTabId || tabs[0]?.id
 
-    if (!referenceAgent || !tabId) return
+    if (!referenceAgent) return
 
-    // Create spawning info for placeholder rendering
+    // Find the correct slot *before* the IPC call so the placeholder appears immediately
+    let slot = findNextFreeSlot(tabs, activeTabId, gridConfig.maxAgents, spawningHeadless)
+
+    // When all tabs are full, we pass the active tab ID to the main process so it
+    // starts searching from there and also finds everything full, then creates a new tab.
+    // We optimistically create a temp tab in the renderer so the placeholder is visible.
+    let ipcTabId = slot?.tabId || activeTabId || tabs[0]?.id
+    if (!slot) {
+      const tempTabId = `tab-temp-${Date.now()}`
+      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
+      setTabs(prev => [...prev, tempTab])
+      slot = { tabId: tempTabId, position: 0 }
+    }
+    if (!ipcTabId) return
+
     const spawningInfo: SpawningHeadlessInfo = {
       id: spawningId,
       referenceAgentId: agentId,
-      tabId,
+      tabId: slot.tabId,
+      position: slot.position,
       prompt,
       model,
       startedAt: Date.now(),
-      // Capture metadata for resilient rendering (in case agent lookup fails later)
       referenceName: referenceAgent.name,
       referenceIcon: referenceAgent.icon,
       referenceTheme: referenceAgent.theme,
     }
-
-    // Add spawning placeholder immediately
     setSpawningHeadless(prev => new Map(prev).set(spawningId, spawningInfo))
 
+    // Switch to the target tab if it differs from the active tab
+    if (slot.tabId !== activeTabId) {
+      handleTabSelect(slot.tabId)
+    }
+
     try {
-      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, tabId, { planPhase: options?.planPhase })
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, ipcTabId, { planPhase: options?.planPhase })
       if (result) {
         // Update skeleton's tabId if the actual tab differs from what we predicted
-        // Note: The main process already navigates to the correct tab via setActiveTab(),
-        // and the renderer's onStateUpdate handler processes that before we get here.
-        // We just need to move the skeleton to match.
-        if (result.tabId !== tabId) {
+        if (result.tabId !== slot.tabId) {
           setSpawningHeadless(prev => {
             const next = new Map(prev)
             const info = next.get(spawningId)
@@ -2102,6 +2164,45 @@ function App() {
     return results
   }, [spawningHeadless, agents])
 
+  // Find the next free grid slot across tabs, accounting for in-flight spawning placeholders.
+  // Mirrors main process logic in getOrCreateTabForWorkspaceWithPreference + addWorkspaceToTab.
+  const findNextFreeSlot = useCallback((
+    currentTabs: AgentTab[],
+    currentActiveTabId: string | null,
+    maxAgents: number,
+    currentSpawning: Map<string, SpawningHeadlessInfo>
+  ): { tabId: string; position: number } | null => {
+    // Build a set of positions already claimed by in-flight spawning placeholders
+    const claimedPositions = new Map<string, Set<number>>()
+    for (const [, info] of currentSpawning) {
+      if (!claimedPositions.has(info.tabId)) {
+        claimedPositions.set(info.tabId, new Set())
+      }
+      claimedPositions.get(info.tabId)!.add(info.position)
+    }
+
+    // Find starting index (prefer current active tab, then search forward)
+    let startIndex = 0
+    if (currentActiveTabId) {
+      const idx = currentTabs.findIndex(t => t.id === currentActiveTabId)
+      if (idx >= 0) startIndex = idx
+    }
+
+    // Search tabs starting from the active tab's position
+    for (let i = startIndex; i < currentTabs.length; i++) {
+      const tab = currentTabs[i]
+      if (tab.isPlanTab) continue
+      const claimed = claimedPositions.get(tab.id) || new Set()
+      for (let pos = 0; pos < maxAgents; pos++) {
+        if (!tab.workspaceIds[pos] && !claimed.has(pos)) {
+          return { tabId: tab.id, position: pos }
+        }
+      }
+    }
+
+    return null // All tabs full
+  }, [])
+
   // Get Ralph Loop iterations for a tab (used for Ralph Loop tabs which are plan-like)
   const getRalphLoopIterationsForTab = useCallback((tab: AgentTab): Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> => {
     const results: Array<{ loopState: RalphLoopState; iteration: RalphLoopIteration; agent: Agent | undefined }> = []
@@ -2290,51 +2391,14 @@ function App() {
   const gridConfig = getGridConfig(preferences.gridSize)
   const gridPositions = gridConfig.positions
 
-  // Simulation mode - shows empty state UI without affecting data (read-only)
-  if (simulateNewUser) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-center">
-          <h1 className="text-foreground mb-4">
-            <Logo size="lg" />
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            No agents configured. Add one to get started.
-          </p>
-          <Button disabled>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Agent
-          </Button>
-          <p className="text-xs text-muted-foreground mt-4">
-            [Simulation Mode - Read Only]
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => setSimulateNewUser(false)}
-          >
-            Exit Simulation
-          </Button>
-        </div>
-        {/* DevConsole still available to exit simulation */}
-        <DevConsole
-          open={devConsoleOpen}
-          onClose={() => setDevConsoleOpen(false)}
-          simulateNewUser={simulateNewUser}
-          onToggleSimulateNewUser={() => setSimulateNewUser(false)}
-        />
-      </div>
-    )
-  }
-
-  // Empty state - show setup wizard
-  if (agents.length === 0) {
+  // Empty state or simulation mode - show setup wizard
+  if (agents.length === 0 || simulateNewUser) {
     return (
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
             devLog('[App.onComplete] Starting with', newAgents?.length, 'agents')
+            setSimulateNewUser(false)
 
             // Group agents into logical tabs using Haiku analysis
             if (newAgents && newAgents.length > 0) {
@@ -2389,6 +2453,7 @@ function App() {
             devLog('[App.onComplete] Complete!')
           }}
           onSkip={() => {
+            setSimulateNewUser(false)
             // Open the manual agent creation modal
             handleAddAgent()
           }}
@@ -3917,9 +3982,8 @@ function App() {
                     })}
 
                     {/* Render spawning placeholders */}
-                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }, index) => {
-                      // Position after existing workspaces
-                      const position = tabWorkspaceIds.length + index
+                    {getSpawningPlaceholdersForTab(tab.id).map(({ spawningInfo, referenceAgent }) => {
+                      const position = spawningInfo.position
                       if (position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
 
@@ -3940,8 +4004,8 @@ function App() {
                     {gridPositions.map((position) => {
                       if (tabWorkspaceIds[position]) return null // Skip if occupied
                       // Also skip if there's a spawning placeholder in this position
-                      const spawningCount = getSpawningPlaceholdersForTab(tab.id).length
-                      if (position >= tabWorkspaceIds.length && position < tabWorkspaceIds.length + spawningCount) return null
+                      const spawningPlaceholders = getSpawningPlaceholdersForTab(tab.id)
+                      if (spawningPlaceholders.some(({ spawningInfo }) => spawningInfo.position === position)) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
 

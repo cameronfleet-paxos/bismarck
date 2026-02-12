@@ -144,8 +144,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
-  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
-    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model),
+  standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet', options?: { planPhase?: boolean }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('standalone-headless:start-followup', headlessId, prompt, model, options),
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet'): Promise<{ headlessId: string; workspaceId: string }> =>
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
@@ -393,8 +393,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('docker-pull-progress')
   },
 
+  // Base image update notification (for BYO image users)
+  onBaseImageUpdated: (callback: (data: { newVersion: string | null; newDigest: string | null }) => void): void => {
+    ipcRenderer.removeAllListeners('base-image-updated')
+    ipcRenderer.on('base-image-updated', (_event, data) => callback(data))
+  },
+  removeBaseImageUpdatedListener: (): void => {
+    ipcRenderer.removeAllListeners('base-image-updated')
+  },
+
   // Docker image status
-  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }> =>
+  checkDockerImageStatus: (imageName: string): Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number; digest?: string; labels?: Record<string, string>; verified?: boolean }> =>
     ipcRenderer.invoke('check-docker-image-status', imageName),
   pullDockerImage: (imageName: string): Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }> =>
     ipcRenderer.invoke('pull-docker-image', imageName),
@@ -566,6 +575,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('setup-terminal-exit')
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('docker-pull-progress')
+    ipcRenderer.removeAllListeners('base-image-updated')
     ipcRenderer.removeAllListeners('tool-auth-status')
     ipcRenderer.removeAllListeners('debug-log-lines')
   },
