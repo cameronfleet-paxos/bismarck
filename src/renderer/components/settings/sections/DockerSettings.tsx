@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle, Info, ShieldCheck } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -26,7 +26,7 @@ interface AppSettings {
 
 type ImageStatusState =
   | { status: 'checking' }
-  | { status: 'exists'; imageId?: string; created?: string; size?: number }
+  | { status: 'exists'; imageId?: string; created?: string; size?: number; version?: string; digest?: string; verified?: boolean }
   | { status: 'not-found' }
   | { status: 'pulling'; progress?: string }
   | { status: 'pull-success'; alreadyUpToDate: boolean }
@@ -67,6 +67,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [imageStatuses, setImageStatuses] = useState<Record<string, ImageStatusState>>({})
   const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null)
   const [pullingImage, setPullingImage] = useState<string | null>(null)
+  const [baseImageUpdate, setBaseImageUpdate] = useState<{ newVersion: string | null; newDigest: string | null } | null>(null)
 
   const checkImageStatuses = useCallback(async () => {
     const images = settings.docker.images
@@ -86,10 +87,11 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
           if (!result.dockerAvailable) {
             return { image, state: { status: 'not-found' as const } }
           }
+          const version = result.labels?.['org.opencontainers.image.version']
           return {
             image,
             state: result.exists
-              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size }
+              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size, version, digest: result.digest, verified: result.verified }
               : { status: 'not-found' as const },
           }
         } catch {
@@ -115,6 +117,16 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
     setCpuLimit(settings.docker.resourceLimits.cpu)
     setMemoryLimit(settings.docker.resourceLimits.memory)
   }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory])
+
+  // Listen for base image update notifications (for BYO image users)
+  useEffect(() => {
+    window.electronAPI.onBaseImageUpdated((data) => {
+      setBaseImageUpdate(data)
+    })
+    return () => {
+      window.electronAPI.removeBaseImageUpdatedListener()
+    }
+  }, [])
 
   const handlePullImage = async (imageName: string) => {
     if (pullingImage) return // Only one pull at a time
@@ -146,10 +158,11 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         setTimeout(async () => {
           try {
             const info = await window.electronAPI.checkDockerImageStatus(imageName)
+            const ver = info.labels?.['org.opencontainers.image.version']
             setImageStatuses((prev) => ({
               ...prev,
               [imageName]: info.exists
-                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size }
+                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size, version: ver, digest: info.digest, verified: info.verified }
                 : { status: 'not-found' },
             }))
           } catch {
@@ -253,11 +266,32 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             <span>Checking...</span>
           </div>
         )
-      case 'exists':
+      case 'exists': {
         return (
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="flex items-center gap-1.5 text-xs flex-wrap">
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
             <span className="text-green-600 dark:text-green-400">Installed</span>
+            {imageStatus.version && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">v{imageStatus.version}</span>
+              </>
+            )}
+            {imageStatus.verified === true && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400" title="Image digest verified against Docker Hub registry">
+                  <ShieldCheck className="h-3 w-3" />
+                  Verified
+                </span>
+              </>
+            )}
+            {imageStatus.digest && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground font-mono">{imageStatus.digest.substring(7, 19)}</span>
+              </>
+            )}
             {imageStatus.size != null && (
               <>
                 <span className="text-muted-foreground">·</span>
@@ -272,6 +306,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             )}
           </div>
         )
+      }
       case 'not-found':
         return (
           <div className="flex items-center gap-1.5 text-xs">
@@ -340,6 +375,26 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         <p className="text-sm text-muted-foreground mb-4">
           Docker images used for headless task agents. Select which image to use.
         </p>
+
+        {baseImageUpdate && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md flex items-start gap-3">
+            <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                Base image updated{baseImageUpdate.newVersion ? ` to v${baseImageUpdate.newVersion}` : ''}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                The official Bismarck agent image has been updated. You may want to rebuild your custom image.
+              </p>
+            </div>
+            <button
+              onClick={() => setBaseImageUpdate(null)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3">
           {settings.docker.images.map((image) => {

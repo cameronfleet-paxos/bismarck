@@ -78,6 +78,24 @@ main() {
         error "Failed to download Bismarck from $download_url"
     fi
 
+    # Verify SHA-256 checksum
+    local checksum_url="https://github.com/cameronfleet-paxos/bismarck/releases/download/${version}/Bismarck-${version_number}-arm64.dmg.sha256"
+    local checksum_path="${tmp_dir}/checksum.sha256"
+    info "Verifying checksum..."
+    if curl -fsSL "$checksum_url" -o "$checksum_path" 2>/dev/null; then
+        local expected_checksum
+        expected_checksum=$(awk '{print $1}' "$checksum_path")
+        local actual_checksum
+        actual_checksum=$(shasum -a 256 "$dmg_path" | awk '{print $1}')
+        if [[ "$expected_checksum" != "$actual_checksum" ]]; then
+            rm -rf "$tmp_dir"
+            error "Checksum verification failed! Expected: ${expected_checksum}, Got: ${actual_checksum}"
+        fi
+        info "Checksum verified successfully"
+    else
+        warn "Checksum file not available for this release, skipping verification"
+    fi
+
     # Mount DMG
     info "Mounting disk image..."
     mkdir -p "$mount_point"
