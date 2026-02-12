@@ -1,6 +1,6 @@
 import './index.css'
 import './electron.d.ts'
-import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
@@ -28,6 +28,7 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import type { UpdateStatus } from '@/renderer/electron.d'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
+import { SidebarAgentCard } from '@/renderer/components/SidebarAgentCard'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { PromptViewerModal } from '@/renderer/components/PromptViewerModal'
@@ -1450,8 +1451,8 @@ function App() {
   // Handle sidebar agent reorder via drag-and-drop
   const handleSidebarAgentReorder = async (draggedId: string, targetId: string) => {
     // Get standalone agents only (plan agents shouldn't be reordered this way)
-    const { standaloneAgents } = groupAgentsByPlan()
-    const currentOrder = standaloneAgents.map(a => a.id)
+    const { standaloneAgents } = agentsByPlan
+    const currentOrder = standaloneAgents.map((a: Agent) => a.id)
 
     const dragIndex = currentOrder.indexOf(draggedId)
     const targetIndex = currentOrder.indexOf(targetId)
@@ -2098,7 +2099,50 @@ function App() {
     [activeTerminals]
   )
 
-  const isAgentWaiting = (agentId: string) => waitingQueue.includes(agentId)
+  const waitingSet = useMemo(() => new Set(waitingQueue), [waitingQueue])
+  const isAgentWaiting = useCallback((agentId: string) => waitingSet.has(agentId), [waitingSet])
+
+  // Stable sidebar callbacks for memoized agent cards
+  const sidebarHandleAgentClick = useCallback((agentId: string, agentTab: AgentTab | undefined) => {
+    if (activeTerminals.some((t) => t.workspaceId === agentId)) {
+      if (agentTab && agentTab.id !== activeTabId) {
+        handleTabSelect(agentTab.id)
+      }
+      handleFocusAgent(agentId)
+    }
+  }, [activeTerminals, activeTabId, handleTabSelect, handleFocusAgent])
+
+  const sidebarHandleDragStart = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId(agentId)
+  }, [])
+
+  const sidebarHandleDragEnd = useCallback(() => {
+    setSidebarDraggedAgentId(null)
+    setSidebarDropTargetAgentId(null)
+  }, [])
+
+  const sidebarHandleDragOver = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId((current) => {
+      if (current && current !== agentId) {
+        setSidebarDropTargetAgentId(agentId)
+      }
+      return current
+    })
+  }, [])
+
+  const sidebarHandleDragLeave = useCallback((agentId: string) => {
+    setSidebarDropTargetAgentId((current) => current === agentId ? null : current)
+  }, [])
+
+  const sidebarHandleDrop = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId((current) => {
+      if (current && current !== agentId) {
+        handleSidebarAgentReorder(current, agentId)
+      }
+      return null
+    })
+    setSidebarDropTargetAgentId(null)
+  }, [handleSidebarAgentReorder])
 
   // Get headless agents for a plan tab
   const getHeadlessAgentsForTab = useCallback((tab: AgentTab): HeadlessAgentInfo[] => {
@@ -2241,8 +2285,8 @@ function App() {
     devLog('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
   }, [headlessAgents])
 
-  // Group agents by plan for sidebar display
-  const groupAgentsByPlan = useCallback(() => {
+  // Group agents by plan for sidebar display (memoized to avoid recomputation on every render)
+  const agentsByPlan = useMemo(() => {
     const planGroups: Map<string, { plan: Plan; agents: Agent[] }> = new Map()
     const standaloneAgents: Agent[] = []
 
@@ -2660,7 +2704,7 @@ function App() {
             {sidebarCollapsed ? (
               /* Collapsed: icon-only view - horizontal layout */
               (() => {
-                const { planGroups, standaloneAgents } = groupAgentsByPlan()
+                const { planGroups, standaloneAgents } = agentsByPlan
                 return (
                   <div className="flex flex-row flex-wrap gap-2 justify-center">
                     {/* Plan groups */}
@@ -2696,7 +2740,7 @@ function App() {
                               setSidebarCollapsed(false)
                             }
                           }}
-                          className={`p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer ${
+                          className={`p-1.5 rounded-md hover:brightness-110 transition-[box-shadow,filter] duration-150 cursor-pointer ${
                             isWaiting ? 'ring-2 ring-yellow-500' : ''
                           } ${isFocused ? 'ring-2 ring-white/50' : ''}`}
                           style={{ backgroundColor: themeColors.bg }}
@@ -2712,15 +2756,7 @@ function App() {
             ) : (
               /* Expanded: full cards with plan grouping */
               (() => {
-                const { planGroups, standaloneAgents } = groupAgentsByPlan()
-                const handleAgentClick = (agentId: string, agentTab: AgentTab | undefined) => {
-                  if (activeTerminals.some((t) => t.workspaceId === agentId)) {
-                    if (agentTab && agentTab.id !== activeTabId) {
-                      handleTabSelect(agentTab.id)
-                    }
-                    handleFocusAgent(agentId)
-                  }
-                }
+                const { planGroups, standaloneAgents } = agentsByPlan
                 return (
                   <div data-tutorial="agents" className="space-y-3">
                     {/* Plan groups */}
@@ -2746,7 +2782,7 @@ function App() {
                         focusedAgentId={focusedAgentId}
                         tabs={tabs}
                         activeTabId={activeTabId}
-                        onAgentClick={handleAgentClick}
+                        onAgentClick={sidebarHandleAgentClick}
                         onEditAgent={handleEditAgent}
                         onDeleteAgent={handleDeleteAgent}
                         onCloneAgent={handleCloneAgent}
@@ -2757,67 +2793,39 @@ function App() {
                       />
                     ))}
                     {/* Standalone agents */}
-                    {standaloneAgents.map((agent) => {
-                      const agentTab = tabs.find((t) =>
-                        t.workspaceIds.includes(agent.id)
-                      )
-                      return (
-                        <AgentCard
-                          key={agent.id}
-                          agent={agent}
-                          isActive={activeTerminals.some(
-                            (t) => t.workspaceId === agent.id
-                          )}
-                          isWaiting={isAgentWaiting(agent.id)}
-                          isFocused={focusedAgentId === agent.id}
-                          tabs={tabs}
-                          currentTabId={agentTab?.id}
-                          dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
-                          onClick={() => {
-                            if (activeTerminals.some((t) => t.workspaceId === agent.id)) {
-                              if (agentTab && agentTab.id !== activeTabId) {
-                                handleTabSelect(agentTab.id)
-                              }
-                              handleFocusAgent(agent.id)
-                            }
-                          }}
-                          onEdit={() => handleEditAgent(agent)}
-                          onDelete={() => handleDeleteAgent(agent.id)}
-                          onClone={() => handleCloneAgent(agent)}
-                          onLaunch={() => handleLaunchAgent(agent.id)}
-                          onStop={() => handleStopAgent(agent.id)}
-                          onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
-                          onStopHeadless={() => handleStopHeadlessAgent(agent)}
-                          // Drag-and-drop for sidebar reordering
-                          draggable={true}
-                          isDragging={sidebarDraggedAgentId === agent.id}
-                          isDropTarget={sidebarDropTargetAgentId === agent.id}
-                          isEditMode={sidebarEditMode}
-                          onDragStart={() => setSidebarDraggedAgentId(agent.id)}
-                          onDragEnd={() => {
-                            setSidebarDraggedAgentId(null)
-                            setSidebarDropTargetAgentId(null)
-                          }}
-                          onDragOver={() => {
-                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
-                              setSidebarDropTargetAgentId(agent.id)
-                            }
-                          }}
-                          onDragLeave={() => {
-                            if (sidebarDropTargetAgentId === agent.id) {
-                              setSidebarDropTargetAgentId(null)
-                            }
-                          }}
-                          onDrop={() => {
-                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
-                              handleSidebarAgentReorder(sidebarDraggedAgentId, agent.id)
-                            }
-                            setSidebarDraggedAgentId(null)
-                            setSidebarDropTargetAgentId(null)
-                          }}
-                        />
-                      )
-                    })}
+                    {standaloneAgents.map((agent) => (
+                      <SidebarAgentCard
+                        key={agent.id}
+                        agent={agent}
+                        isActive={activeTerminals.some(
+                          (t) => t.workspaceId === agent.id
+                        )}
+                        isWaiting={isAgentWaiting(agent.id)}
+                        isFocused={focusedAgentId === agent.id}
+                        tabs={tabs}
+                        currentTabId={undefined}
+                        dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
+                        activeTabId={activeTabId}
+                        isDragging={sidebarDraggedAgentId === agent.id}
+                        isDropTarget={sidebarDropTargetAgentId === agent.id}
+                        isEditMode={sidebarEditMode}
+                        sidebarDraggedAgentId={sidebarDraggedAgentId}
+                        sidebarDropTargetAgentId={sidebarDropTargetAgentId}
+                        onAgentClick={sidebarHandleAgentClick}
+                        onEditAgent={handleEditAgent}
+                        onDeleteAgent={handleDeleteAgent}
+                        onCloneAgent={handleCloneAgent}
+                        onLaunchAgent={handleLaunchAgent}
+                        onStopAgent={handleStopAgent}
+                        onMoveToTab={handleMoveAgentToTab}
+                        onStopHeadless={handleStopHeadlessAgent}
+                        onDragStart={sidebarHandleDragStart}
+                        onDragEnd={sidebarHandleDragEnd}
+                        onDragOver={sidebarHandleDragOver}
+                        onDragLeave={sidebarHandleDragLeave}
+                        onDrop={sidebarHandleDrop}
+                      />
+                    ))}
                   </div>
                 )
               })()

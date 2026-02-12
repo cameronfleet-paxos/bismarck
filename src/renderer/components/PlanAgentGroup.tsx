@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { AgentCard } from '@/renderer/components/WorkspaceCard'
 import type { Agent, AgentTab, Plan, PlanStatus } from '@/shared/types'
@@ -40,7 +41,7 @@ function getPlanStatusIcon(status: PlanStatus): React.ReactNode {
   }
 }
 
-export function PlanAgentGroup({
+export const PlanAgentGroup = memo(function PlanAgentGroup({
   plan,
   agents,
   isCollapsed,
@@ -117,4 +118,4 @@ export function PlanAgentGroup({
       )}
     </div>
   )
-}
+})

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
@@ -41,7 +42,7 @@ interface AgentCardProps {
   dataTutorial?: string
 }
 
-export function AgentCard({
+export const AgentCard = memo(function AgentCard({
   agent,
   isActive,
   isWaiting,
@@ -77,7 +78,7 @@ export function AgentCard({
       data-tutorial={dataTutorial}
       draggable={canDrag}
       className={`
-        relative rounded-lg p-4 cursor-pointer transition-all
+        relative rounded-lg p-4 cursor-pointer transition-[box-shadow,opacity,border-color] duration-150
         ${isActive && isFocused ? 'ring-2 ring-primary' : ''}
         ${isActive && !isFocused ? 'hover:ring-1 hover:ring-primary/50' : ''}
         ${!isActive ? 'hover:border-primary/50' : ''}
@@ -244,7 +245,7 @@ export function AgentCard({
       </div>
     </div>
   )
-}
+})
 
 // Backwards compatibility export
 export { AgentCard as WorkspaceCard }
