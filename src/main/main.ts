@@ -844,10 +844,6 @@ function registerIpcHandlers() {
   })
 
   // OAuth token management
-  ipcMain.handle('get-oauth-token', () => {
-    return getClaudeOAuthToken()
-  })
-
   ipcMain.handle('set-oauth-token', (_event, token: string) => {
     setClaudeOAuthToken(token)
     return true

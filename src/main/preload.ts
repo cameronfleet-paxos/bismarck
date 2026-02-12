@@ -180,8 +180,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('cleanup-ralph-loop', loopId),
 
   // OAuth token management
-  getOAuthToken: (): Promise<string | null> =>
-    ipcRenderer.invoke('get-oauth-token'),
   setOAuthToken: (token: string): Promise<boolean> =>
     ipcRenderer.invoke('set-oauth-token', token),
   hasOAuthToken: (): Promise<boolean> =>
