@@ -325,9 +325,17 @@ async function safeRebaseAndPush(
 
   // 3. If exists, must rebase to incorporate other task's commits
   if (exists) {
-    // Clean up plan.md — build artifact that blocks rebase with "untracked working tree file" error
-    const planMdPath = path.join(worktree.path, 'plan.md')
-    try { fs.unlinkSync(planMdPath) } catch { /* doesn't exist, fine */ }
+    // Clean working tree before rebase — agents may leave modified/untracked files
+    // that cause "local changes would be overwritten by merge" errors
+    try {
+      await execWithPath('git checkout -- .', { cwd: worktree.path })
+      await execWithPath('git clean -fd', { cwd: worktree.path })
+      logger.debug('plan', 'Cleaned working tree before rebase', logCtx)
+    } catch (cleanErr) {
+      logger.warn('plan', 'Failed to clean working tree before rebase', logCtx, {
+        error: cleanErr instanceof Error ? cleanErr.message : 'Unknown error',
+      })
+    }
 
     const rebaseResult = await rebaseOntoRemoteBranch(worktree.path, featureBranch, 'origin', logCtx)
 

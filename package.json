@@ -1,6 +1,6 @@
 {
   "name": "bismarck",
-  "version": "0.7.6",
+  "version": "0.7.9",
   "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -94,7 +94,11 @@
       "owner": "cameronfleet-paxos",
       "repo": "bismarck"
     },
-    "asar": false
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "**/*.node"
+    ]
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",

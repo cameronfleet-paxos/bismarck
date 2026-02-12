@@ -247,7 +247,10 @@ export function PlanSidebar({
           </>
         ) : (
           <>
-            <h2 className="font-medium">Teams</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-medium">Teams</h2>
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">Experimental</span>
+            </div>
             <div className="flex items-center gap-1">
               <Button size="sm" onClick={onCreatePlan}>
                 <Plus className="h-4 w-4 mr-1" />

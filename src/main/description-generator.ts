@@ -12,6 +12,7 @@ import type { DiscoveredRepo, DescriptionProgressEvent } from '../shared/types'
 import { getDefaultBranch, isGitRepo } from './git-utils'
 import { spawnWithPath, findBinary } from './exec-utils'
 import { devLog } from './dev-log'
+import { getClaudeOAuthToken } from './config'
 
 export interface DescriptionResult {
   repoPath: string
@@ -318,25 +319,29 @@ async function runClaudePrompt(prompt: string, cwd?: string): Promise<string> {
       '--model', 'haiku'
     ]
 
-    const process = spawnWithPath('claude', args, {
+    const oauthToken = getClaudeOAuthToken()
+    devLog('[DescriptionGenerator] OAuth token present:', !!oauthToken)
+    const child = spawnWithPath('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: cwd || undefined,
+      env: oauthToken ? { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : undefined,
     })
 
     let stdout = ''
     let stderr = ''
 
-    process.stdout?.on('data', (data) => {
+    child.stdout?.on('data', (data) => {
       stdout += data.toString()
     })
 
-    process.stderr?.on('data', (data) => {
+    child.stderr?.on('data', (data) => {
       stderr += data.toString()
     })
 
-    process.on('close', (code) => {
+    child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`claude CLI exited with code ${code}: ${stderr}`))
+        devLog(`[DescriptionGenerator] claude CLI failed with code ${code}. stderr: "${stderr}" stdout: "${stdout.substring(0, 500)}"`)
+        reject(new Error(`claude CLI exited with code ${code}: ${stderr || stdout.substring(0, 200)}`))
         return
       }
 
@@ -354,12 +359,12 @@ async function runClaudePrompt(prompt: string, cwd?: string): Promise<string> {
       }
     })
 
-    process.on('error', (err) => {
+    child.on('error', (err) => {
       reject(err)
     })
 
     // Close stdin as we're not sending any input
-    process.stdin?.end()
+    child.stdin?.end()
   })
 }
 

@@ -19,6 +19,7 @@ import {
 initBenchmark()
 import {
   ensureConfigDirExists,
+  getConfigDir,
   getWorkspaces,
   saveWorkspace,
   deleteWorkspace,
@@ -35,6 +36,7 @@ import {
   closeTerminal,
   closeAllTerminals,
   getTerminalForWorkspace,
+  createPlainTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -70,6 +72,7 @@ import {
   addWorkspaceToTab,
   removeWorkspaceFromTab,
   getOrCreateTabForWorkspace,
+  getOrCreateTabForWorkspaceWithPreference,
   getPreferences,
   setPreferences,
   reorderWorkspaceInTab,
@@ -78,6 +81,11 @@ import {
   getTabs,
   setPlanSidebarOpen,
   setActivePlanId,
+  addPlainTerminal,
+  removePlainTerminal,
+  renamePlainTerminal,
+  getPlainTerminals,
+  swapWorkspaceInTab,
 } from './state-manager'
 import {
   createPlan,
@@ -182,6 +190,7 @@ import {
   startRalphLoopDiscussion,
   cancelRalphLoopDiscussion,
   onStandaloneAgentStatusChange,
+  getActiveDiscussionTerminalIds,
 } from './headless'
 import {
   startRalphLoop,
@@ -197,7 +206,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE, checkDockerAvailable, getImageInfo } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -475,6 +484,53 @@ function registerIpcHandlers() {
     closeSocketServer(workspaceId)
   })
 
+  // Plain terminal management (non-agent shell terminals)
+  ipcMain.handle('create-plain-terminal', async (_event, directory: string, name?: string) => {
+    const terminalId = createPlainTerminal(directory, mainWindow)
+    const plainId = `plain-${terminalId}`
+
+    // Place in next available grid slot (prefer active tab, same as headless agents)
+    const state = getState()
+    const tab = getOrCreateTabForWorkspaceWithPreference(plainId, state.activeTabId || undefined)
+    addWorkspaceToTab(plainId, tab.id)
+    setActiveTab(tab.id)
+
+    // Persist plain terminal info for restoration on restart
+    addPlainTerminal({ id: plainId, terminalId, tabId: tab.id, name: name || '', directory })
+
+    return { terminalId, tabId: tab.id }
+  })
+
+  ipcMain.handle('rename-plain-terminal', (_event, terminalId: string, name: string) => {
+    renamePlainTerminal(terminalId, name)
+  })
+
+  ipcMain.handle('close-plain-terminal', (_event, terminalId: string) => {
+    const plainId = `plain-${terminalId}`
+    removeWorkspaceFromTab(plainId)
+    removePlainTerminal(terminalId)
+    closeTerminal(terminalId)
+  })
+
+  // Restore a plain terminal from a previous session (called by renderer after it's loaded)
+  ipcMain.handle('restore-plain-terminal', (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => {
+    try {
+      const newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      const newPlainId = `plain-${newTerminalId}`
+      // Swap workspace ID in tabs
+      swapWorkspaceInTab(pt.id, newPlainId)
+      // Update persisted plain terminal entry
+      removePlainTerminal(pt.terminalId)
+      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId })
+      return { terminalId: newTerminalId, plainId: newPlainId }
+    } catch (err) {
+      console.error(`Failed to restore plain terminal in ${pt.directory}:`, err)
+      removePlainTerminal(pt.terminalId)
+      removeWorkspaceFromTab(pt.id)
+      return null
+    }
+  })
+
   // Tab management
   ipcMain.handle('create-tab', (_event, name?: string) => {
     return createTab(name)
@@ -733,8 +789,9 @@ function registerIpcHandlers() {
     return confirmStandaloneAgentDone(headlessId)
   })
 
-  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string, model?: 'opus' | 'sonnet') => {
-    return startFollowUpAgent(headlessId, prompt, model)
+  ipcMain.handle('standalone-headless:start-followup', async (_event, headlessId: string, prompt: string, model?: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => {
+    const skipPlanPhase = options?.planPhase === false
+    return startFollowUpAgent(headlessId, prompt, model, { skipPlanPhase })
   })
 
   ipcMain.handle('standalone-headless:restart', async (_event, headlessId: string, model: 'opus' | 'sonnet') => {
@@ -793,10 +850,6 @@ function registerIpcHandlers() {
   })
 
   // OAuth token management
-  ipcMain.handle('get-oauth-token', () => {
-    return getClaudeOAuthToken()
-  })
-
   ipcMain.handle('set-oauth-token', (_event, token: string) => {
     setClaudeOAuthToken(token)
     return true
@@ -815,8 +868,19 @@ function registerIpcHandlers() {
     return true
   })
 
-  // External URL handling
+  // External URL handling - only allow http/https URLs
   ipcMain.handle('open-external', (_event, url: string) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error(`Blocked URL with disallowed protocol: ${parsed.protocol}`)
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new Error(`Invalid URL: ${url}`)
+      }
+      throw e
+    }
     return shell.openExternal(url)
   })
 
@@ -835,10 +899,35 @@ function registerIpcHandlers() {
     }
   })
 
+  // Path validation for file IPC handlers.
+  // Restricts file access to the config directory (~/.bismarck) and
+  // known workspace/repository directories.
+  function isPathAllowed(requestedPath: string): boolean {
+    const resolved = path.resolve(requestedPath)
+    // Allow paths within the config directory (~/.bismarck)
+    const configDir = path.resolve(getConfigDir())
+    if (resolved.startsWith(configDir + path.sep) || resolved === configDir) {
+      return true
+    }
+    // Allow paths within known workspace directories
+    const workspaces = getWorkspaces()
+    for (const ws of workspaces) {
+      const wsDir = path.resolve(ws.directory)
+      if (resolved.startsWith(wsDir + path.sep) || resolved === wsDir) {
+        return true
+      }
+    }
+    return false
+  }
+
   // File reading (for discussion output, etc.)
   ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
-      const content = await fs.promises.readFile(filePath, 'utf-8')
+      const resolved = path.resolve(filePath)
+      if (!isPathAllowed(resolved)) {
+        return { success: false, error: 'Access denied: path is outside allowed directories' }
+      }
+      const content = await fs.promises.readFile(resolved, 'utf-8')
       return { success: true, content }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -888,6 +977,10 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('write-file-content', async (_event, directory: string, filepath: string, content: string) => {
+    const resolvedDir = path.resolve(directory)
+    if (!isPathAllowed(resolvedDir)) {
+      throw new Error('Access denied: directory is outside allowed paths')
+    }
     return writeFileContent(directory, filepath, content)
   })
 
@@ -987,9 +1080,22 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:pull-docker-image', async () => {
-    const result = await pullImage(DEFAULT_IMAGE, (message) => {
+    const result = await pullImage(getDefaultImage(), (message) => {
       mainWindow?.webContents.send('docker-pull-progress', message)
     })
+    if (result.success) {
+      clearRegistryDigestCache(getDefaultImage())
+      const { baseImageUpdated } = await persistImageDigest(getDefaultImage())
+      if (baseImageUpdated) {
+        const settings = await loadSettings()
+        if (settings.docker.selectedImage !== getDefaultImage()) {
+          mainWindow?.webContents.send('base-image-updated', {
+            newVersion: settings.docker.upstreamTemplateVersion,
+            newDigest: settings.docker.upstreamTemplateDigest,
+          })
+        }
+      }
+    }
     return result
   })
 
@@ -998,9 +1104,15 @@ function registerIpcHandlers() {
       checkDockerAvailable(),
       getImageInfo(imageName),
     ])
+    let verified: boolean | undefined
+    if (imageInfo.exists && imageInfo.digest) {
+      const registryDigest = await fetchRegistryDigest(imageName)
+      verified = registryDigest !== null && imageInfo.digest === registryDigest
+    }
     return {
       dockerAvailable,
       ...imageInfo,
+      verified,
     }
   })
 
@@ -1008,6 +1120,19 @@ function registerIpcHandlers() {
     const result = await pullImage(imageName, (message) => {
       mainWindow?.webContents.send('docker-pull-progress', message)
     })
+    if (result.success) {
+      clearRegistryDigestCache(imageName)
+      const { baseImageUpdated } = await persistImageDigest(imageName)
+      if (baseImageUpdated) {
+        const settings = await loadSettings()
+        if (settings.docker.selectedImage !== getDefaultImage()) {
+          mainWindow?.webContents.send('base-image-updated', {
+            newVersion: settings.docker.upstreamTemplateVersion,
+            newDigest: settings.docker.upstreamTemplateDigest,
+          })
+        }
+      }
+    }
     return {
       success: result.success,
       output: result.output,
@@ -1391,13 +1516,28 @@ app.whenReady().then(async () => {
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
   startTimer('main:initializeDockerEnvironment', 'main')
-  initializeDockerEnvironment().then((result) => {
+  initializeDockerEnvironment().then(async (result) => {
     endTimer('main:initializeDockerEnvironment')
     if (result.success) {
       devLog('[Main] Docker environment ready:', result.message)
       if (result.imageBuilt) {
         // Notify renderer that image was built
         mainWindow?.webContents.send('docker-image-built', result)
+      }
+      // Persist digest after successful init (pull or cached)
+      try {
+        const { baseImageUpdated } = await persistImageDigest(getDefaultImage())
+        if (baseImageUpdated) {
+          const settings = await loadSettings()
+          if (settings.docker.selectedImage !== getDefaultImage()) {
+            mainWindow?.webContents.send('base-image-updated', {
+              newVersion: settings.docker.upstreamTemplateVersion,
+              newDigest: settings.docker.upstreamTemplateDigest,
+            })
+          }
+        }
+      } catch (err) {
+        devLog('[Main] Failed to persist image digest:', err)
       }
     } else {
       console.warn('[Main] Docker environment not ready:', result.message)
@@ -1411,7 +1551,9 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   clearQueue()
-  closeAllTerminals()
+  // Preserve terminals for active discussions so they can complete and spawn headless agents
+  const discussionTerminals = getActiveDiscussionTerminalIds()
+  closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
   closeAllSocketServers()
   stopPeriodicChecks()
   stopToolAuthChecks()
@@ -1432,7 +1574,8 @@ app.on('activate', () => {
 
 app.on('before-quit', async () => {
   clearQueue()
-  closeAllTerminals()
+  const discussionTerminals = getActiveDiscussionTerminalIds()
+  closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
   closeAllSocketServers()
   cleanupPowerSave()
   await cleanupPlanManager()
