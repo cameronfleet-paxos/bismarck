@@ -867,8 +867,19 @@ function registerIpcHandlers() {
     return true
   })
 
-  // External URL handling
+  // External URL handling - only allow http/https URLs
   ipcMain.handle('open-external', (_event, url: string) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error(`Blocked URL with disallowed protocol: ${parsed.protocol}`)
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new Error(`Invalid URL: ${url}`)
+      }
+      throw e
+    }
     return shell.openExternal(url)
   })
 
