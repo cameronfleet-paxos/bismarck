@@ -33,7 +33,7 @@ import { removeActiveWorkspace, removeWorkspaceFromTab, getPreferences } from '.
 import { getRepositoryById, getAllRepositories } from '../repository-manager'
 import { HeadlessAgent } from '../headless'
 import { getSelectedDockerImage } from '../settings-manager'
-import { execWithPath } from '../exec-utils'
+import { spawnWithPathAsync } from '../exec-utils'
 import type { Plan, PlanWorktree, PlanCommit, PlanPullRequest, Repository, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent } from '../../shared/types'
 import type { BeadTask } from '../bd-client'
 import { getMainWindow } from './state'
@@ -328,8 +328,8 @@ async function safeRebaseAndPush(
     // Clean working tree before rebase — agents may leave modified/untracked files
     // that cause "local changes would be overwritten by merge" errors
     try {
-      await execWithPath('git checkout -- .', { cwd: worktree.path })
-      await execWithPath('git clean -fd', { cwd: worktree.path })
+      await spawnWithPathAsync('git', ['checkout', '--', '.'], { cwd: worktree.path })
+      await spawnWithPathAsync('git', ['clean', '-fd'], { cwd: worktree.path })
       logger.debug('plan', 'Cleaned working tree before rebase', logCtx)
     } catch (cleanErr) {
       logger.warn('plan', 'Failed to clean working tree before rebase', logCtx, {
@@ -545,8 +545,9 @@ async function recordPullRequest(plan: Plan, worktree: PlanWorktree, repository:
     // Try to get PR info using gh CLI (use execWithPath for extended PATH)
     // Use repository.rootPath as cwd instead of worktree.path to avoid TLS issues
     // that can occur when running gh from a git worktree directory
-    const { stdout } = await execWithPath(
-      `gh pr list --head "${worktree.branch}" --json number,title,url,baseRefName,headRefName,state --limit 1`,
+    const { stdout } = await spawnWithPathAsync(
+      'gh',
+      ['pr', 'list', '--head', worktree.branch, '--json', 'number,title,url,baseRefName,headRefName,state', '--limit', '1'],
       { cwd: repository.rootPath }
     )
 

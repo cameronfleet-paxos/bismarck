@@ -55,7 +55,7 @@ import type {
   HeadlessAgentStatus,
   RalphLoopGitSummary,
 } from '../shared/types'
-import { execWithPath } from './exec-utils'
+import { spawnWithPathAsync } from './exec-utils'
 import * as fsPromises from 'fs/promises'
 
 // Word lists for fun random names (same as standalone-headless)
@@ -194,8 +194,9 @@ async function updateGitSummary(state: RalphLoopState): Promise<void> {
     // Get PRs for this branch using gh CLI
     const pullRequests: RalphLoopGitSummary['pullRequests'] = []
     try {
-      const { stdout } = await execWithPath(
-        `gh pr list --head "${worktreeInfo.branch}" --json number,title,url,baseRefName,state --limit 10`,
+      const { stdout } = await spawnWithPathAsync(
+        'gh',
+        ['pr', 'list', '--head', worktreeInfo.branch, '--json', 'number,title,url,baseRefName,state', '--limit', '10'],
         { cwd: worktreeInfo.repoPath }
       )
       const prs = JSON.parse(stdout)
