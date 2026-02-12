@@ -30,9 +30,9 @@ interface Command {
 }
 
 const commands: Command[] = [
-  { id: 'open-terminal', label: 'Open: Terminal', icon: TerminalSquare },
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
+  { id: 'open-terminal', label: 'Open: Terminal', icon: TerminalSquare },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
   { id: 'start-ralph-loop-discussion', label: 'Discuss: Ralph Loop', icon: MessageSquare },
   { id: 'start-plan', label: 'Start: Plan', icon: FileText },
