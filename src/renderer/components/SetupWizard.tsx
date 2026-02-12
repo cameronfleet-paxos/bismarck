@@ -56,7 +56,7 @@ interface SetupWizardProps {
   onSkip: () => void
 }
 
-type WizardStep = 'deps' | 'tools' | 'path' | 'repos' | 'desc-choice' | 'descriptions' | 'plan-mode'
+type WizardStep = 'deps' | 'tools' | 'headless-agents' | 'path' | 'repos' | 'desc-choice' | 'descriptions' | 'finish'
 
 export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('deps')
@@ -423,7 +423,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     })
   }
 
-  // Skip descriptions and go straight to plan-mode with empty defaults
+  // Skip descriptions and go straight to finish with empty defaults
   const handleSkipDescriptions = () => {
     const emptyPurposeMap = new Map<string, string>()
     const emptyCriteriaMap = new Map<string, string>()
@@ -437,14 +437,13 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     setRepoCompletionCriteria(emptyCriteriaMap)
     setRepoProtectedBranches(emptyBranchesMap)
     setError(null)
-    setStep('plan-mode')
+    setStep('finish')
   }
 
-  // Navigate from descriptions to plan-mode step
-  const handleContinueToPlanMode = async () => {
+  // Navigate from descriptions to finish step
+  const handleContinueToFinish = async () => {
     setError(null)
-    setStep('plan-mode')
-    // Dependencies were already checked on mount, no need to re-check
+    setStep('finish')
   }
 
   // Final step: save plan mode preference and create agents
@@ -685,8 +684,13 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   }
 
   const handleGoBack = () => {
-    if (step === 'plan-mode') {
-      setStep('desc-choice')
+    if (step === 'finish') {
+      // Go back to desc-choice if OAuth configured, otherwise repos
+      if (dependencies?.claudeOAuthToken.configured) {
+        setStep('desc-choice')
+      } else {
+        setStep('repos')
+      }
     } else if (step === 'descriptions') {
       setStep('desc-choice')
     } else if (step === 'desc-choice') {
@@ -694,6 +698,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     } else if (step === 'repos') {
       setStep('path')
     } else if (step === 'path') {
+      setStep('headless-agents')
+    } else if (step === 'headless-agents') {
       setStep('tools')
     } else if (step === 'tools') {
       setStep('deps')
@@ -928,7 +934,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   Back
                 </Button>
                 <Button
-                  onClick={() => setStep('path')}
+                  onClick={() => setStep('headless-agents')}
                 >
                   Continue
                   <ChevronRight className="h-4 w-4 ml-2" />
@@ -937,520 +943,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Path Selection */}
-          {step === 'path' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Select Repository Directory
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  Choose a parent directory to scan for git repositories
-                </p>
-              </div>
-
-              {/* Folder Picker Button */}
-              <div>
-                <Button
-                  onClick={handlePickFolder}
-                  variant="outline"
-                  className="w-full justify-start"
-                  size="lg"
-                >
-                  <FolderOpen className="h-5 w-5 mr-2" />
-                  Choose Directory...
-                </Button>
-              </div>
-
-              {/* Suggested Paths */}
-              {suggestedPaths.length > 0 && (
-                <div>
-                  <Label className="text-sm text-muted-foreground mb-2 block">
-                    Suggested locations
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestedPaths.map((suggestedPath) => (
-                      <Button
-                        key={suggestedPath}
-                        onClick={() => handleSelectSuggestedPath(suggestedPath)}
-                        variant={selectedPath === suggestedPath ? 'default' : 'outline'}
-                        size="sm"
-                      >
-                        {suggestedPath.startsWith('/home/') || suggestedPath.startsWith('/Users/')
-                          ? suggestedPath.replace(/^\/home\/[^\/]+|^\/Users\/[^\/]+/, '~')
-                          : suggestedPath}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Manual Path Input */}
-              <div>
-                <Label htmlFor="manual-path" className="text-sm mb-2 block">
-                  Or enter a path manually
-                </Label>
-                <Input
-                  id="manual-path"
-                  type="text"
-                  placeholder="/path/to/repositories"
-                  value={manualPath}
-                  onChange={(e) => {
-                    setManualPath(e.target.value)
-                    setSelectedPath(e.target.value)
-                    setError(null)
-                  }}
-                />
-              </div>
-
-              {/* Error Message */}
-              {error && (
-                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
-                  {error}
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex justify-between pt-4">
-                <Button
-                  onClick={handleGoBack}
-                  variant="ghost"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-                <Button
-                  onClick={handleContinueToRepos}
-                  disabled={isScanning || (!selectedPath && !manualPath.trim())}
-                >
-                  {isScanning ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Scanning...
-                    </>
-                  ) : (
-                    <>
-                      Continue
-                      <ChevronRight className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Repository Selection */}
-          {step === 'repos' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Select Repositories
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  Found {discoveredRepos.length} {discoveredRepos.length === 1 ? 'repository' : 'repositories'}.
-                  We recommend starting with your <span className="text-foreground font-medium">3-5 most active</span> repositories.
-                </p>
-              </div>
-
-              {/* Select All / Deselect All */}
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleSelectAll}
-                  variant="outline"
-                  size="sm"
-                >
-                  Select All
-                </Button>
-                <Button
-                  onClick={handleDeselectAll}
-                  variant="outline"
-                  size="sm"
-                >
-                  Deselect All
-                </Button>
-              </div>
-
-              {/* Repository Grid */}
-              <div className="max-h-[60vh] overflow-y-auto">
-                {discoveredRepos.length === 0 ? (
-                  <div className="p-8 text-center border border-border rounded-md">
-                    <p className="text-muted-foreground mb-4">
-                      No repositories found
-                    </p>
-                    <div className="flex gap-2 justify-center">
-                      <Button onClick={handleGoBack} variant="outline">
-                        Go Back
-                      </Button>
-                      <Button onClick={onSkip} variant="ghost">
-                        Skip Setup
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-1">
-                    {discoveredRepos.map((repo) => {
-                      const isSelected = selectedRepos.has(repo.path)
-                      return (
-                        <button
-                          key={repo.path}
-                          onClick={() => handleToggleRepo(repo.path)}
-                          className={`
-                            relative rounded-lg border p-4 text-left transition-all
-                            hover:border-primary/50
-                            ${isSelected
-                              ? 'border-primary bg-primary/5 ring-2 ring-primary'
-                              : 'border-border bg-card hover:bg-accent/50'
-                            }
-                          `}
-                        >
-                          {/* Selection indicator */}
-                          <div className="absolute top-2 right-2">
-                            {isSelected ? (
-                              <CheckSquare className="h-5 w-5 text-primary" />
-                            ) : (
-                              <Square className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-
-                          {/* Repo name */}
-                          <h4 className="font-semibold text-foreground pr-6 truncate">
-                            {repo.name}
-                          </h4>
-
-                          {/* Path (truncated) */}
-                          <p className="text-xs text-muted-foreground mt-1 truncate" title={repo.path}>
-                            {repo.path}
-                          </p>
-
-                          {/* Last commit time */}
-                          {repo.lastCommitDate && (
-                            <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground/80">
-                              <Clock className="h-3 w-3" />
-                              <span>{getRelativeTime(repo.lastCommitDate)}</span>
-                            </div>
-                          )}
-
-                          {/* Remote URL (optional, subtle) */}
-                          {repo.remoteUrl && (
-                            <p className="text-[10px] text-muted-foreground/60 mt-1 truncate" title={repo.remoteUrl}>
-                              {repo.remoteUrl.replace(/^(git@|https:\/\/)/, '').replace(/\.git$/, '')}
-                            </p>
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Error Message */}
-              {error && (
-                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
-                  {error}
-                </div>
-              )}
-
-              {/* Actions */}
-              {discoveredRepos.length > 0 && (
-                <div className="flex justify-between pt-4">
-                  <Button
-                    onClick={handleGoBack}
-                    variant="ghost"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Back
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      if (selectedRepos.size === 0) {
-                        setError('Please select at least one repository')
-                        return
-                      }
-                      setError(null)
-                      setStep('desc-choice')
-                    }}
-                    disabled={selectedRepos.size === 0}
-                  >
-                    Continue
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step: Description Choice */}
-          {step === 'desc-choice' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Repository Descriptions
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  Descriptions help the orchestrator allocate tasks to the right repos and tell agents when their work is done.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Auto-generate card */}
-                <button
-                  onClick={handleContinueToDescriptions}
-                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    <h3 className="text-sm font-semibold text-foreground">Auto-generate with Claude</h3>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Claude will analyze each repository and generate purpose descriptions and completion criteria automatically.
-                  </p>
-                </button>
-
-                {/* Skip card */}
-                <button
-                  onClick={handleSkipDescriptions}
-                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold text-foreground">Skip, configure later</h3>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    You can add descriptions later in Settings. Agents will still work, but task allocation may be less accurate.
-                  </p>
-                </button>
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-between pt-4">
-                <Button
-                  onClick={handleGoBack}
-                  variant="ghost"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Step: Descriptions */}
-          {step === 'descriptions' && (
-            <div className="space-y-6">
-              {isGenerating ? (
-                /* Loading state with real-time progress */
-                <div className="space-y-6">
-                  {/* Progress header */}
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold text-foreground">
-                      Analyzing Repositories...
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {completedCount} of {selectedRepos.size} complete
-                    </p>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-primary h-full transition-all duration-500 ease-out"
-                      style={{ width: `${selectedRepos.size > 0 ? (completedCount / selectedRepos.size) * 100 : 0}%` }}
-                    />
-                  </div>
-
-                  {/* Victory quote card - animated appearance */}
-                  {latestQuote && (
-                    <div
-                      key={latestQuote}
-                      className="bg-primary/10 border border-primary/20 rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300"
-                    >
-                      <p className="text-sm text-foreground italic text-center">
-                        "{latestQuote}"
-                      </p>
-                      <p className="text-xs text-muted-foreground text-center mt-2">— Otto von Bismarck</p>
-                    </div>
-                  )}
-
-                  {/* Repository grid with status icons */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto p-1">
-                    {discoveredRepos
-                      .filter(r => selectedRepos.has(r.path))
-                      .map((repo) => {
-                        const status = repoStatuses.get(repo.path)
-                        const statusValue = status?.status || 'pending'
-                        return (
-                          <div
-                            key={repo.path}
-                            className={`
-                              relative rounded-lg border p-3 transition-all duration-300
-                              ${statusValue === 'pending' ? 'border-border bg-card' : ''}
-                              ${statusValue === 'generating' ? 'border-primary bg-primary/5' : ''}
-                              ${statusValue === 'completed' ? 'border-green-500/50 bg-green-500/5' : ''}
-                              ${statusValue === 'error' ? 'border-destructive/50 bg-destructive/5' : ''}
-                            `}
-                          >
-                            {/* Status icon */}
-                            <div className="absolute top-2 right-2">
-                              {statusValue === 'pending' && (
-                                <Circle className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              {statusValue === 'generating' && (
-                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                              )}
-                              {statusValue === 'completed' && (
-                                <div className="animate-in zoom-in duration-200">
-                                  <Check className="h-4 w-4 text-green-500" />
-                                </div>
-                              )}
-                              {statusValue === 'error' && (
-                                <X className="h-4 w-4 text-destructive" />
-                              )}
-                            </div>
-
-                            {/* Repo name */}
-                            <h4 className="font-medium text-sm text-foreground pr-6 truncate">
-                              {repo.name}
-                            </h4>
-
-                            {/* Status text */}
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {statusValue === 'pending' && 'Waiting...'}
-                              {statusValue === 'generating' && 'Generating...'}
-                              {statusValue === 'completed' && 'Complete'}
-                              {statusValue === 'error' && (status?.error || 'Error')}
-                            </p>
-                          </div>
-                        )
-                      })}
-                  </div>
-
-                  {/* Rotating fun facts at the bottom */}
-                  <div className="bg-muted/50 border border-border rounded-lg p-4">
-                    <p className="text-sm text-muted-foreground italic text-center">
-                      "{BISMARCK_FACTS[currentFactIndex]}"
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                /* Review and edit descriptions */
-                <>
-                  <div>
-                    <h2 className="text-xl font-semibold text-foreground mb-2">
-                      Review Descriptions
-                    </h2>
-                    <p className="text-muted-foreground text-sm">
-                      AI-generated purpose descriptions for your repositories. Edit them as needed.
-                    </p>
-                  </div>
-
-                  {/* Descriptions list - single column */}
-                  <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                    {discoveredRepos
-                      .filter(r => selectedRepos.has(r.path))
-                      .map((repo) => (
-                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-3">
-                          <div>
-                            <Label className="text-sm font-medium text-foreground block mb-1">
-                              {repo.name}
-                            </Label>
-                            <p className="text-xs text-muted-foreground truncate" title={repo.path}>
-                              {repo.path}
-                            </p>
-                          </div>
-
-                          {/* Purpose */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Label className="text-xs text-muted-foreground">
-                                Purpose
-                              </Label>
-                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
-                                <Zap className="h-3 w-3" />
-                                Used for task allocation
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mb-1.5">
-                              Used by the orchestrator to determine which repo handles which tasks, and for grouping repos in the sidebar.
-                            </p>
-                            <textarea
-                              className="w-full min-h-[100px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                              placeholder="What does this repository do?"
-                              value={repoPurposes.get(repo.path) || ''}
-                              onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
-                            />
-                          </div>
-
-                          {/* Completion Criteria */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Label className="text-xs text-muted-foreground">
-                                Completion Criteria
-                              </Label>
-                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
-                                <Zap className="h-3 w-3" />
-                                Injected into standalone & PR-mode task agent prompts
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mb-1.5">
-                              Agents validate work against these before creating PRs. They iterate until all criteria pass.
-                            </p>
-                            <textarea
-                              className="w-full min-h-[120px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
-                              placeholder="- Tests pass&#10;- Code is linted&#10;- Build succeeds"
-                              value={repoCompletionCriteria.get(repo.path) || ''}
-                              onChange={(e) => handleUpdateCompletionCriteria(repo.path, e.target.value)}
-                            />
-                          </div>
-
-                          {/* Protected Branches */}
-                          <div>
-                            <Label className="text-xs text-muted-foreground block mb-1">
-                              Protected Branches
-                            </Label>
-                            <Input
-                              className="text-sm"
-                              placeholder="main, master, release/*"
-                              value={(repoProtectedBranches.get(repo.path) || []).join(', ')}
-                              onChange={(e) => handleUpdateProtectedBranches(repo.path, e.target.value)}
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Comma-separated list of branches that should not be modified directly
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-
-                  {/* Error Message */}
-                  {error && (
-                    <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
-                      {error}
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex justify-between pt-4">
-                    <Button
-                      onClick={handleGoBack}
-                      variant="ghost"
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-2" />
-                      Back
-                    </Button>
-                    <Button
-                      onClick={handleContinueToPlanMode}
-                    >
-                      Continue
-                      <ChevronRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Step 5: Headless Agents */}
-          {step === 'plan-mode' && (
+          {/* Step 3: Headless Agents */}
+          {step === 'headless-agents' && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-foreground mb-2">
@@ -1878,6 +1372,562 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                   Back
                 </Button>
                 <Button
+                  onClick={() => setStep('path')}
+                >
+                  Continue
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Path Selection */}
+          {step === 'path' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Select Repository Directory
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Choose a parent directory to scan for git repositories
+                </p>
+              </div>
+
+              {/* Folder Picker Button */}
+              <div>
+                <Button
+                  onClick={handlePickFolder}
+                  variant="outline"
+                  className="w-full justify-start"
+                  size="lg"
+                >
+                  <FolderOpen className="h-5 w-5 mr-2" />
+                  Choose Directory...
+                </Button>
+              </div>
+
+              {/* Suggested Paths */}
+              {suggestedPaths.length > 0 && (
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-2 block">
+                    Suggested locations
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedPaths.map((suggestedPath) => (
+                      <Button
+                        key={suggestedPath}
+                        onClick={() => handleSelectSuggestedPath(suggestedPath)}
+                        variant={selectedPath === suggestedPath ? 'default' : 'outline'}
+                        size="sm"
+                      >
+                        {suggestedPath.startsWith('/home/') || suggestedPath.startsWith('/Users/')
+                          ? suggestedPath.replace(/^\/home\/[^\/]+|^\/Users\/[^\/]+/, '~')
+                          : suggestedPath}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Path Input */}
+              <div>
+                <Label htmlFor="manual-path" className="text-sm mb-2 block">
+                  Or enter a path manually
+                </Label>
+                <Input
+                  id="manual-path"
+                  type="text"
+                  placeholder="/path/to/repositories"
+                  value={manualPath}
+                  onChange={(e) => {
+                    setManualPath(e.target.value)
+                    setSelectedPath(e.target.value)
+                    setError(null)
+                  }}
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
+                  onClick={handleContinueToRepos}
+                  disabled={isScanning || (!selectedPath && !manualPath.trim())}
+                >
+                  {isScanning ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <ChevronRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Repository Selection */}
+          {step === 'repos' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Select Repositories
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Found {discoveredRepos.length} {discoveredRepos.length === 1 ? 'repository' : 'repositories'}.
+                  We recommend starting with your <span className="text-foreground font-medium">3-5 most active</span> repositories.
+                </p>
+              </div>
+
+              {/* Select All / Deselect All */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSelectAll}
+                  variant="outline"
+                  size="sm"
+                >
+                  Select All
+                </Button>
+                <Button
+                  onClick={handleDeselectAll}
+                  variant="outline"
+                  size="sm"
+                >
+                  Deselect All
+                </Button>
+              </div>
+
+              {/* Repository Grid */}
+              <div className="max-h-[60vh] overflow-y-auto">
+                {discoveredRepos.length === 0 ? (
+                  <div className="p-8 text-center border border-border rounded-md">
+                    <p className="text-muted-foreground mb-4">
+                      No repositories found
+                    </p>
+                    <div className="flex gap-2 justify-center">
+                      <Button onClick={handleGoBack} variant="outline">
+                        Go Back
+                      </Button>
+                      <Button onClick={onSkip} variant="ghost">
+                        Skip Setup
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-1">
+                    {discoveredRepos.map((repo) => {
+                      const isSelected = selectedRepos.has(repo.path)
+                      return (
+                        <button
+                          key={repo.path}
+                          onClick={() => handleToggleRepo(repo.path)}
+                          className={`
+                            relative rounded-lg border p-4 text-left transition-all
+                            hover:border-primary/50
+                            ${isSelected
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                              : 'border-border bg-card hover:bg-accent/50'
+                            }
+                          `}
+                        >
+                          {/* Selection indicator */}
+                          <div className="absolute top-2 right-2">
+                            {isSelected ? (
+                              <CheckSquare className="h-5 w-5 text-primary" />
+                            ) : (
+                              <Square className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+
+                          {/* Repo name */}
+                          <h4 className="font-semibold text-foreground pr-6 truncate">
+                            {repo.name}
+                          </h4>
+
+                          {/* Path (truncated) */}
+                          <p className="text-xs text-muted-foreground mt-1 truncate" title={repo.path}>
+                            {repo.path}
+                          </p>
+
+                          {/* Last commit time */}
+                          {repo.lastCommitDate && (
+                            <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground/80">
+                              <Clock className="h-3 w-3" />
+                              <span>{getRelativeTime(repo.lastCommitDate)}</span>
+                            </div>
+                          )}
+
+                          {/* Remote URL (optional, subtle) */}
+                          {repo.remoteUrl && (
+                            <p className="text-[10px] text-muted-foreground/60 mt-1 truncate" title={repo.remoteUrl}>
+                              {repo.remoteUrl.replace(/^(git@|https:\/\/)/, '').replace(/\.git$/, '')}
+                            </p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              {discoveredRepos.length > 0 && (
+                <div className="flex justify-between pt-4">
+                  <Button
+                    onClick={handleGoBack}
+                    variant="ghost"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (selectedRepos.size === 0) {
+                        setError('Please select at least one repository')
+                        return
+                      }
+                      setError(null)
+                      // Skip desc-choice if no OAuth token configured (can't run claude -p)
+                      if (dependencies?.claudeOAuthToken.configured) {
+                        setStep('desc-choice')
+                      } else {
+                        handleSkipDescriptions()
+                      }
+                    }}
+                    disabled={selectedRepos.size === 0}
+                  >
+                    Continue
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step: Description Choice */}
+          {step === 'desc-choice' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Repository Descriptions
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Descriptions help the orchestrator allocate tasks to the right repos and tell agents when their work is done.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Auto-generate card */}
+                <button
+                  onClick={handleContinueToDescriptions}
+                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Auto-generate with Claude</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Claude will analyze each repository and generate purpose descriptions and completion criteria automatically.
+                  </p>
+                </button>
+
+                {/* Skip card */}
+                <button
+                  onClick={handleSkipDescriptions}
+                  className="rounded-lg border border-border p-6 text-left transition-all hover:border-primary/50 hover:bg-accent/50 space-y-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold text-foreground">Skip, configure later</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You can add descriptions later in Settings. Agents will still work, but task allocation may be less accurate.
+                  </p>
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Descriptions */}
+          {step === 'descriptions' && (
+            <div className="space-y-6">
+              {isGenerating ? (
+                /* Loading state with real-time progress */
+                <div className="space-y-6">
+                  {/* Progress header */}
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Analyzing Repositories...
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {completedCount} of {selectedRepos.size} complete
+                    </p>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-primary h-full transition-all duration-500 ease-out"
+                      style={{ width: `${selectedRepos.size > 0 ? (completedCount / selectedRepos.size) * 100 : 0}%` }}
+                    />
+                  </div>
+
+                  {/* Victory quote card - animated appearance */}
+                  {latestQuote && (
+                    <div
+                      key={latestQuote}
+                      className="bg-primary/10 border border-primary/20 rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300"
+                    >
+                      <p className="text-sm text-foreground italic text-center">
+                        "{latestQuote}"
+                      </p>
+                      <p className="text-xs text-muted-foreground text-center mt-2">— Otto von Bismarck</p>
+                    </div>
+                  )}
+
+                  {/* Repository grid with status icons */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto p-1">
+                    {discoveredRepos
+                      .filter(r => selectedRepos.has(r.path))
+                      .map((repo) => {
+                        const status = repoStatuses.get(repo.path)
+                        const statusValue = status?.status || 'pending'
+                        return (
+                          <div
+                            key={repo.path}
+                            className={`
+                              relative rounded-lg border p-3 transition-all duration-300
+                              ${statusValue === 'pending' ? 'border-border bg-card' : ''}
+                              ${statusValue === 'generating' ? 'border-primary bg-primary/5' : ''}
+                              ${statusValue === 'completed' ? 'border-green-500/50 bg-green-500/5' : ''}
+                              ${statusValue === 'error' ? 'border-destructive/50 bg-destructive/5' : ''}
+                            `}
+                          >
+                            {/* Status icon */}
+                            <div className="absolute top-2 right-2">
+                              {statusValue === 'pending' && (
+                                <Circle className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              {statusValue === 'generating' && (
+                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                              )}
+                              {statusValue === 'completed' && (
+                                <div className="animate-in zoom-in duration-200">
+                                  <Check className="h-4 w-4 text-green-500" />
+                                </div>
+                              )}
+                              {statusValue === 'error' && (
+                                <X className="h-4 w-4 text-destructive" />
+                              )}
+                            </div>
+
+                            {/* Repo name */}
+                            <h4 className="font-medium text-sm text-foreground pr-6 truncate">
+                              {repo.name}
+                            </h4>
+
+                            {/* Status text */}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {statusValue === 'pending' && 'Waiting...'}
+                              {statusValue === 'generating' && 'Generating...'}
+                              {statusValue === 'completed' && 'Complete'}
+                              {statusValue === 'error' && (status?.error || 'Error')}
+                            </p>
+                          </div>
+                        )
+                      })}
+                  </div>
+
+                  {/* Rotating fun facts at the bottom */}
+                  <div className="bg-muted/50 border border-border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground italic text-center">
+                      "{BISMARCK_FACTS[currentFactIndex]}"
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                /* Review and edit descriptions */
+                <>
+                  <div>
+                    <h2 className="text-xl font-semibold text-foreground mb-2">
+                      Review Descriptions
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                      AI-generated purpose descriptions for your repositories. Edit them as needed.
+                    </p>
+                  </div>
+
+                  {/* Descriptions list - single column */}
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                    {discoveredRepos
+                      .filter(r => selectedRepos.has(r.path))
+                      .map((repo) => (
+                        <div key={repo.path} className="border border-border rounded-lg p-4 space-y-3">
+                          <div>
+                            <Label className="text-sm font-medium text-foreground block mb-1">
+                              {repo.name}
+                            </Label>
+                            <p className="text-xs text-muted-foreground truncate" title={repo.path}>
+                              {repo.path}
+                            </p>
+                          </div>
+
+                          {/* Purpose */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Purpose
+                              </Label>
+                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+                                <Zap className="h-3 w-3" />
+                                Used for task allocation
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mb-1.5">
+                              Used by the orchestrator to determine which repo handles which tasks, and for grouping repos in the sidebar.
+                            </p>
+                            <textarea
+                              className="w-full min-h-[100px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                              placeholder="What does this repository do?"
+                              value={repoPurposes.get(repo.path) || ''}
+                              onChange={(e) => handleUpdatePurpose(repo.path, e.target.value)}
+                            />
+                          </div>
+
+                          {/* Completion Criteria */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Completion Criteria
+                              </Label>
+                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+                                <Zap className="h-3 w-3" />
+                                Injected into standalone & PR-mode task agent prompts
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mb-1.5">
+                              Agents validate work against these before creating PRs. They iterate until all criteria pass.
+                            </p>
+                            <textarea
+                              className="w-full min-h-[120px] p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono text-xs"
+                              placeholder="- Tests pass&#10;- Code is linted&#10;- Build succeeds"
+                              value={repoCompletionCriteria.get(repo.path) || ''}
+                              onChange={(e) => handleUpdateCompletionCriteria(repo.path, e.target.value)}
+                            />
+                          </div>
+
+                          {/* Protected Branches */}
+                          <div>
+                            <Label className="text-xs text-muted-foreground block mb-1">
+                              Protected Branches
+                            </Label>
+                            <Input
+                              className="text-sm"
+                              placeholder="main, master, release/*"
+                              value={(repoProtectedBranches.get(repo.path) || []).join(', ')}
+                              onChange={(e) => handleUpdateProtectedBranches(repo.path, e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Comma-separated list of branches that should not be modified directly
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Error Message */}
+                  {error && (
+                    <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                      {error}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex justify-between pt-4">
+                    <Button
+                      onClick={handleGoBack}
+                      variant="ghost"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                    <Button
+                      onClick={handleContinueToFinish}
+                    >
+                      Continue
+                      <ChevronRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step: Finish - Create Agents */}
+          {step === 'finish' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Ready to Create Agents
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  {selectedRepos.size} {selectedRepos.size === 1 ? 'repository' : 'repositories'} selected.
+                  {planModeEnabled ? ' Headless agents are enabled.' : ' Headless agents are disabled.'}
+                </p>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between pt-4">
+                <Button
+                  onClick={handleGoBack}
+                  variant="ghost"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
                   onClick={handleContinueFromPlanMode}
                   disabled={isCreating}
                 >
@@ -1898,7 +1948,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         </div>
 
         {/* Skip link at bottom */}
-        {(step === 'deps' || step === 'tools' || step === 'path') && (
+        {(step === 'deps' || step === 'tools' || step === 'headless-agents' || step === 'path') && (
           <div className="text-center mt-4">
             <button
               onClick={onSkip}
