@@ -22,7 +22,7 @@ import { getAllRepositories, getRepositoryById } from '../repository-manager'
 import { startToolProxy, isProxyRunning } from '../tool-proxy'
 import { runSetupToken } from '../oauth-setup'
 import type { TaskAssignment } from '../../shared/types'
-import { getPollInterval, setPollInterval, getSyncInProgress, setSyncInProgress, getLastCycleCheckTime, setLastCycleCheckTime, POLL_INTERVAL_MS, isManagerRunning, isArchitectRunning, getStagnationTracker, setStagnationTracker, clearStagnationTracker, getLastPollSummaryTime, setLastPollSummaryTime, clearLastPollSummaryTime, isPendingCritic, type StagnationTracker } from './state'
+import { getPollInterval, setPollInterval, getSyncInProgress, setSyncInProgress, getLastCycleCheckTime, setLastCycleCheckTime, POLL_INTERVAL_MS, isManagerRunning, isArchitectRunning, getStagnationTracker, setStagnationTracker, clearStagnationTracker, getLastPollSummaryTime, setLastPollSummaryTime, clearLastPollSummaryTime, type StagnationTracker } from './state'
 import { addPlanActivity, emitTaskAssignmentUpdate, emitBeadTasksUpdate, emitStateUpdate } from './events'
 import { getOriginalTaskIdFromLabels } from './helpers'
 import { canSpawnMoreAgents, getActiveTaskAgentCount, createTaskAgentWithWorktree } from './worktree-agents'
@@ -107,13 +107,38 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
     const closedTasks = await bdList(activePlan.id, { status: 'closed' })
     const closedTaskIds = new Set(closedTasks.map(t => t.id))
 
+    // Fetch all open tasks (needed to resolve fix-up/critic blocker labels)
+    const allOpenTasks = await bdList(activePlan.id, { status: 'open' })
+    const allTasks = [...closedTasks, ...allOpenTasks]
+
+    // Helper: check if a blocker's worktree is pending critic review.
+    // Resolves blocker IDs back to worktrees — handles regular tasks, fix-ups,
+    // and critic tasks by following labels to the original task.
+    const isBlockerPendingCritic = (blockerId: string): boolean => {
+      // Direct worktree match (blocker is the original task)
+      let wt = activePlan.worktrees?.find(w => w.taskId === blockerId)
+
+      // No direct match — resolve via task labels (fix-up or critic blocker)
+      if (!wt) {
+        const blockerTask = allTasks.find(t => t.id === blockerId)
+        if (blockerTask) {
+          const origId = getOriginalTaskIdFromLabels(blockerTask)
+            ?? blockerTask.labels?.find(l => l.startsWith('review-for:'))?.substring('review-for:'.length)
+          if (origId) wt = activePlan.worktrees?.find(w => w.taskId === origId)
+        }
+      }
+
+      if (!wt) return false
+      return wt.criticStatus === 'pending' || wt.criticStatus === 'reviewing'
+    }
+
     // Filter out tasks that still have open blockers, collecting deferred task info
     const deferredTaskMap: Map<string, string[]> = new Map() // taskId -> open blocker IDs
     const dispatchableTasks = readyTasks.filter(task => {
       if (!task.blockedBy || task.blockedBy.length === 0) {
         // Even with no open blockers, check if any blocker is pending critic review
         // (closed in beads but critic not yet registered as new blocker)
-        if (task.blockedBy?.some(id => isPendingCritic(id))) {
+        if (task.blockedBy?.some(id => isBlockerPendingCritic(id))) {
           logger.debug('plan', `Task ${task.id} has blocker pending critic, deferring`, logCtx)
           deferredTaskMap.set(task.id, ['pending-critic'])
           return false
@@ -127,7 +152,7 @@ async function doSyncTasksForPlan(planId: string): Promise<void> {
         return false
       }
       // All blockers closed, but check if any is pending critic
-      if (task.blockedBy.some(id => isPendingCritic(id))) {
+      if (task.blockedBy.some(id => isBlockerPendingCritic(id))) {
         logger.debug('plan', `Task ${task.id} has blocker pending critic, deferring`, logCtx)
         deferredTaskMap.set(task.id, ['pending-critic'])
         return false

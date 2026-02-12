@@ -91,6 +91,15 @@ jobs:
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Generate SHA-256 checksum
+        id: checksum
+        run: |
+          DMG_PATH="dist/${{ steps.dmg.outputs.filename }}"
+          CHECKSUM=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+          echo "sha256=$CHECKSUM" >> $GITHUB_OUTPUT
+          # Also write checksum file for upload
+          echo "$CHECKSUM  ${{ steps.dmg.outputs.filename }}" > "dist/${{ steps.dmg.outputs.filename }}.sha256"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -103,8 +112,12 @@ jobs:
 
             **Install:** `curl -fsSL https://raw.githubusercontent.com/cameronfleet-paxos/bismarck/main/install.sh | bash`
 
+            **SHA-256:** `${{ steps.checksum.outputs.sha256 }}`
+
             **Full Changelog:** https://github.com/${{ github.repository }}/compare/${{ steps.prev_tag.outputs.tag }}...${{ steps.version.outputs.version }}
-          files: dist/${{ steps.dmg.outputs.filename }}
+          files: |
+            dist/${{ steps.dmg.outputs.filename }}
+            dist/${{ steps.dmg.outputs.filename }}.sha256
           draft: false
           prerelease: false
         env:

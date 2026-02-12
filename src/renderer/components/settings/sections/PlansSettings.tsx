@@ -213,9 +213,12 @@ export function PlansSettings({ onPreferencesChange }: PlansSettingsProps) {
 
       {/* Plans Section */}
       <div>
-        <h3 className="text-lg font-semibold mb-1">Teams</h3>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-lg font-semibold">Teams</h3>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">Experimental</span>
+        </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Configure team execution and task orchestration
+          Configure team execution and task orchestration. This feature is experimental and under active development.
         </p>
 
         <div className="space-y-4">

@@ -99,6 +99,16 @@ export interface AgentTab {
   workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
+  isTerminalTab?: boolean // Tab dedicated to a plain terminal (no Claude agent)
+}
+
+// Plain terminal session info (non-agent terminal)
+export interface PlainTerminal {
+  id: string           // e.g., "plain-terminal-1234567890"
+  terminalId: string   // PTY terminal ID
+  tabId: string        // Tab this terminal is in
+  name: string         // Display name (e.g., "Terminal 1")
+  directory: string    // Working directory
 }
 
 // Attention mode determines how waiting agents are displayed
@@ -200,6 +210,8 @@ export interface AppState {
   activePlanId?: string | null
   // Tutorial state
   tutorialState?: TutorialState
+  // Plain terminals (non-agent shell sessions)
+  plainTerminals?: PlainTerminal[]
 }
 
 // Theme presets
@@ -507,6 +519,7 @@ export interface SpawningHeadlessInfo {
   id: string                  // Temporary ID like "spawning-1234567890"
   referenceAgentId: string    // The agent used as reference
   tabId: string               // Which tab to show the placeholder in
+  position: number            // Grid slot index within the tab
   prompt: string              // Prompt being executed
   model: 'opus' | 'sonnet'    // Model being used
   startedAt: number           // Timestamp for display purposes
@@ -627,6 +640,8 @@ export interface ClaudeOAuthTokenStatus {
 export interface DockerImageStatus {
   available: boolean
   imageName: string
+  version?: string   // from org.opencontainers.image.version label
+  digest?: string    // registry digest (sha256:...)
 }
 
 // Collection of all plan mode dependencies

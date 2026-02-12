@@ -19,22 +19,6 @@ export const executingPlans: Set<string> = new Set()
 const activeManagers: Set<string> = new Set()
 const activeArchitects: Set<string> = new Set()
 
-// Track tasks pending critic review — prevents dependents from being dispatched
-// between bd close (task marked closed) and critic creation (critic added as blocker)
-const pendingCriticTasks: Set<string> = new Set()
-
-export function addPendingCriticTask(taskId: string): void {
-  pendingCriticTasks.add(taskId)
-}
-
-export function removePendingCriticTask(taskId: string): void {
-  pendingCriticTasks.delete(taskId)
-}
-
-export function isPendingCritic(taskId: string): boolean {
-  return pendingCriticTasks.has(taskId)
-}
-
 // Stagnation detection: track deferred tasks across poll cycles
 export interface StagnationTracker {
   deferredTaskIds: Set<string>   // Task IDs deferred last cycle

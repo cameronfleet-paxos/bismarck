@@ -100,10 +100,21 @@ case "$1" in
     ;;
 esac
 
+# Build JSON payload safely using jq (avoids shell injection via variable values)
+JSON_PAYLOAD=$(jq -n --argjson args "$ARGS_JSON" --arg cwd "$HOST_WORKTREE_PATH" \
+  '{args: $args, cwd: $cwd}')
+
+# Build auth header if token is available
+AUTH_HEADER=()
+if [ -n "$TOOL_PROXY_TOKEN" ]; then
+  AUTH_HEADER=(-H "Authorization: Bearer ${TOOL_PROXY_TOKEN}")
+fi
+
 # Make request to proxy
 RESPONSE=$(curl -s -X POST "${PROXY_URL}${ENDPOINT}" \
   -H "Content-Type: application/json" \
-  -d "{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_WORKTREE_PATH}\"}")
+  "${AUTH_HEADER[@]}" \
+  -d "$JSON_PAYLOAD")
 
 # Extract fields from response
 SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
