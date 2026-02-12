@@ -14,7 +14,7 @@ export interface ToolAuthStatus {
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
-  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean }
+  | { state: 'available'; version: string; releaseUrl: string; currentVersion: string; significantlyOutdated: boolean; sha256: string | null }
   | { state: 'up-to-date' }
   | { state: 'error'; message: string }
 
