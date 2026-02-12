@@ -201,7 +201,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment, pullImage, DEFAULT_IMAGE, checkDockerAvailable, getImageInfo } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -1039,9 +1039,22 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('setup-wizard:pull-docker-image', async () => {
-    const result = await pullImage(DEFAULT_IMAGE, (message) => {
+    const result = await pullImage(getDefaultImage(), (message) => {
       mainWindow?.webContents.send('docker-pull-progress', message)
     })
+    if (result.success) {
+      clearRegistryDigestCache(getDefaultImage())
+      const { baseImageUpdated } = await persistImageDigest(getDefaultImage())
+      if (baseImageUpdated) {
+        const settings = await loadSettings()
+        if (settings.docker.selectedImage !== getDefaultImage()) {
+          mainWindow?.webContents.send('base-image-updated', {
+            newVersion: settings.docker.upstreamTemplateVersion,
+            newDigest: settings.docker.upstreamTemplateDigest,
+          })
+        }
+      }
+    }
     return result
   })
 
@@ -1050,9 +1063,15 @@ function registerIpcHandlers() {
       checkDockerAvailable(),
       getImageInfo(imageName),
     ])
+    let verified: boolean | undefined
+    if (imageInfo.exists && imageInfo.digest) {
+      const registryDigest = await fetchRegistryDigest(imageName)
+      verified = registryDigest !== null && imageInfo.digest === registryDigest
+    }
     return {
       dockerAvailable,
       ...imageInfo,
+      verified,
     }
   })
 
@@ -1060,6 +1079,19 @@ function registerIpcHandlers() {
     const result = await pullImage(imageName, (message) => {
       mainWindow?.webContents.send('docker-pull-progress', message)
     })
+    if (result.success) {
+      clearRegistryDigestCache(imageName)
+      const { baseImageUpdated } = await persistImageDigest(imageName)
+      if (baseImageUpdated) {
+        const settings = await loadSettings()
+        if (settings.docker.selectedImage !== getDefaultImage()) {
+          mainWindow?.webContents.send('base-image-updated', {
+            newVersion: settings.docker.upstreamTemplateVersion,
+            newDigest: settings.docker.upstreamTemplateDigest,
+          })
+        }
+      }
+    }
     return {
       success: result.success,
       output: result.output,
@@ -1426,13 +1458,28 @@ app.whenReady().then(async () => {
   // Initialize Docker environment for headless mode (async, non-blocking)
   // This builds the Docker image if it doesn't exist
   startTimer('main:initializeDockerEnvironment', 'main')
-  initializeDockerEnvironment().then((result) => {
+  initializeDockerEnvironment().then(async (result) => {
     endTimer('main:initializeDockerEnvironment')
     if (result.success) {
       devLog('[Main] Docker environment ready:', result.message)
       if (result.imageBuilt) {
         // Notify renderer that image was built
         mainWindow?.webContents.send('docker-image-built', result)
+      }
+      // Persist digest after successful init (pull or cached)
+      try {
+        const { baseImageUpdated } = await persistImageDigest(getDefaultImage())
+        if (baseImageUpdated) {
+          const settings = await loadSettings()
+          if (settings.docker.selectedImage !== getDefaultImage()) {
+            mainWindow?.webContents.send('base-image-updated', {
+              newVersion: settings.docker.upstreamTemplateVersion,
+              newDigest: settings.docker.upstreamTemplateDigest,
+            })
+          }
+        }
+      } catch (err) {
+        devLog('[Main] Failed to persist image digest:', err)
       }
     } else {
       console.warn('[Main] Docker environment not ready:', result.message)

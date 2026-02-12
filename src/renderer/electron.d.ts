@@ -188,8 +188,12 @@ export interface ElectronAPI {
   removeDockerPullProgressListener: () => void
 
   // Docker image status
-  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number }>
+  checkDockerImageStatus: (imageName: string) => Promise<{ dockerAvailable: boolean; exists: boolean; imageId?: string; created?: string; size?: number; digest?: string; labels?: Record<string, string>; verified?: boolean }>
   pullDockerImage: (imageName: string) => Promise<{ success: boolean; output: string; alreadyUpToDate: boolean }>
+
+  // Base image update notification (for BYO image users)
+  onBaseImageUpdated: (callback: (data: { newVersion: string | null; newDigest: string | null }) => void) => void
+  removeBaseImageUpdatedListener: () => void
 
   // GitHub token management
   hasGitHubToken: () => Promise<boolean>

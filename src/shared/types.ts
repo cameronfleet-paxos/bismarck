@@ -640,6 +640,8 @@ export interface ClaudeOAuthTokenStatus {
 export interface DockerImageStatus {
   available: boolean
   imageName: string
+  version?: string   // from org.opencontainers.image.version label
+  digest?: string    // registry digest (sha256:...)
 }
 
 // Collection of all plan mode dependencies

@@ -17,7 +17,7 @@ import { detectRepository, updateRepository } from './repository-manager'
 import { loadSettings, updateSettings, setGitHubToken, hasConfiguredGitHubToken } from './settings-manager'
 import { findBinary, detectGitHubToken, detectGitHubTokenWithReason } from './exec-utils'
 import { setPreferences } from './state-manager'
-import { checkImageExists, pullImage, DEFAULT_IMAGE, checkDockerAvailable } from './docker-sandbox'
+import { checkImageExists, pullImage, getDefaultImage, checkDockerAvailable, getImageInfo } from './docker-sandbox'
 
 /**
  * Status of a single dependency for plan mode
@@ -56,6 +56,8 @@ export interface ClaudeOAuthTokenStatus {
 export interface DockerImageStatus {
   available: boolean
   imageName: string
+  version?: string   // from org.opencontainers.image.version label
+  digest?: string    // registry digest (sha256:...)
 }
 
 export interface PlanModeDependencies {
@@ -482,12 +484,19 @@ export async function checkPlanModeDependencies(): Promise<PlanModeDependencies>
 
   // Check Docker image availability (only if Docker is installed)
   let dockerImageAvailable = false
+  let dockerImageVersion: string | undefined
+  let dockerImageDigest: string | undefined
   if (dockerResult.path !== null) {
-    dockerImageAvailable = await checkImageExists(DEFAULT_IMAGE)
+    const imageInfo = await getImageInfo(getDefaultImage())
+    dockerImageAvailable = imageInfo.exists
+    dockerImageVersion = imageInfo.labels?.['org.opencontainers.image.version']
+    dockerImageDigest = imageInfo.digest
   }
   const dockerImage: DockerImageStatus = {
     available: dockerImageAvailable,
-    imageName: DEFAULT_IMAGE,
+    imageName: getDefaultImage(),
+    version: dockerImageVersion,
+    digest: dockerImageDigest,
   }
 
   // Check if all required dependencies are installed

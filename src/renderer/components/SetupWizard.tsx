@@ -1286,6 +1286,8 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                         {dependencies.dockerImage.available ? (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {dependencies.dockerImage.imageName} available locally
+                            {dependencies.dockerImage.version && <span> · v{dependencies.dockerImage.version}</span>}
+                            {dependencies.dockerImage.digest && <span className="font-mono"> · {dependencies.dockerImage.digest.substring(7, 19)}</span>}
                           </p>
                         ) : (
                           <div className="mt-1">
