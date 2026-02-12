@@ -60,10 +60,17 @@ if should_use_proxy; then
   # Build JSON payload with all arguments
   ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
 
+  # Build auth header if token is available
+  AUTH_HEADER=()
+  if [ -n "$TOOL_PROXY_TOKEN" ]; then
+    AUTH_HEADER=(-H "Authorization: Bearer ${TOOL_PROXY_TOKEN}")
+  fi
+
   # Make request to proxy with explicit error handling
   # We use -w to get HTTP status code and -o to save response body
   HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/git_response.json -X POST "${PROXY_URL}/git" \
     -H "Content-Type: application/json" \
+    "${AUTH_HEADER[@]}" \
     -d "{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_WORKTREE_PATH}\"}" 2>/tmp/curl_error.txt)
 
   CURL_EXIT=$?

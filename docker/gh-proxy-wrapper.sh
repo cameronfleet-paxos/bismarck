@@ -100,9 +100,16 @@ case "$1" in
     ;;
 esac
 
+# Build auth header if token is available
+AUTH_HEADER=()
+if [ -n "$TOOL_PROXY_TOKEN" ]; then
+  AUTH_HEADER=(-H "Authorization: Bearer ${TOOL_PROXY_TOKEN}")
+fi
+
 # Make request to proxy
 RESPONSE=$(curl -s -X POST "${PROXY_URL}${ENDPOINT}" \
   -H "Content-Type: application/json" \
+  "${AUTH_HEADER[@]}" \
   -d "{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_WORKTREE_PATH}\"}")
 
 # Extract fields from response

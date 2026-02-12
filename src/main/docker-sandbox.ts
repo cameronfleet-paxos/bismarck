@@ -15,7 +15,7 @@ import { ChildProcess } from 'child_process'
 import { Readable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
-import { getProxyUrl } from './tool-proxy'
+import { getProxyUrl, getProxyToken } from './tool-proxy'
 import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
@@ -102,6 +102,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // Environment variables
   const proxyUrl = config.proxyHost || getProxyUrl()
   args.push('-e', `TOOL_PROXY_URL=${proxyUrl}`)
+
+  // Pass proxy auth token so container can authenticate with tool proxy
+  const token = getProxyToken()
+  if (token) {
+    args.push('-e', `TOOL_PROXY_TOKEN=${token}`)
+  }
 
   // Pass plan ID for bd proxy commands
   if (config.planId) {
