@@ -2391,51 +2391,14 @@ function App() {
   const gridConfig = getGridConfig(preferences.gridSize)
   const gridPositions = gridConfig.positions
 
-  // Simulation mode - shows empty state UI without affecting data (read-only)
-  if (simulateNewUser) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-center">
-          <h1 className="text-foreground mb-4">
-            <Logo size="lg" />
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            No agents configured. Add one to get started.
-          </p>
-          <Button disabled>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Agent
-          </Button>
-          <p className="text-xs text-muted-foreground mt-4">
-            [Simulation Mode - Read Only]
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => setSimulateNewUser(false)}
-          >
-            Exit Simulation
-          </Button>
-        </div>
-        {/* DevConsole still available to exit simulation */}
-        <DevConsole
-          open={devConsoleOpen}
-          onClose={() => setDevConsoleOpen(false)}
-          simulateNewUser={simulateNewUser}
-          onToggleSimulateNewUser={() => setSimulateNewUser(false)}
-        />
-      </div>
-    )
-  }
-
-  // Empty state - show setup wizard
-  if (agents.length === 0) {
+  // Empty state or simulation mode - show setup wizard
+  if (agents.length === 0 || simulateNewUser) {
     return (
       <>
         <SetupWizard
           onComplete={async (newAgents) => {
             devLog('[App.onComplete] Starting with', newAgents?.length, 'agents')
+            setSimulateNewUser(false)
 
             // Group agents into logical tabs using Haiku analysis
             if (newAgents && newAgents.length > 0) {
@@ -2490,6 +2453,7 @@ function App() {
             devLog('[App.onComplete] Complete!')
           }}
           onSkip={() => {
+            setSimulateNewUser(false)
             // Open the manual agent creation modal
             handleAddAgent()
           }}
