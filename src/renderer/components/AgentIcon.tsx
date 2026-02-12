@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import type { AgentIconName } from '@/shared/constants'
 
 // Import all icon SVGs
@@ -106,9 +107,11 @@ interface AgentIconProps {
   className?: string
 }
 
-export function AgentIcon({ icon, className = 'w-4 h-4' }: AgentIconProps) {
+export const AgentIcon = memo(function AgentIcon({ icon, className = 'w-4 h-4' }: AgentIconProps) {
   const svg = iconMap[icon]
-  if (!svg) {
+  const innerHTML = useMemo(() => svg ? { __html: svg } : null, [svg])
+
+  if (!innerHTML) {
     // Fallback: show a generic silhouette
     return (
       <div className={`${className} bg-white/20 rounded-full`} />
@@ -119,7 +122,7 @@ export function AgentIcon({ icon, className = 'w-4 h-4' }: AgentIconProps) {
     <span
       className={className}
       style={{ display: 'inline-flex' }}
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={innerHTML}
     />
   )
-}
+})

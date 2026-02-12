@@ -15,11 +15,12 @@ import { ChildProcess } from 'child_process'
 import { Readable, Writable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
-import { getProxyUrl } from './tool-proxy'
+import * as https from 'https'
+import { getProxyUrl, getProxyToken } from './tool-proxy'
 import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
-import { loadSettings } from './settings-manager'
+import { loadSettings, saveSettings } from './settings-manager'
 import { devLog } from './dev-log'
 
 export interface ContainerConfig {
@@ -50,13 +51,33 @@ export interface ContainerResult {
 
 export interface DockerImageInfo {
   exists: boolean
-  imageId?: string
+  imageId?: string       // Short 12-char ID
+  fullImageId?: string   // Full sha256:... ID
   created?: string
   size?: number
+  digest?: string        // Registry digest from RepoDigests (sha256:...)
+  labels?: Record<string, string>  // Image labels from Config.Labels
 }
 
-// Default image name - Docker Hub registry image
-export const DEFAULT_IMAGE = 'bismarckapp/bismarck-agent:latest'
+// Docker Hub registry image
+export const IMAGE_REPO = 'bismarckapp/bismarck-agent'
+
+function getAppVersion(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('electron').app.getVersion()
+  } catch {
+    return 'latest'
+  }
+}
+
+export function getDefaultImage(): string {
+  return `${IMAGE_REPO}:${getAppVersion()}`
+}
+
+export function getDefaultImageLatest(): string {
+  return `${IMAGE_REPO}:latest`
+}
 
 // Mock image for testing without real Claude API calls
 export const MOCK_IMAGE = 'bismarck-agent-mock:test'
@@ -104,6 +125,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // Environment variables
   const proxyUrl = config.proxyHost || getProxyUrl()
   args.push('-e', `TOOL_PROXY_URL=${proxyUrl}`)
+
+  // Pass proxy auth token so container can authenticate with tool proxy
+  const token = getProxyToken()
+  if (token) {
+    args.push('-e', `TOOL_PROXY_TOKEN=${token}`)
+  }
 
   // Pass plan ID for bd proxy commands
   if (config.planId) {
@@ -214,7 +241,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   }
 
   // Image name
-  args.push(config.image || DEFAULT_IMAGE)
+  args.push(config.image || getDefaultImage())
 
   // For mock images, use the image's entrypoint instead of claude command
   if (!config.useEntrypoint) {
@@ -411,8 +438,9 @@ export async function checkDockerAvailable(): Promise<boolean> {
  * Check if the bismarck-agent image exists
  */
 export async function checkImageExists(
-  imageName: string = DEFAULT_IMAGE
+  imageName?: string
 ): Promise<boolean> {
+  if (!imageName) imageName = getDefaultImage()
   return new Promise((resolve) => {
     const proc = spawnWithPath('docker', ['image', 'inspect', imageName], {
       stdio: 'pipe',
@@ -432,8 +460,9 @@ export async function checkImageExists(
  * Get detailed info about a Docker image
  */
 export async function getImageInfo(
-  imageName: string = DEFAULT_IMAGE
+  imageName?: string
 ): Promise<DockerImageInfo> {
+  if (!imageName) imageName = getDefaultImage()
   return new Promise((resolve) => {
     const proc = spawnWithPath(
       'docker',
@@ -455,11 +484,31 @@ export async function getImageInfo(
 
       try {
         const info = JSON.parse(output.trim())
+
+        // Extract registry digest from RepoDigests (e.g., "bismarckapp/bismarck-agent@sha256:abc...")
+        let digest: string | undefined
+        if (Array.isArray(info.RepoDigests) && info.RepoDigests.length > 0) {
+          const repoDigest = info.RepoDigests[0] as string
+          const atIdx = repoDigest.indexOf('@')
+          if (atIdx !== -1) {
+            digest = repoDigest.substring(atIdx + 1)
+          }
+        }
+
+        // Extract labels from Config.Labels
+        const labels: Record<string, string> | undefined =
+          info.Config?.Labels && typeof info.Config.Labels === 'object'
+            ? info.Config.Labels
+            : undefined
+
         resolve({
           exists: true,
           imageId: info.Id?.replace('sha256:', '').substring(0, 12),
+          fullImageId: info.Id || undefined,
           created: info.Created,
           size: info.Size,
+          digest,
+          labels,
         })
       } catch {
         resolve({ exists: true })
@@ -477,8 +526,9 @@ export async function getImageInfo(
  */
 export async function buildAgentImage(
   dockerfilePath: string,
-  imageName: string = DEFAULT_IMAGE
+  imageName?: string
 ): Promise<{ success: boolean; output: string }> {
+  if (!imageName) imageName = getDefaultImage()
   return new Promise((resolve) => {
     const contextDir = path.dirname(dockerfilePath)
     const proc = spawnWithPath(
@@ -517,9 +567,10 @@ export async function buildAgentImage(
  * Pull a Docker image from a registry (e.g., Docker Hub)
  */
 export async function pullImage(
-  imageName: string = DEFAULT_IMAGE,
+  imageName?: string,
   onProgress?: (message: string) => void
 ): Promise<{ success: boolean; output: string }> {
+  if (!imageName) imageName = getDefaultImage()
   return new Promise((resolve) => {
     logger.info('docker', 'Pulling Docker image', undefined, { image: imageName })
     const proc = spawnWithPath('docker', ['pull', imageName], { stdio: 'pipe' })
@@ -649,12 +700,15 @@ export async function initializeDockerEnvironment(): Promise<{
 
   logger.info('docker', 'Docker is available')
 
-  // Always try to pull the latest image (fast if already up-to-date, Docker checks digests)
-  logger.info('docker', 'Pulling Docker image from registry', undefined, { image: DEFAULT_IMAGE })
-  const pullResult = await pullImage(DEFAULT_IMAGE)
+  const versionedImage = getDefaultImage()
+  const latestImage = getDefaultImageLatest()
+
+  // Try pulling the versioned image first (pinned to app version)
+  logger.info('docker', 'Pulling Docker image from registry', undefined, { image: versionedImage })
+  let pullResult = await pullImage(versionedImage)
 
   if (pullResult.success) {
-    logger.info('docker', 'Docker image pulled successfully', undefined, { image: DEFAULT_IMAGE })
+    logger.info('docker', 'Docker image pulled successfully', undefined, { image: versionedImage })
     return {
       success: true,
       dockerAvailable: true,
@@ -663,19 +717,48 @@ export async function initializeDockerEnvironment(): Promise<{
     }
   }
 
-  // Pull failed - check if we have a cached local image to fall back to
-  logger.warn('docker', 'Failed to pull Docker image', undefined, {
+  // Versioned tag failed - try :latest as fallback
+  logger.warn('docker', 'Failed to pull versioned image, trying :latest fallback', undefined, {
+    versionedImage,
+    pullOutput: pullResult.output.substring(0, 200),
+  })
+  pullResult = await pullImage(latestImage)
+
+  if (pullResult.success) {
+    logger.info('docker', 'Docker image pulled successfully (:latest fallback)', undefined, { image: latestImage })
+    return {
+      success: true,
+      dockerAvailable: true,
+      imageBuilt: true,
+      message: 'Docker image pulled successfully (:latest fallback)',
+    }
+  }
+
+  // Both pulls failed - check for cached local images
+  logger.warn('docker', 'Failed to pull Docker images', undefined, {
     pullOutput: pullResult.output.substring(0, 200),
   })
 
-  const imageExists = await checkImageExists(DEFAULT_IMAGE)
-  if (imageExists) {
-    logger.info('docker', 'Using cached local image', undefined, { image: DEFAULT_IMAGE })
+  // Check versioned first, then latest
+  const versionedExists = await checkImageExists(versionedImage)
+  if (versionedExists) {
+    logger.info('docker', 'Using cached local image', undefined, { image: versionedImage })
     return {
       success: true,
       dockerAvailable: true,
       imageBuilt: false,
       message: 'Using cached Docker image (pull failed, likely offline)',
+    }
+  }
+
+  const latestExists = await checkImageExists(latestImage)
+  if (latestExists) {
+    logger.info('docker', 'Using cached local :latest image', undefined, { image: latestImage })
+    return {
+      success: true,
+      dockerAvailable: true,
+      imageBuilt: false,
+      message: 'Using cached Docker image :latest (pull failed, likely offline)',
     }
   }
 
@@ -693,7 +776,7 @@ export async function initializeDockerEnvironment(): Promise<{
     }
   }
 
-  logger.info('docker', 'Dev mode: attempting local Dockerfile build', undefined, { image: DEFAULT_IMAGE })
+  logger.info('docker', 'Dev mode: attempting local Dockerfile build', undefined, { image: versionedImage })
   const dockerfilePath = getDockerfilePath()
 
   const fs = await import('fs/promises')
@@ -709,10 +792,10 @@ export async function initializeDockerEnvironment(): Promise<{
     }
   }
 
-  const buildResult = await buildAgentImage(dockerfilePath, DEFAULT_IMAGE)
+  const buildResult = await buildAgentImage(dockerfilePath, versionedImage)
 
   if (buildResult.success) {
-    logger.info('docker', 'Docker image built successfully (dev fallback)', undefined, { image: DEFAULT_IMAGE })
+    logger.info('docker', 'Docker image built successfully (dev fallback)', undefined, { image: versionedImage })
     return {
       success: true,
       dockerAvailable: true,
@@ -729,5 +812,141 @@ export async function initializeDockerEnvironment(): Promise<{
       imageBuilt: false,
       message: `Failed to build Docker image: ${buildResult.output.substring(0, 200)}`,
     }
+  }
+}
+
+/**
+ * Persist the digest of a pulled image to settings.
+ * If the image is the official image (versioned or :latest), also tracks the upstream template digest/version.
+ * Returns whether the base image was updated (for notifying BYO users).
+ */
+export async function persistImageDigest(imageName: string): Promise<{ baseImageUpdated: boolean }> {
+  const imageInfo = await getImageInfo(imageName)
+  if (!imageInfo.exists || !imageInfo.digest) return { baseImageUpdated: false }
+
+  const settings = await loadSettings()
+  let baseImageUpdated = false
+
+  settings.docker.imageDigests[imageName] = imageInfo.digest
+
+  if (imageName === getDefaultImage() || imageName === getDefaultImageLatest()) {
+    const previousDigest = settings.docker.upstreamTemplateDigest
+    if (previousDigest && previousDigest !== imageInfo.digest) {
+      baseImageUpdated = true
+    }
+    settings.docker.upstreamTemplateDigest = imageInfo.digest
+    settings.docker.upstreamTemplateVersion = imageInfo.labels?.['org.opencontainers.image.version'] ?? null
+  }
+
+  await saveSettings(settings)
+  return { baseImageUpdated }
+}
+
+// --- Registry digest verification ---
+
+const registryDigestCache = new Map<string, { digest: string; timestamp: number }>()
+const REGISTRY_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
+function httpsGet(url: string, headers: Record<string, string>, method: 'GET' | 'HEAD' = 'GET'): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url)
+    const req = https.request(
+      {
+        hostname: urlObj.hostname,
+        path: urlObj.pathname + urlObj.search,
+        method,
+        headers,
+        timeout: 10_000,
+      },
+      (res) => {
+        let body = ''
+        res.on('data', (chunk) => (body += chunk))
+        res.on('end', () =>
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            headers: res.headers as Record<string, string>,
+            body,
+          })
+        )
+      }
+    )
+    req.on('error', reject)
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error('Request timed out'))
+    })
+    req.end()
+  })
+}
+
+async function fetchDockerHubToken(): Promise<string | null> {
+  try {
+    const resp = await httpsGet(
+      `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${IMAGE_REPO}:pull`,
+      { Accept: 'application/json' }
+    )
+    if (resp.statusCode !== 200) return null
+    const data = JSON.parse(resp.body)
+    return data.token ?? null
+  } catch (err) {
+    logger.debug('docker', `Failed to fetch Docker Hub token: ${err}`)
+    return null
+  }
+}
+
+async function fetchManifestDigest(tag: string, token: string): Promise<string | null> {
+  try {
+    const resp = await httpsGet(
+      `https://registry-1.docker.io/v2/${IMAGE_REPO}/manifests/${tag}`,
+      {
+        Authorization: `Bearer ${token}`,
+        Accept: [
+          'application/vnd.docker.distribution.manifest.list.v2+json',
+          'application/vnd.oci.image.index.v1+json',
+          'application/vnd.docker.distribution.manifest.v2+json',
+          'application/vnd.oci.image.manifest.v1+json',
+        ].join(', '),
+      },
+      'HEAD'
+    )
+    if (resp.statusCode !== 200) return null
+    return resp.headers['docker-content-digest'] ?? null
+  } catch (err) {
+    logger.debug('docker', `Failed to fetch manifest digest: ${err}`)
+    return null
+  }
+}
+
+/**
+ * Fetch the registry digest for an official image from Docker Hub.
+ * Returns null for non-official images or on any failure.
+ */
+export async function fetchRegistryDigest(imageName: string): Promise<string | null> {
+  if (!imageName.startsWith(IMAGE_REPO + ':')) return null
+
+  const cached = registryDigestCache.get(imageName)
+  if (cached && Date.now() - cached.timestamp < REGISTRY_CACHE_TTL) {
+    return cached.digest
+  }
+
+  const tag = imageName.substring(IMAGE_REPO.length + 1)
+  const token = await fetchDockerHubToken()
+  if (!token) return null
+
+  const digest = await fetchManifestDigest(tag, token)
+  if (!digest) return null
+
+  registryDigestCache.set(imageName, { digest, timestamp: Date.now() })
+  return digest
+}
+
+/**
+ * Clear cached registry digest (call after pulling a new image).
+ */
+export function clearRegistryDigestCache(imageName?: string): void {
+  if (imageName) {
+    registryDigestCache.delete(imageName)
+  } else {
+    registryDigestCache.clear()
   }
 }

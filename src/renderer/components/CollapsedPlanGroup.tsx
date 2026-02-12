@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Folder, Loader2 } from 'lucide-react'
 import type { Agent, Plan, PlanStatus } from '@/shared/types'
 
@@ -13,7 +14,7 @@ function isActivePlanStatus(status: PlanStatus): boolean {
   return status === 'delegating' || status === 'in_progress'
 }
 
-export function CollapsedPlanGroup({
+export const CollapsedPlanGroup = memo(function CollapsedPlanGroup({
   plan,
   agents,
   waitingQueue,
@@ -29,7 +30,7 @@ export function CollapsedPlanGroup({
   return (
     <button
       onClick={onExpandSidebar}
-      className={`relative p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer bg-accent/50 ${
+      className={`relative p-1.5 rounded-md hover:brightness-110 transition-[box-shadow,filter] duration-150 cursor-pointer bg-accent/50 ${
         waitingCount > 0 ? 'ring-2 ring-yellow-500' : ''
       }`}
       title={`${plan.title} (${agents.length} agents)`}
@@ -49,4 +50,4 @@ export function CollapsedPlanGroup({
       </span>
     </button>
   )
-}
+})
