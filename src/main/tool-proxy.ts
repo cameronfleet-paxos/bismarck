@@ -11,6 +11,7 @@
  * - Easy to add rate limiting or approval flows later
  */
 
+import * as crypto from 'crypto'
 import * as http from 'http'
 import * as net from 'net'
 import * as path from 'path'
@@ -88,6 +89,7 @@ export const proxyEvents = new EventEmitter()
 
 let server: http.Server | null = null
 let currentConfig: ToolProxyConfig = DEFAULT_CONFIG
+let proxyToken: string | null = null
 
 /**
  * Execute a command and return the result
@@ -487,22 +489,24 @@ async function handleRequest(
   const url = req.url || '/'
   const method = req.method || 'GET'
 
-  // CORS headers for container access
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-
-  // Handle preflight
-  if (method === 'OPTIONS') {
-    res.writeHead(204)
-    res.end()
+  // Health check is exempt from auth (reveals nothing sensitive)
+  if (url === '/health' && method === 'GET') {
+    handleHealthCheck(res)
     return
   }
 
+  // Verify bearer token on all other endpoints
+  if (proxyToken) {
+    const authHeader = req.headers['authorization']
+    if (!authHeader || authHeader !== `Bearer ${proxyToken}`) {
+      logger.warn('proxy', 'Rejected request with invalid/missing auth token', undefined, { url, method })
+      sendJson(res, 401, { success: false, error: 'Unauthorized' })
+      return
+    }
+  }
+
   // Route requests
-  if (url === '/health' && method === 'GET') {
-    handleHealthCheck(res)
-  } else if (url.startsWith('/gh') && method === 'POST') {
+  if (url.startsWith('/gh') && method === 'POST') {
     const subpath = url.substring(3) // Remove '/gh' prefix
     await handleGhRequest(req, res, subpath || '/')
   } else if (url.startsWith('/bd') && method === 'POST') {
@@ -534,6 +538,9 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     git: { enabled: proxiedTools.find(t => t.name === 'git')?.enabled ?? true },
     bb: { enabled: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false },
   }
+
+  // Generate per-session auth token
+  proxyToken = crypto.randomBytes(32).toString('hex')
 
   // Find available port if not explicitly specified
   const port = config.port ?? (await findAvailablePort())
@@ -584,6 +591,7 @@ export function stopToolProxy(): Promise<void> {
     server.close(() => {
       logger.info('proxy', 'Server stopped')
       server = null
+      proxyToken = null
       proxyEvents.emit('stopped')
       resolve()
     })
@@ -595,6 +603,13 @@ export function stopToolProxy(): Promise<void> {
  */
 export function getProxyUrl(): string {
   return `http://host.docker.internal:${currentConfig.port}`
+}
+
+/**
+ * Get the current proxy auth token (for passing to containers)
+ */
+export function getProxyToken(): string | null {
+  return proxyToken
 }
 
 /**

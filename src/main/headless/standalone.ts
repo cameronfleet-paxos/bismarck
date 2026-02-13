@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { devLog } from './dev-log'
+import { devLog } from '../dev-log'
 import {
   getStandaloneHeadlessDir,
   getStandaloneHeadlessAgentInfoPath,
@@ -22,10 +22,10 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
-} from './config'
-import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
-import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from './state-manager'
-import { getSelectedDockerImage, loadSettings } from './settings-manager'
+} from '../config'
+import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
+import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from '../state-manager'
+import { getSelectedDockerImage, loadSettings } from '../settings-manager'
 import {
   getMainRepoRoot,
   getDefaultBranch,
@@ -33,14 +33,14 @@ import {
   removeWorktree,
   deleteLocalBranch,
   getCommitsBetween,
-} from './git-utils'
-import { startToolProxy, isProxyRunning } from './tool-proxy'
-import { getRepositoryById, getRepositoryByPath } from './repository-manager'
-import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../shared/types'
-import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from './prompt-templates'
-import { runPlanPhase, wrapPromptWithPlan } from './plan-phase'
-import { queueTerminalCreation } from './terminal-queue'
-import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from './terminal'
+} from '../git-utils'
+import { startToolProxy, isProxyRunning } from '../tool-proxy'
+import { getRepositoryById, getRepositoryByPath } from '../repository-manager'
+import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../../shared/types'
+import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from '../prompt-templates'
+import { runPlanPhase, wrapPromptWithPlan } from '../plan-phase'
+import { queueTerminalCreation } from '../terminal-queue'
+import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
 import * as fsPromises from 'fs/promises'
 
 // Word lists for fun random names
@@ -149,7 +149,7 @@ function emitHeadlessAgentEvent(headlessId: string, event: StreamEvent): void {
 function emitStateUpdate(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Import here to avoid circular dependency
-    const { getState } = require('./state-manager')
+    const { getState } = require('../state-manager')
     mainWindow.webContents.send('state-update', getState())
   }
 }
@@ -564,6 +564,19 @@ export async function stopStandaloneHeadlessAgent(headlessId: string): Promise<v
 }
 
 /**
+ * Send a nudge message to a running standalone headless agent.
+ * Returns true if the nudge was sent successfully.
+ */
+export function nudgeStandaloneHeadlessAgent(headlessId: string, message: string): boolean {
+  const agent = standaloneHeadlessAgents.get(headlessId)
+  if (!agent) {
+    devLog('[StandaloneHeadless] nudge: agent not found:', headlessId)
+    return false
+  }
+  return agent.nudge(message)
+}
+
+/**
  * Initialize standalone headless module - load persisted agent info
  * Mark any agents that were running when the app closed as interrupted
  */
@@ -705,8 +718,9 @@ export async function restartStandaloneHeadlessAgent(
 export async function startFollowUpAgent(
   headlessId: string,
   prompt: string,
-  model?: 'opus' | 'sonnet'
-): Promise<{ headlessId: string; workspaceId: string }> {
+  model?: 'opus' | 'sonnet',
+  startOptions?: { skipPlanPhase?: boolean }
+): Promise<{ headlessId: string; workspaceId: string; tabId: string }> {
   const existingInfo = standaloneHeadlessAgentInfo.get(headlessId)
   if (!existingInfo?.worktreeInfo) {
     throw new Error(`No worktree info for agent ${headlessId}`)
@@ -770,17 +784,11 @@ export async function startFollowUpAgent(
   // Save the workspace
   saveWorkspace(newAgent)
 
-  // Clean up old workspace so its grid slot is freed
-  let preferredTabId: string | undefined
-  if (existingWorkspace) {
-    const oldTab = getTabForWorkspace(existingWorkspace.id)
-    preferredTabId = oldTab?.id
-    removeActiveWorkspace(existingWorkspace.id)
-    removeWorkspaceFromTab(existingWorkspace.id)
-    deleteWorkspace(existingWorkspace.id)
-  }
-
-  // Place new agent in the same tab/slot as old workspace (or next available)
+  // Keep original workspace visible so users can reference its terminal output.
+  // Place follow-up in the same tab if there's room, otherwise next available slot.
+  const preferredTabId = existingWorkspace
+    ? getTabForWorkspace(existingWorkspace.id)?.id
+    : undefined
   const tab = getOrCreateTabForWorkspaceWithPreference(workspaceId, preferredTabId)
   addWorkspaceToTab(workspaceId, tab.id)
   setActiveTab(tab.id)
@@ -802,8 +810,7 @@ export async function startFollowUpAgent(
   }
   standaloneHeadlessAgentInfo.set(newHeadlessId, agentInfo)
 
-  // Remove old agent info (worktree is now owned by new agent)
-  standaloneHeadlessAgentInfo.delete(headlessId)
+  // Keep old agent info so its terminal output remains accessible
 
   // Emit initial state
   emitHeadlessAgentUpdate(agentInfo)
@@ -866,44 +873,46 @@ export async function startFollowUpAgent(
   const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
   const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
 
-  // Run plan phase before execution
-  agentInfo.status = 'planning'
-  emitHeadlessAgentUpdate(agentInfo)
-
-  const followUpPlanOutputDir = path.join(getStandaloneHeadlessDir(), newHeadlessId)
-  const planResult = await runPlanPhase({
-    taskDescription: prompt,
-    worktreePath,
-    image: selectedImage,
-    planDir: getStandaloneHeadlessDir(),
-    planId: repoPath,
-    guidance: repository?.guidance,
-    sharedCacheDir,
-    sharedModCacheDir,
-    planOutputDir: followUpPlanOutputDir,
-    enabled: true,
-    onEvent: (event) => {
-      emitHeadlessAgentEvent(newHeadlessId, event)
-    },
-  })
-
   let executionPrompt = enhancedPrompt
-  if (planResult.success && planResult.plan) {
-    executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
-    agentInfo.planText = planResult.plan
-    emitHeadlessAgentEvent(newHeadlessId, {
-      type: 'system',
-      message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
-      timestamp: new Date().toISOString(),
-    } as StreamEvent)
-    devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
-  } else {
-    emitHeadlessAgentEvent(newHeadlessId, {
-      type: 'system',
-      message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
-      timestamp: new Date().toISOString(),
-    } as StreamEvent)
-    devLog(`[StandaloneHeadless] Follow-up plan phase failed, proceeding with original prompt`, { error: planResult.error })
+  if (!startOptions?.skipPlanPhase) {
+    // Run plan phase before execution
+    agentInfo.status = 'planning'
+    emitHeadlessAgentUpdate(agentInfo)
+
+    const followUpPlanOutputDir = path.join(getStandaloneHeadlessDir(), newHeadlessId)
+    const planResult = await runPlanPhase({
+      taskDescription: prompt,
+      worktreePath,
+      image: selectedImage,
+      planDir: getStandaloneHeadlessDir(),
+      planId: repoPath,
+      guidance: repository?.guidance,
+      sharedCacheDir,
+      sharedModCacheDir,
+      planOutputDir: followUpPlanOutputDir,
+      enabled: true,
+      onEvent: (event) => {
+        emitHeadlessAgentEvent(newHeadlessId, event)
+      },
+    })
+
+    if (planResult.success && planResult.plan) {
+      executionPrompt = wrapPromptWithPlan(enhancedPrompt, planResult.plan)
+      agentInfo.planText = planResult.plan
+      emitHeadlessAgentEvent(newHeadlessId, {
+        type: 'system',
+        message: `Plan phase completed (${(planResult.durationMs / 1000).toFixed(1)}s)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Follow-up plan phase succeeded (${planResult.durationMs}ms), injecting plan`)
+    } else {
+      emitHeadlessAgentEvent(newHeadlessId, {
+        type: 'system',
+        message: `⚠️ Plan phase failed${planResult.error ? `: ${planResult.error}` : ''} — proceeding with original prompt (no plan)`,
+        timestamp: new Date().toISOString(),
+      } as StreamEvent)
+      devLog(`[StandaloneHeadless] Follow-up plan phase failed, proceeding with original prompt`, { error: planResult.error })
+    }
   }
 
   // Store the full resolved prompt (for Eye modal display)
@@ -939,7 +948,7 @@ export async function startFollowUpAgent(
     throw error
   }
 
-  return { headlessId: newHeadlessId, workspaceId }
+  return { headlessId: newHeadlessId, workspaceId, tabId: tab.id }
 }
 
 /**
@@ -955,6 +964,26 @@ interface HeadlessDiscussionState {
 }
 
 const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map()
+
+/**
+ * Get terminal IDs of active headless discussions (including Ralph loop discussions).
+ * Used to exclude these terminals from cleanup when the window closes,
+ * so that discussions can complete and spawn headless agents.
+ */
+export function getActiveDiscussionTerminalIds(): Set<string> {
+  const ids = new Set<string>()
+  for (const state of activeHeadlessDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  for (const state of activeRalphLoopDiscussions.values()) {
+    if (state.terminalId) {
+      ids.add(state.terminalId)
+    }
+  }
+  return ids
+}
 
 /**
  * Start a headless discussion session

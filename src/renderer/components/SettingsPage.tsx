@@ -63,7 +63,7 @@ const sidebarItems: SidebarItem[] = [
   },
   {
     id: 'plans',
-    label: 'Plans & Prompts',
+    label: 'Teams & Prompts',
     description: 'Agent model and custom prompts',
   },
   {

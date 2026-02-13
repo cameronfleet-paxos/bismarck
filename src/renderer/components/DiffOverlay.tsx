@@ -81,11 +81,17 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape: Close overlay
+      // Escape: Close overlay (always works, even from inputs)
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
         onClose()
+        return
+      }
+
+      // Don't intercept keys when user is typing in an input field
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) {
         return
       }
 
@@ -130,15 +136,6 @@ export function DiffOverlay({ directory, onClose }: DiffOverlayProps) {
         return
       }
 
-      // n/p: Jump to next/prev change within file
-      // TODO: Implement once DiffViewer exposes a navigation API
-      // For now, these are reserved but not functional
-      if ((e.key === 'n' || e.key === 'p') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        e.preventDefault()
-        e.stopPropagation()
-        // Future: currentDiff?.scrollToNextChange() / scrollToPrevChange()
-        return
-      }
     }
 
     window.addEventListener('keydown', handleKeyDown, { capture: true })

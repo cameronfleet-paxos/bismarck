@@ -1,7 +1,7 @@
 import type { AgentIconName } from './constants'
 
 // Customizable prompt types (available in settings)
-export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic'
+export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic' | 'manager' | 'architect'
 
 // All prompt types (including internal/non-customizable prompts)
 export type PromptType = CustomizablePromptType | 'ralph_loop_discussion' | 'plan_phase'
@@ -15,6 +15,9 @@ export interface CustomPrompt {
   template: string
   isCustom: boolean
 }
+
+// Team mode for plan execution
+export type TeamMode = 'top-down' | 'bottom-up'
 
 // Branch strategy for plan execution
 export type BranchStrategy = 'feature_branch' | 'raise_prs'
@@ -96,6 +99,16 @@ export interface AgentTab {
   workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
+  isTerminalTab?: boolean // Tab dedicated to a plain terminal (no Claude agent)
+}
+
+// Plain terminal session info (non-agent terminal)
+export interface PlainTerminal {
+  id: string           // e.g., "plain-terminal-1234567890"
+  terminalId: string   // PTY terminal ID
+  tabId: string        // Tab this terminal is in
+  name: string         // Display name (e.g., "Terminal 1")
+  directory: string    // Working directory
 }
 
 // Attention mode determines how waiting agents are displayed
@@ -197,6 +210,8 @@ export interface AppState {
   activePlanId?: string | null
   // Tutorial state
   tutorialState?: TutorialState
+  // Plain terminals (non-agent shell sessions)
+  plainTerminals?: PlainTerminal[]
 }
 
 // Theme presets
@@ -316,6 +331,9 @@ export interface Plan {
   // Worktree tracking for new plan execution model
   worktrees?: PlanWorktree[]
   maxParallelAgents?: number    // Default: 4
+
+  // Team mode configuration
+  teamMode?: TeamMode              // 'top-down' (default) or 'bottom-up'
 
   // Branch/PR strategy configuration
   branchStrategy: BranchStrategy   // How task agents handle git operations
@@ -451,6 +469,14 @@ export interface StreamResultEvent extends StreamEventBase {
   num_turns?: number
 }
 
+// Nudge event (user sent a message to a running agent)
+// This is a client-side synthetic event injected by the renderer, not from the stream parser.
+export interface StreamNudgeEvent extends StreamEventBase {
+  type: 'nudge'
+  content: string
+  [key: string]: unknown
+}
+
 // Union of all stream event types
 export type StreamEvent =
   | StreamInitEvent
@@ -458,6 +484,7 @@ export type StreamEvent =
   | StreamToolUseEvent
   | StreamToolResultEvent
   | StreamResultEvent
+  | StreamNudgeEvent
   | (StreamEventBase & Record<string, unknown>)  // Fallback for unknown events
 
 // ============================================
@@ -487,7 +514,7 @@ export interface HeadlessAgentInfo {
   userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
   planText?: string  // Plan generated during planning phase (for Eye modal display)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
-  agentType?: 'task' | 'critic' | 'merge'  // Type of headless agent (default: task)
+  agentType?: 'task' | 'critic' | 'merge' | 'manager' | 'architect'  // Type of headless agent (default: task)
 }
 
 // Extended Agent type to support both execution modes
@@ -501,6 +528,7 @@ export interface SpawningHeadlessInfo {
   id: string                  // Temporary ID like "spawning-1234567890"
   referenceAgentId: string    // The agent used as reference
   tabId: string               // Which tab to show the placeholder in
+  position: number            // Grid slot index within the tab
   prompt: string              // Prompt being executed
   model: 'opus' | 'sonnet'    // Model being used
   startedAt: number           // Timestamp for display purposes
@@ -621,6 +649,8 @@ export interface ClaudeOAuthTokenStatus {
 export interface DockerImageStatus {
   available: boolean
   imageName: string
+  version?: string   // from org.opencontainers.image.version label
+  digest?: string    // registry digest (sha256:...)
 }
 
 // Collection of all plan mode dependencies

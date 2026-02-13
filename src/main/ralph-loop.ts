@@ -29,7 +29,7 @@ import {
   getRepoCacheDir,
   getRepoModCacheDir,
 } from './config'
-import { HeadlessAgent, HeadlessAgentOptions } from './headless-agent'
+import { HeadlessAgent, HeadlessAgentOptions } from './headless'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
 import { getSelectedDockerImage, loadSettings } from './settings-manager'
 import { buildProxiedToolsSection } from './prompt-templates'

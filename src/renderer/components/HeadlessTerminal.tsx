@@ -116,6 +116,7 @@ interface HeadlessTerminalProps {
   onConfirmDone?: () => void       // Called when user clicks "Confirm Done"
   onStartFollowUp?: () => void     // Called when user clicks "Start Follow-up"
   onRestart?: () => void           // Called when user clicks "Restart" (for interrupted agents)
+  onNudge?: (message: string) => void  // Called when user sends a nudge message
   isConfirmingDone?: boolean       // Loading state for "Confirm Done" button
   isStartingFollowUp?: boolean     // Loading state for "Start Follow-up" button
   isRestarting?: boolean           // Loading state for "Restart" button
@@ -280,6 +281,7 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
   onConfirmDone,
   onStartFollowUp,
   onRestart,
+  onNudge,
   isConfirmingDone = false,
   isStartingFollowUp = false,
   isRestarting = false,
@@ -290,6 +292,9 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<Range[]>([])
   const [prDropdownOpen, setPrDropdownOpen] = useState(false)
+  const [nudgeText, setNudgeText] = useState('')
+  const [nudgeSending, setNudgeSending] = useState(false)
+  const nudgeInputRef = useRef<HTMLInputElement>(null)
   const prDropdownRef = useRef<HTMLSpanElement>(null)
   const lastQueryRef = useRef<string>('')
   const themeColors = themes[theme]
@@ -548,7 +553,7 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
   // Group events for rendering (tool_use + tool_result pairs)
   const groupedEvents = useMemo(() => {
     const groups: Array<{
-      type: 'message' | 'tool' | 'result' | 'system'
+      type: 'message' | 'tool' | 'result' | 'system' | 'nudge'
       events: StreamEvent[]
       toolId?: string
       // For tool groups extracted from assistant events, store the tool info directly
@@ -657,6 +662,15 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
             currentMessageGroup = []
           }
           groups.push({ type: 'result', events: [event] })
+          break
+
+        case 'nudge':
+          // Flush any pending message group
+          if (currentMessageGroup.length > 0) {
+            groups.push({ type: 'message', events: [...currentMessageGroup] })
+            currentMessageGroup = []
+          }
+          groups.push({ type: 'nudge', events: [event] })
           break
 
         case 'init':
@@ -935,6 +949,24 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
     )
   }
 
+  // Render nudge event (user message sent to running agent)
+  const renderNudge = (events: StreamEvent[], key: number) => {
+    const event = events[0] as { content?: string }
+    const content = event.content || ''
+
+    return (
+      <div key={key} className="mb-4">
+        <div className="flex gap-2 font-mono text-sm leading-relaxed">
+          <span className="text-orange-400 flex-shrink-0">&gt;</span>
+          <div className="text-orange-400">
+            <span className="font-semibold">Nudge:</span>{' '}
+            <span className="text-orange-300">{content}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Status indicator
   const getStatusIndicator = () => {
     const handleOpenPR = () => {
@@ -1172,6 +1204,8 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
               return renderToolGroup(group.events, group.toolId!, idx)
             case 'result':
               return renderResult(group.events, idx)
+            case 'nudge':
+              return renderNudge(group.events, idx)
             case 'system':
               return renderSystem(group.events, idx)
             default:
@@ -1195,6 +1229,43 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
           </div>
         )}
       </div>
+
+      {/* Nudge input bar - visible when agent is running */}
+      {onNudge && (status === 'running' || status === 'starting') && (
+        <div className="flex-shrink-0 border-t border-white/10 px-3 py-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const msg = nudgeText.trim()
+              if (!msg || nudgeSending) return
+              setNudgeSending(true)
+              onNudge(msg)
+              setNudgeText('')
+              // Brief visual feedback
+              setTimeout(() => setNudgeSending(false), 300)
+            }}
+            className="flex items-center gap-2"
+          >
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Nudge:</span>
+            <input
+              ref={nudgeInputRef}
+              type="text"
+              value={nudgeText}
+              onChange={(e) => setNudgeText(e.target.value)}
+              placeholder="Send a message to the running agent..."
+              disabled={nudgeSending}
+              className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-white/30 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!nudgeText.trim() || nudgeSending}
+              className="px-2 py-1 text-xs font-medium rounded bg-orange-600/80 hover:bg-orange-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {nudgeSending ? '...' : 'Send'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Search overlay */}
       <TerminalSearch
