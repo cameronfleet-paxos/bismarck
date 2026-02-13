@@ -370,6 +370,17 @@ export class HeadlessAgent extends EventEmitter {
         duration_ms: resultEvent.duration_ms || Date.now() - this.startTime,
       }
       this.emit('result_event', result)
+
+      // In stream-json mode, the container stays alive waiting for more stdin input.
+      // Close stdin so the container can exit gracefully.
+      if (this.useStreamJsonInput && this.container?.stdin) {
+        logger.info('agent', 'Closing stdin after result event (stream-json mode)', this.getLogContext())
+        try {
+          this.container.stdin.end()
+        } catch (err) {
+          logger.debug('agent', 'Error closing stdin', this.getLogContext(), { error: String(err) })
+        }
+      }
     })
   }
 

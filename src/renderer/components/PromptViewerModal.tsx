@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   Dialog,
@@ -7,14 +7,14 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog'
 import { Button } from '@/renderer/components/ui/button'
-import type { HeadlessAgentInfo } from '@/shared/types'
+import type { HeadlessAgentInfo, StreamNudgeEvent } from '@/shared/types'
 
 interface PromptViewerModalProps {
   info: HeadlessAgentInfo | null
   onClose: () => void
 }
 
-type ViewMode = 'user' | 'plan' | 'full'
+type ViewMode = 'user' | 'plan' | 'full' | 'nudges'
 
 export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
   const [copied, setCopied] = useState(false)
@@ -25,13 +25,26 @@ export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
   const fullPrompt = info?.originalPrompt
   const hasFullPrompt = fullPrompt && fullPrompt !== userPrompt
 
+  // Extract nudge events from the agent's event stream
+  const nudges = useMemo(() => {
+    if (!info?.events) return []
+    return info.events.filter((e): e is StreamNudgeEvent => e.type === 'nudge')
+  }, [info?.events])
+
   const displayedPrompt = viewMode === 'full' ? fullPrompt
     : viewMode === 'plan' ? planText
+    : viewMode === 'nudges' ? null
     : userPrompt
 
   const handleCopy = async () => {
-    if (!displayedPrompt) return
-    await navigator.clipboard.writeText(displayedPrompt)
+    if (viewMode === 'nudges') {
+      const text = nudges.map((n, i) => `[${new Date(n.timestamp).toLocaleTimeString()}] ${n.content}`).join('\n')
+      if (!text) return
+      await navigator.clipboard.writeText(text)
+    } else {
+      if (!displayedPrompt) return
+      await navigator.clipboard.writeText(displayedPrompt)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -63,11 +76,31 @@ export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
           </DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-auto min-h-0">
-          <pre className="text-sm font-mono whitespace-pre-wrap break-words bg-muted/50 p-4 rounded-md">
-            {displayedPrompt || 'No prompt available'}
-          </pre>
+          {viewMode === 'nudges' ? (
+            nudges.length > 0 ? (
+              <div className="space-y-2 p-4 bg-muted/50 rounded-md">
+                {nudges.map((nudge, i) => (
+                  <div key={i} className="flex gap-2 font-mono text-sm">
+                    <span className="text-muted-foreground flex-shrink-0">
+                      {new Date(nudge.timestamp).toLocaleTimeString()}
+                    </span>
+                    <span className="text-orange-400">&gt;</span>
+                    <span className="text-orange-300">{nudge.content}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-md">
+                No nudges sent to this agent
+              </div>
+            )
+          ) : (
+            <pre className="text-sm font-mono whitespace-pre-wrap break-words bg-muted/50 p-4 rounded-md">
+              {displayedPrompt || 'No prompt available'}
+            </pre>
+          )}
         </div>
-        {(planText || hasFullPrompt) && (
+        {(planText || hasFullPrompt || nudges.length > 0) && (
           <div className="pt-2 border-t flex gap-1">
             <Button
               size="sm"
@@ -95,6 +128,16 @@ export function PromptViewerModal({ info, onClose }: PromptViewerModalProps) {
                 className="text-muted-foreground"
               >
                 Full Prompt
+              </Button>
+            )}
+            {nudges.length > 0 && (
+              <Button
+                size="sm"
+                variant={viewMode === 'nudges' ? 'secondary' : 'ghost'}
+                onClick={() => setViewMode('nudges')}
+                className="text-muted-foreground"
+              >
+                Nudges ({nudges.length})
               </Button>
             )}
           </div>

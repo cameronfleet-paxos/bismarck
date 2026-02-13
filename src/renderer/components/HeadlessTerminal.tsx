@@ -553,7 +553,7 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
   // Group events for rendering (tool_use + tool_result pairs)
   const groupedEvents = useMemo(() => {
     const groups: Array<{
-      type: 'message' | 'tool' | 'result' | 'system'
+      type: 'message' | 'tool' | 'result' | 'system' | 'nudge'
       events: StreamEvent[]
       toolId?: string
       // For tool groups extracted from assistant events, store the tool info directly
@@ -662,6 +662,15 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
             currentMessageGroup = []
           }
           groups.push({ type: 'result', events: [event] })
+          break
+
+        case 'nudge':
+          // Flush any pending message group
+          if (currentMessageGroup.length > 0) {
+            groups.push({ type: 'message', events: [...currentMessageGroup] })
+            currentMessageGroup = []
+          }
+          groups.push({ type: 'nudge', events: [event] })
           break
 
         case 'init':
@@ -940,6 +949,24 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
     )
   }
 
+  // Render nudge event (user message sent to running agent)
+  const renderNudge = (events: StreamEvent[], key: number) => {
+    const event = events[0] as { content?: string }
+    const content = event.content || ''
+
+    return (
+      <div key={key} className="mb-4">
+        <div className="flex gap-2 font-mono text-sm leading-relaxed">
+          <span className="text-orange-400 flex-shrink-0">&gt;</span>
+          <div className="text-orange-400">
+            <span className="font-semibold">Nudge:</span>{' '}
+            <span className="text-orange-300">{content}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Status indicator
   const getStatusIndicator = () => {
     const handleOpenPR = () => {
@@ -1177,6 +1204,8 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
               return renderToolGroup(group.events, group.toolId!, idx)
             case 'result':
               return renderResult(group.events, idx)
+            case 'nudge':
+              return renderNudge(group.events, idx)
             case 'system':
               return renderSystem(group.events, idx)
             default:
