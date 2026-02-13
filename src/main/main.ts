@@ -236,6 +236,24 @@ import {
 import { isGitRepo } from './git-utils'
 import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType, TeamMode } from '../shared/types'
 import type { AppSettings } from './settings-manager'
+import {
+  loadAllCronJobs,
+  loadCronJob,
+  createCronJob,
+  updateCronJob as updateCronJobFn,
+  deleteCronJob,
+  getCronJobRuns,
+} from './cron-job-manager'
+import {
+  initCronScheduler,
+  shutdownCronScheduler,
+  setMainWindowForCronScheduler,
+  handleCronJobUpdate,
+  handleCronJobDelete,
+  runCronJobNow,
+  getNextRunTimeForExpression,
+  validateCronExpression,
+} from './cron-scheduler'
 
 // Generate unique instance ID for socket isolation
 const instanceId = randomUUID()
@@ -310,6 +328,7 @@ function createWindow() {
   setQueueMainWindow(mainWindow)
   setMainWindowForStandaloneHeadless(mainWindow)
   setMainWindowForRalphLoop(mainWindow)
+  setMainWindowForCronScheduler(mainWindow)
   setAutoUpdaterWindow(mainWindow)
   setAuthCheckerWindow(mainWindow)
 
@@ -1419,6 +1438,54 @@ function registerIpcHandlers() {
   ipcMain.on('benchmark-milestone', (_, { name }) => {
     recordRendererMilestone(name)
   })
+
+  // Cron Job Automations
+  ipcMain.handle('get-cron-jobs', async () => {
+    return loadAllCronJobs()
+  })
+
+  ipcMain.handle('get-cron-job', async (_event, id: string) => {
+    return loadCronJob(id)
+  })
+
+  ipcMain.handle('create-cron-job', async (_event, data: { name: string; schedule: string; enabled: boolean; workflowGraph: import('../shared/cron-types').WorkflowGraph }) => {
+    const job = createCronJob(data)
+    handleCronJobUpdate(job.id)
+    return job
+  })
+
+  ipcMain.handle('update-cron-job', async (_event, id: string, updates: Partial<import('../shared/cron-types').CronJob>) => {
+    const job = updateCronJobFn(id, updates)
+    if (job) handleCronJobUpdate(job.id)
+    return job
+  })
+
+  ipcMain.handle('delete-cron-job', async (_event, id: string) => {
+    handleCronJobDelete(id)
+    return deleteCronJob(id)
+  })
+
+  ipcMain.handle('toggle-cron-job-enabled', async (_event, id: string, enabled: boolean) => {
+    const job = updateCronJobFn(id, { enabled })
+    if (job) handleCronJobUpdate(job.id)
+    return job
+  })
+
+  ipcMain.handle('run-cron-job-now', async (_event, id: string) => {
+    await runCronJobNow(id)
+  })
+
+  ipcMain.handle('get-cron-job-runs', async (_event, cronJobId: string) => {
+    return getCronJobRuns(cronJobId)
+  })
+
+  ipcMain.handle('get-next-cron-run-time', async (_event, cronExpression: string) => {
+    return getNextRunTimeForExpression(cronExpression)
+  })
+
+  ipcMain.handle('validate-cron-expression', async (_event, cron: string) => {
+    return validateCronExpression(cron)
+  })
 }
 
 app.whenReady().then(async () => {
@@ -1441,6 +1508,9 @@ app.whenReady().then(async () => {
 
   // Initialize Ralph Loop module
   timeSync('main:initRalphLoop', 'main', () => initRalphLoop())
+
+  // Initialize Cron Job Scheduler
+  await timeAsync('main:initCronScheduler', 'main', () => initCronScheduler())
 
   // Initialize power save blocker
   // Acquire/release is driven entirely by status change callbacks from each module —
@@ -1567,6 +1637,7 @@ app.on('before-quit', async () => {
   closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
   closeAllSocketServers()
   cleanupPowerSave()
+  await shutdownCronScheduler()
   await cleanupPlanManager()
   await cleanupDevHarness()
   destroyTray()

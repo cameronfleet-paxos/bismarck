@@ -540,6 +540,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('update-tray', count)
   },
 
+  // Cron Job Automations
+  getCronJobs: (): Promise<import('../shared/cron-types').CronJob[]> =>
+    ipcRenderer.invoke('get-cron-jobs'),
+  getCronJob: (id: string): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('get-cron-job', id),
+  createCronJob: (data: { name: string; schedule: string; enabled: boolean; workflowGraph: import('../shared/cron-types').WorkflowGraph }): Promise<import('../shared/cron-types').CronJob> =>
+    ipcRenderer.invoke('create-cron-job', data),
+  updateCronJob: (id: string, updates: Partial<import('../shared/cron-types').CronJob>): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('update-cron-job', id, updates),
+  deleteCronJob: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-cron-job', id),
+  toggleCronJobEnabled: (id: string, enabled: boolean): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('toggle-cron-job-enabled', id, enabled),
+  runCronJobNow: (id: string): Promise<void> =>
+    ipcRenderer.invoke('run-cron-job-now', id),
+  getCronJobRuns: (cronJobId: string): Promise<import('../shared/cron-types').CronJobRun[]> =>
+    ipcRenderer.invoke('get-cron-job-runs', cronJobId),
+  getNextCronRunTime: (cronExpression: string): Promise<string | null> =>
+    ipcRenderer.invoke('get-next-cron-run-time', cronExpression),
+  validateCronExpression: (cron: string): Promise<boolean> =>
+    ipcRenderer.invoke('validate-cron-expression', cron),
+
+  // Cron Job events
+  onCronJobStarted: (callback: (data: { jobId: string; runId: string }) => void): void => {
+    ipcRenderer.removeAllListeners('cron-job-started')
+    ipcRenderer.on('cron-job-started', (_event, data) => callback(data))
+  },
+  onCronJobCompleted: (callback: (data: { jobId: string; runId: string; status: string }) => void): void => {
+    ipcRenderer.removeAllListeners('cron-job-completed')
+    ipcRenderer.on('cron-job-completed', (_event, data) => callback(data))
+  },
+  onCronJobNodeUpdate: (callback: (data: { jobId: string; runId: string; nodeId: string; status: string }) => void): void => {
+    ipcRenderer.removeAllListeners('cron-job-node-update')
+    ipcRenderer.on('cron-job-node-update', (_event, data) => callback(data))
+  },
+  removeCronJobListeners: (): void => {
+    ipcRenderer.removeAllListeners('cron-job-started')
+    ipcRenderer.removeAllListeners('cron-job-completed')
+    ipcRenderer.removeAllListeners('cron-job-node-update')
+  },
+
   // Startup benchmark timing (for renderer → main communication)
   sendBenchmarkTiming: (label: string, phase: string, startMs: number, durationMs: number): void => {
     ipcRenderer.send('benchmark-timing', { label, phase, startMs, durationMs })
@@ -578,6 +619,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('base-image-updated')
     ipcRenderer.removeAllListeners('tool-auth-status')
     ipcRenderer.removeAllListeners('debug-log-lines')
+    ipcRenderer.removeAllListeners('cron-job-started')
+    ipcRenderer.removeAllListeners('cron-job-completed')
+    ipcRenderer.removeAllListeners('cron-job-node-update')
   },
 
   // Dev test harness (development mode only)

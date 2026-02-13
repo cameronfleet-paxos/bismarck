@@ -4309,6 +4309,10 @@ function App() {
         onStartPlan={() => setPlanCreatorOpen(true)}
         onOpenTerminal={handleOpenTerminal}
         onStartRalphLoop={handleStartRalphLoop}
+        onOpenCronAutomation={() => {
+          setSettingsInitialSection('cron-jobs')
+          setCurrentView('settings')
+        }}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 

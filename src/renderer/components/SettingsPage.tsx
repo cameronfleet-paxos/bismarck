@@ -16,8 +16,9 @@ import { RalphLoopPresetsSettings } from '@/renderer/components/settings/section
 import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
 import { RepositoriesSettings } from '@/renderer/components/settings/sections/RepositoriesSettings'
 import { LanguagesSettings } from '@/renderer/components/settings/sections/LanguagesSettings'
+import { CronJobsSettings } from '@/renderer/components/settings/sections/CronJobsSettings'
 
-type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'languages' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'repositories' | 'playbox' | 'advanced'
+type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'languages' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'cron-jobs' | 'repositories' | 'playbox' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -70,6 +71,11 @@ const sidebarItems: SidebarItem[] = [
     id: 'ralph-presets',
     label: 'Ralph Loop Presets',
     description: 'Custom automation presets',
+  },
+  {
+    id: 'cron-jobs',
+    label: 'Cron Automations',
+    description: 'Scheduled workflows and tasks',
   },
   {
     id: 'repositories',
@@ -588,6 +594,13 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
           </div>
         )
 
+      case 'cron-jobs':
+        return (
+          <div className="bg-card border rounded-lg p-6">
+            <CronJobsSettings onSettingsChange={loadSettings} />
+          </div>
+        )
+
       case 'repositories':
         return (
           <div className="bg-card border rounded-lg p-6">
@@ -658,7 +671,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
 
         {/* Content area */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className={activeSection === 'repositories' || activeSection === 'languages' ? 'max-w-5xl' : 'max-w-3xl'}>{renderContent()}</div>
+          <div className={activeSection === 'repositories' || activeSection === 'languages' || activeSection === 'cron-jobs' ? 'max-w-5xl' : 'max-w-3xl'}>{renderContent()}</div>
         </main>
       </div>
     </div>
