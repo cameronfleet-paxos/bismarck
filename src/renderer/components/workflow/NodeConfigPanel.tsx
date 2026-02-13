@@ -6,6 +6,7 @@ import { Label } from '@/renderer/components/ui/label'
 import { Switch } from '@/renderer/components/ui/switch'
 import type { WorkflowNode, HeadlessAgentNodeData, RalphLoopNodeData, ShellCommandNodeData } from '@/shared/cron-types'
 import type { Agent } from '@/shared/types'
+import { RALPH_LOOP_PRESETS, type RalphLoopPreset } from '@/shared/ralph-loop-presets'
 
 interface NodeConfigPanelProps {
   node: WorkflowNode
@@ -34,7 +35,7 @@ export function NodeConfigPanel({ node, onDataChange, onLabelChange, onClose }: 
     node.type === 'ralph-loop' ? 'Ralph Loop' : 'Shell Command'
 
   return (
-    <div className="w-72 border rounded-lg bg-card p-4 space-y-4 overflow-y-auto">
+    <div className="w-96 border rounded-lg bg-card p-4 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold">Configure {title}</h4>
         <Button size="icon-xs" variant="ghost" onClick={onClose}>
@@ -110,7 +111,7 @@ function HeadlessAgentConfig({
           value={data.prompt}
           onChange={(e) => onChange({ ...data, prompt: e.target.value })}
           placeholder="Enter prompt for headless agent..."
-          className="w-full min-h-24 p-2 text-sm border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full min-h-40 p-2 text-sm border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -153,8 +154,62 @@ function RalphLoopConfig({
   agents: Agent[]
   onChange: (data: RalphLoopNodeData) => void
 }) {
+  const [customPresets, setCustomPresets] = useState<RalphLoopPreset[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.electronAPI.getRalphLoopPresets().then(setCustomPresets).catch(console.error)
+  }, [])
+
+  const builtInPresets = RALPH_LOOP_PRESETS.filter(p => p.id !== 'custom')
+
+  const handlePresetSelect = (preset: RalphLoopPreset) => {
+    setSelectedPresetId(preset.id)
+    onChange({
+      ...data,
+      prompt: preset.prompt,
+      completionPhrase: preset.completionPhrase,
+      maxIterations: preset.maxIterations,
+      model: preset.model,
+    })
+  }
+
   return (
     <>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Preset</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {builtInPresets.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => handlePresetSelect(preset)}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded ${
+                selectedPresetId === preset.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              }`}
+              title={preset.description}
+            >
+              {preset.label}
+            </button>
+          ))}
+          {customPresets.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => handlePresetSelect(preset)}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded border ${
+                selectedPresetId === preset.id
+                  ? 'bg-purple-600 text-white border-purple-600'
+                  : 'bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20'
+              }`}
+              title={preset.description}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-1.5">
         <Label className="text-xs">Reference Agent</Label>
         <select
@@ -173,9 +228,12 @@ function RalphLoopConfig({
         <Label className="text-xs">Prompt</Label>
         <textarea
           value={data.prompt}
-          onChange={(e) => onChange({ ...data, prompt: e.target.value })}
+          onChange={(e) => {
+            onChange({ ...data, prompt: e.target.value })
+            if (selectedPresetId) setSelectedPresetId(null)
+          }}
           placeholder="Enter prompt for Ralph Loop..."
-          className="w-full min-h-24 p-2 text-sm border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full min-h-40 p-2 text-sm border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 

@@ -459,6 +459,7 @@ export function CommandSearch({
           },
         })
         onOpenChange(false)
+        onOpenCronAutomation?.()
       } catch (error) {
         console.error('Failed to create cron job:', error)
       }
