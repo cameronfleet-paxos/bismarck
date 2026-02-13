@@ -1564,6 +1564,32 @@ function App() {
     }
   }
 
+  const handleNudgeAgent = async (taskId: string, message: string, isStandalone: boolean) => {
+    const success = await window.electronAPI?.nudgeHeadlessAgent?.(taskId, message, isStandalone)
+    if (success) {
+      // Inject a nudge event into the agent's event stream for display
+      const nudgeEvent = {
+        type: 'nudge' as const,
+        content: message,
+        timestamp: new Date().toISOString(),
+      }
+      // Find the agent by taskId and add the event (immutable update to avoid React StrictMode double-push)
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        for (const [key, info] of newMap) {
+          if (info.taskId === taskId || key === taskId) {
+            newMap.set(key, {
+              ...info,
+              events: [...info.events, nudgeEvent],
+            })
+            break
+          }
+        }
+        return newMap
+      })
+    }
+  }
+
   const handleStandaloneConfirmDone = async (headlessId: string) => {
     setConfirmingDoneIds(prev => new Set(prev).add(headlessId))
     try {
@@ -3215,6 +3241,7 @@ function App() {
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, false)}
                             />
                           </div>
                         </div>
@@ -3337,6 +3364,7 @@ function App() {
                               isStandalone={true}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, true)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -3823,6 +3851,7 @@ function App() {
                               isStandalone={true}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, true)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -4222,8 +4251,8 @@ function App() {
         </Dialog>
       )}
 
-      {/* Prompt Viewer Modal */}
-      <PromptViewerModal info={promptViewerInfo} onClose={() => setPromptViewerInfo(null)} />
+      {/* Prompt Viewer Modal - resolve live info from headlessAgents map for up-to-date events */}
+      <PromptViewerModal info={promptViewerInfo ? (headlessAgents.get(promptViewerInfo.taskId || promptViewerInfo.id) || promptViewerInfo) : null} onClose={() => setPromptViewerInfo(null)} />
 
       {/* Follow-up Modal */}
       <FollowUpModal

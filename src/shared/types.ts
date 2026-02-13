@@ -469,6 +469,14 @@ export interface StreamResultEvent extends StreamEventBase {
   num_turns?: number
 }
 
+// Nudge event (user sent a message to a running agent)
+// This is a client-side synthetic event injected by the renderer, not from the stream parser.
+export interface StreamNudgeEvent extends StreamEventBase {
+  type: 'nudge'
+  content: string
+  [key: string]: unknown
+}
+
 // Union of all stream event types
 export type StreamEvent =
   | StreamInitEvent
@@ -476,6 +484,7 @@ export type StreamEvent =
   | StreamToolUseEvent
   | StreamToolResultEvent
   | StreamResultEvent
+  | StreamNudgeEvent
   | (StreamEventBase & Record<string, unknown>)  // Fallback for unknown events
 
 // ============================================

@@ -110,6 +110,7 @@ export interface ElectronAPI {
   startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet' | 'haiku', tabId?: string, options?: { planPhase?: boolean }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
+  nudgeHeadlessAgent: (taskId: string, message: string, isStandalone: boolean) => Promise<boolean>
   standaloneHeadlessConfirmDone: (headlessId: string) => Promise<void>
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet' | 'haiku', options?: { planPhase?: boolean }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   standaloneHeadlessRestart: (headlessId: string, model: 'opus' | 'sonnet' | 'haiku') => Promise<{ headlessId: string; workspaceId: string }>

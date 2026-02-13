@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-standalone-headless-agents'),
   stopStandaloneHeadlessAgent: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
+  nudgeHeadlessAgent: (taskId: string, message: string, isStandalone: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('nudge-headless-agent', taskId, message, isStandalone),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet', options?: { planPhase?: boolean }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>

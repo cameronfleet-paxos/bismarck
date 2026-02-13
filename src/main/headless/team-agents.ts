@@ -433,6 +433,18 @@ export function setupBdCloseListener(): void {
 }
 
 /**
+ * Send a nudge message to a running team headless agent.
+ * Returns true if the nudge was sent successfully.
+ */
+export function nudgeHeadlessTaskAgent(taskId: string, message: string): boolean {
+  const agent = headlessAgents.get(taskId)
+  if (!agent) {
+    return false
+  }
+  return agent.nudge(message)
+}
+
+/**
  * Stop a headless task agent
  */
 export async function stopHeadlessTaskAgent(taskId: string): Promise<void> {
