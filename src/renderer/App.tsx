@@ -40,6 +40,9 @@ import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
+import { WorkflowViewerModal } from '@/renderer/components/WorkflowViewerModal'
+import type { NodeStatus } from '@/renderer/components/workflow/WorkflowStatusViewer'
+import type { WorkflowGraph } from '@/shared/cron-types'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
 import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
@@ -168,6 +171,16 @@ function App() {
   const [plainTerminals, setPlainTerminals] = useState<Map<string, PlainTerminal>>(new Map())
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null)
   const [editingTerminalName, setEditingTerminalName] = useState('')
+
+  // Cron workflow status viewer state
+  const [cronRunStatuses, setCronRunStatuses] = useState<Map<string, {
+    jobId: string
+    runId: string
+    workflowGraph: WorkflowGraph
+    nodeStatuses: Map<string, NodeStatus>
+    jobName: string
+  }>>(new Map())
+  const [workflowViewerTabId, setWorkflowViewerTabId] = useState<string | null>(null)
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -1293,6 +1306,66 @@ function App() {
         model: data.model,
       })
       setCommandSearchOpen(true)
+    })
+
+    // Cron job workflow status events
+    // Buffer for node updates that arrive before cron-job-started has been processed
+    const cronNodeUpdateBuffer: Array<{ jobId: string; runId: string; nodeId: string; status: string }> = []
+    const cronStartedRuns = new Set<string>() // Track which runIds have been fully initialized
+
+    window.electronAPI?.onCronJobStarted?.((data: { jobId: string; runId: string; tabId: string }) => {
+      devLog('[Renderer] Received cron-job-started', data)
+      // Fetch the workflow graph and initialize node statuses
+      window.electronAPI?.getCronJob(data.jobId).then((job) => {
+        if (job) {
+          const nodeStatuses = new Map<string, NodeStatus>()
+          for (const node of job.workflowGraph.nodes) {
+            nodeStatuses.set(node.id, 'pending')
+          }
+          // Apply any buffered node updates for this run
+          const buffered = cronNodeUpdateBuffer.filter(u => u.runId === data.runId)
+          for (const update of buffered) {
+            nodeStatuses.set(update.nodeId, update.status as NodeStatus)
+          }
+          cronStartedRuns.add(data.runId)
+          setCronRunStatuses((prev) => {
+            const updated = new Map(prev)
+            updated.set(data.tabId, {
+              jobId: data.jobId,
+              runId: data.runId,
+              workflowGraph: job.workflowGraph,
+              nodeStatuses,
+              jobName: job.name,
+            })
+            return updated
+          })
+        }
+      })
+    })
+
+    window.electronAPI?.onCronJobNodeUpdate?.((data: { jobId: string; runId: string; nodeId: string; status: string }) => {
+      devLog('[Renderer] Received cron-job-node-update', data)
+      // If the run hasn't been initialized yet, buffer the update
+      if (!cronStartedRuns.has(data.runId)) {
+        cronNodeUpdateBuffer.push(data)
+      }
+      setCronRunStatuses((prev) => {
+        const updated = new Map(prev)
+        for (const [tabId, entry] of updated) {
+          if (entry.jobId === data.jobId && entry.runId === data.runId) {
+            const newStatuses = new Map(entry.nodeStatuses)
+            newStatuses.set(data.nodeId, data.status as NodeStatus)
+            updated.set(tabId, { ...entry, nodeStatuses: newStatuses })
+            break
+          }
+        }
+        return updated
+      })
+    })
+
+    window.electronAPI?.onCronJobCompleted?.((data: { jobId: string; runId: string; status: string }) => {
+      devLog('[Renderer] Received cron-job-completed', data)
+      // Keep final state - don't clean up so user can still view
     })
 
     // Terminal queue status for boot progress indicator
@@ -2563,6 +2636,11 @@ function App() {
           }}
           initialSection={settingsInitialSection}
           onSectionChange={() => setSettingsInitialSection(undefined)}
+          onNavigateToTab={(tabId) => {
+            loadPreferences()
+            setCurrentView('main')
+            window.electronAPI.setActiveTab(tabId)
+          }}
         />
       )}
 
@@ -2684,6 +2762,35 @@ function App() {
         onTabDrop={handleDropOnTab}
         onTabReorder={handleTabReorder}
         closingTabIds={closingTabIds}
+        onCronWorkflowView={(tabId) => {
+          setWorkflowViewerTabId(tabId)
+          // If we don't have status data yet, fetch the graph on demand
+          if (!cronRunStatuses.has(tabId)) {
+            const tab = tabs.find(t => t.id === tabId)
+            if (tab?.cronJobId) {
+              window.electronAPI?.getCronJob(tab.cronJobId).then((job) => {
+                if (job) {
+                  const nodeStatuses = new Map<string, NodeStatus>()
+                  for (const node of job.workflowGraph.nodes) {
+                    nodeStatuses.set(node.id, 'pending')
+                  }
+                  setCronRunStatuses((prev) => {
+                    if (prev.has(tabId)) return prev // Don't overwrite if event arrived
+                    const updated = new Map(prev)
+                    updated.set(tabId, {
+                      jobId: tab.cronJobId!,
+                      runId: '',
+                      workflowGraph: job.workflowGraph,
+                      nodeStatuses,
+                      jobName: job.name,
+                    })
+                    return updated
+                  })
+                }
+              })
+            }
+          }
+        }}
       />
 
       {/* Main content */}
@@ -2997,6 +3104,20 @@ function App() {
                                 </>
                               )}
                             </Button>
+                          </div>
+                        </div>
+                      )
+                    }
+                    // Show spinner for cron automation tabs that are still booting up
+                    if (tab.name.startsWith('Cron:')) {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center gap-3">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                          <div>
+                            <h3 className="text-sm font-medium">Starting Cron Automation</h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Preparing agents...
+                            </p>
                           </div>
                         </div>
                       )
@@ -4262,6 +4383,22 @@ function App() {
         onSubmit={executeFollowUp}
         isSubmitting={followUpInfo?.taskId ? startingFollowUpIds.has(followUpInfo.taskId) : false}
       />
+
+      {/* Cron Workflow Status Viewer Modal */}
+      {(() => {
+        const viewerData = workflowViewerTabId ? cronRunStatuses.get(workflowViewerTabId) : null
+        const viewerTab = workflowViewerTabId ? tabs.find(t => t.id === workflowViewerTabId) : null
+        return (
+          <WorkflowViewerModal
+            open={workflowViewerTabId !== null}
+            onClose={() => setWorkflowViewerTabId(null)}
+            nodes={viewerData?.workflowGraph.nodes ?? []}
+            edges={viewerData?.workflowGraph.edges ?? []}
+            nodeStatuses={viewerData?.nodeStatuses ?? new Map()}
+            jobName={viewerData?.jobName ?? viewerTab?.name ?? ''}
+          />
+        )
+      })()}
 
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator

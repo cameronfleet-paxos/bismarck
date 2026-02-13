@@ -16,9 +16,10 @@ import { describeCronExpression } from '@/shared/cron-utils'
 
 interface CronJobsSettingsProps {
   onSettingsChange?: () => void
+  onNavigateToTab?: (tabId: string) => void
 }
 
-export function CronJobsSettings({ onSettingsChange }: CronJobsSettingsProps) {
+export function CronJobsSettings({ onSettingsChange, onNavigateToTab }: CronJobsSettingsProps) {
   const [jobs, setJobs] = useState<CronJob[]>([])
   const [loading, setLoading] = useState(true)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
@@ -67,7 +68,9 @@ export function CronJobsSettings({ onSettingsChange }: CronJobsSettingsProps) {
     })
 
     return () => {
-      window.electronAPI.removeCronJobListeners?.()
+      // Don't call removeCronJobListeners here - App.tsx also listens
+      // to these events for the workflow status viewer. Global cleanup
+      // happens in App.tsx's removeAllListeners on unmount.
     }
   }, [loadJobs])
 
@@ -103,16 +106,13 @@ export function CronJobsSettings({ onSettingsChange }: CronJobsSettingsProps) {
   const handleRunNow = async (id: string) => {
     try {
       setRunningJobIds(prev => new Set([...prev, id]))
-      await window.electronAPI.runCronJobNow(id)
-      await loadJobs()
+      const result = await window.electronAPI.runCronJobNow(id)
+      // Navigate to the cron tab immediately
+      if (result?.tabId && onNavigateToTab) {
+        onNavigateToTab(result.tabId)
+      }
     } catch (error) {
       console.error('Failed to run cron job:', error)
-    } finally {
-      setRunningJobIds(prev => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
     }
   }
 

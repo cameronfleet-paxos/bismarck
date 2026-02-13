@@ -10,7 +10,7 @@ interface WorkflowCanvasNodeProps {
   onDelete: () => void
 }
 
-const nodeTypeConfig = {
+export const nodeTypeConfig = {
   'headless-agent': {
     icon: Container,
     color: 'text-blue-400',
@@ -109,7 +109,7 @@ export function WorkflowCanvasNode({
   )
 }
 
-function getNodeSummary(node: WorkflowNode): string {
+export function getNodeSummary(node: WorkflowNode): string {
   switch (node.type) {
     case 'headless-agent': {
       const data = node.data as { prompt?: string; model?: string }

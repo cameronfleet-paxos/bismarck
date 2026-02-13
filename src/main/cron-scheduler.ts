@@ -4,10 +4,11 @@
 import * as crypto from 'crypto'
 import { BrowserWindow } from 'electron'
 import { loadAllCronJobs, loadCronJob, updateCronJob, saveCronJobRun } from './cron-job-manager'
-import { startStandaloneHeadlessAgent } from './headless/standalone'
-import { startRalphLoop } from './ralph-loop'
+import { startStandaloneHeadlessAgent, waitForStandaloneAgentCompletion } from './headless/standalone'
+import { startRalphLoop, waitForRalphLoopCompletion } from './ralph-loop'
 import { execWithPath } from './exec-utils'
 import { devLog } from './dev-log'
+import { createTab, setActiveTab } from './state-manager'
 import type {
   CronJob,
   CronJobRun,
@@ -186,23 +187,23 @@ function unscheduleJob(jobId: string): void {
   }
 }
 
-async function triggerJob(jobId: string): Promise<void> {
+async function triggerJob(jobId: string): Promise<{ tabId: string } | undefined> {
   // Check if already running (skip overlapping runs)
   if (runningJobs.has(jobId)) {
     devLog(`[CronScheduler] Job ${jobId} is already running, skipping`)
-    return
+    return undefined
   }
 
   const job = loadCronJob(jobId)
-  if (!job || !job.enabled) return
+  if (!job || !job.enabled) return undefined
 
   devLog(`[CronScheduler] Triggering job "${job.name}" (${jobId})`)
 
   const execution = executeWorkflow(job)
-  runningJobs.set(jobId, execution)
+  runningJobs.set(jobId, execution.then(() => {}))
 
   try {
-    await execution
+    return await execution
   } finally {
     runningJobs.delete(jobId)
   }
@@ -273,7 +274,7 @@ function buildExecutionWaves(graph: WorkflowGraph): WorkflowNode[][] {
 /**
  * Execute a single workflow node
  */
-async function executeNode(node: WorkflowNode): Promise<NodeExecutionResult> {
+async function executeNode(node: WorkflowNode, tabId?: string): Promise<NodeExecutionResult> {
   const result: NodeExecutionResult = {
     nodeId: node.id,
     status: 'running',
@@ -288,11 +289,13 @@ async function executeNode(node: WorkflowNode): Promise<NodeExecutionResult> {
           data.referenceAgentId,
           data.prompt,
           data.model === 'haiku' ? 'sonnet' : data.model, // Fallback haiku to sonnet
-          undefined,
+          tabId,
           { skipPlanPhase: !data.planPhase }
         )
-        result.output = `Started headless agent: ${response.headlessId}`
-        result.status = 'success'
+        // Wait for the agent to actually complete before proceeding to next wave
+        const success = await waitForStandaloneAgentCompletion(response.headlessId)
+        result.output = `Headless agent ${response.headlessId} ${success ? 'completed' : 'failed'}`
+        result.status = success ? 'success' : 'failed'
         break
       }
 
@@ -304,9 +307,12 @@ async function executeNode(node: WorkflowNode): Promise<NodeExecutionResult> {
           maxIterations: data.maxIterations,
           model: data.model,
           referenceAgentId: data.referenceAgentId,
+          tabId,
         })
-        result.output = `Started Ralph Loop: ${loopState.id}`
-        result.status = 'success'
+        // Wait for the ralph loop to actually complete before proceeding to next wave
+        const success = await waitForRalphLoopCompletion(loopState.id)
+        result.output = `Ralph Loop ${loopState.id} ${success ? 'completed' : 'finished with status: ' + loopState.status}`
+        result.status = success ? 'success' : 'failed'
         break
       }
 
@@ -337,7 +343,7 @@ async function executeNode(node: WorkflowNode): Promise<NodeExecutionResult> {
 /**
  * Execute a full workflow graph
  */
-async function executeWorkflow(job: CronJob): Promise<void> {
+async function executeWorkflow(job: CronJob, existingTabId?: string): Promise<{ tabId: string }> {
   const runId = crypto.randomUUID()
   const run: CronJobRun = {
     id: runId,
@@ -347,8 +353,21 @@ async function executeWorkflow(job: CronJob): Promise<void> {
     nodeResults: {},
   }
 
-  // Notify renderer
-  mainWindow?.webContents.send('cron-job-started', { jobId: job.id, runId })
+  // Use pre-created tab if provided, otherwise create a dedicated tab
+  let tabId: string
+  if (existingTabId) {
+    tabId = existingTabId
+  } else {
+    const tab = createTab(`Cron: ${job.name}`)
+    tab.isPlanTab = true
+    tab.cronJobId = job.id
+    setActiveTab(tab.id)
+    tabId = tab.id
+    emitStateUpdate() // Notify renderer immediately so the tab appears
+  }
+
+  // Notify renderer (include tabId so UI can navigate to it)
+  mainWindow?.webContents.send('cron-job-started', { jobId: job.id, runId, tabId })
 
   const waves = buildExecutionWaves(job.workflowGraph)
   let hasFailures = false
@@ -377,7 +396,7 @@ async function executeWorkflow(job: CronJob): Promise<void> {
           status: 'running',
         })
 
-        const result = await executeNode(node)
+        const result = await executeNode(node, tabId)
 
         mainWindow?.webContents.send('cron-job-node-update', {
           jobId: job.id,
@@ -423,12 +442,21 @@ async function executeWorkflow(job: CronJob): Promise<void> {
   mainWindow?.webContents.send('cron-job-completed', { jobId: job.id, runId, status })
 
   devLog(`[CronScheduler] Job "${job.name}" completed with status: ${status}`)
+
+  return { tabId }
 }
 
 // --- Public API ---
 
 export function setMainWindowForCronScheduler(window: BrowserWindow | null): void {
   mainWindow = window
+}
+
+function emitStateUpdate(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const { getState } = require('./state-manager')
+    mainWindow.webContents.send('state-update', getState())
+  }
 }
 
 export async function initCronScheduler(): Promise<void> {
@@ -485,8 +513,31 @@ export function handleCronJobDelete(jobId: string): void {
   unscheduleJob(jobId)
 }
 
-export async function runCronJobNow(jobId: string): Promise<void> {
-  await triggerJob(jobId)
+export async function runCronJobNow(jobId: string): Promise<{ tabId: string } | undefined> {
+  // Check if already running (skip overlapping runs)
+  if (runningJobs.has(jobId)) {
+    devLog(`[CronScheduler] Job ${jobId} is already running, skipping`)
+    return undefined
+  }
+
+  const job = loadCronJob(jobId)
+  if (!job || !job.enabled) return undefined
+
+  devLog(`[CronScheduler] Manually triggering job "${job.name}" (${jobId})`)
+
+  // Create the tab immediately so we can return it to the caller
+  const tab = createTab(`Cron: ${job.name}`)
+  tab.isPlanTab = true
+  tab.cronJobId = job.id
+  setActiveTab(tab.id)
+  emitStateUpdate() // Notify renderer immediately so the tab appears
+
+  // Start execution in the background with the pre-created tab
+  const execution = executeWorkflow(job, tab.id)
+  runningJobs.set(jobId, execution.then(() => {}))
+  execution.finally(() => runningJobs.delete(jobId))
+
+  return { tabId: tab.id }
 }
 
 /**
