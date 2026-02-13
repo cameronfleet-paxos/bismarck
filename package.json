@@ -16,6 +16,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "start": "electron .",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "test:start": "NODE_ENV=development electron --remote-debugging-port=9222 .",
     "test:server": "node scripts/test/cdp-server.js",
     "dev:cdp": "node scripts/test/dev-with-cdp.js",
@@ -67,6 +70,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
+    "vitest": "^4.0.18",
     "ws": "^8.19.0"
   },
   "build": {

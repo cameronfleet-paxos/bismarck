@@ -42,27 +42,7 @@ import { runPlanPhase, wrapPromptWithPlan } from '../plan-phase'
 import { queueTerminalCreation } from '../terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
 import * as fsPromises from 'fs/promises'
-
-// Word lists for fun random names
-const ADJECTIVES = [
-  'fluffy', 'happy', 'brave', 'swift', 'clever', 'gentle', 'mighty', 'calm',
-  'wild', 'eager', 'jolly', 'lucky', 'plucky', 'zesty', 'snappy', 'peppy'
-]
-
-const NOUNS = [
-  'bunny', 'panda', 'koala', 'otter', 'falcon', 'dolphin', 'fox', 'owl',
-  'tiger', 'eagle', 'wolf', 'bear', 'hawk', 'lynx', 'raven', 'seal'
-]
-
-/**
- * Generate a fun, memorable random phrase for a standalone agent
- * Format: {adjective}-{noun} (e.g., "plucky-otter")
- */
-function generateRandomPhrase(): string {
-  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
-  return `${adjective}-${noun}`
-}
+import { generateBranchSlug, generateRandomPhrase } from '../naming-utils'
 
 /**
  * Generate the display name for a standalone agent
@@ -301,12 +281,12 @@ export async function startStandaloneHeadlessAgent(
   // Get default branch as base for worktree
   const baseBranch = await getDefaultBranch(repoPath)
 
-  // Generate fun random phrase for this agent (e.g., "plucky-otter")
-  const randomPhrase = generateRandomPhrase()
+  // Generate prompt-aware slug for branch name (e.g., "fix-login-session-a3f7")
+  const slug = generateBranchSlug(prompt)
 
-  // Use random phrase for branch and worktree
-  const branchName = `standalone/${repoName}-${randomPhrase}`
-  const worktreePath = getStandaloneWorktreePath(repoName, randomPhrase)
+  // Use slug for branch and worktree
+  const branchName = `bismarck-standalone/${repoName}-${slug}`
+  const worktreePath = getStandaloneWorktreePath(repoName, slug)
 
   // Ensure standalone headless directory exists
   ensureStandaloneHeadlessDir()
@@ -346,7 +326,7 @@ export async function startStandaloneHeadlessAgent(
   const existingWorkspaces = getWorkspaces()
   const newAgent: Agent = {
     id: workspaceId,
-    name: generateDisplayName(repoName, randomPhrase), // e.g., "bismarck: plucky-otter"
+    name: generateDisplayName(repoName, slug), // e.g., "bismarck: fix-login-session-a3f7"
     directory: worktreePath, // Use worktree path instead of reference directory
     purpose: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
     theme: referenceAgent.theme,
@@ -777,9 +757,9 @@ export async function startFollowUpAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
-  // Extract phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "plucky-otter")
-  const branchSuffix = branch.replace('standalone/', '') // e.g., "bismarck-plucky-otter"
-  const phrase = branchSuffix.replace(`${repoName}-`, '') // e.g., "plucky-otter"
+  // Extract slug from branch (e.g., "bismarck-standalone/bismarck-fix-login-a3f7" -> "fix-login-a3f7")
+  const branchSuffix = branch.replace('bismarck-standalone/', '').replace('standalone/', '') // handle both prefixes
+  const phrase = branchSuffix.replace(`${repoName}-`, '')
 
   // Generate new headless ID
   const newHeadlessId = `standalone-headless-${Date.now()}`
