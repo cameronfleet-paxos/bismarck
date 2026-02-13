@@ -320,13 +320,13 @@ export interface ElectronAPI {
   updateCronJob: (id: string, updates: Partial<CronJob>) => Promise<CronJob | null>
   deleteCronJob: (id: string) => Promise<boolean>
   toggleCronJobEnabled: (id: string, enabled: boolean) => Promise<CronJob | null>
-  runCronJobNow: (id: string) => Promise<void>
+  runCronJobNow: (id: string) => Promise<{ tabId: string } | undefined>
   getCronJobRuns: (cronJobId: string) => Promise<CronJobRun[]>
   getNextCronRunTime: (cronExpression: string) => Promise<string | null>
   validateCronExpression: (cron: string) => Promise<boolean>
 
   // Cron Job events
-  onCronJobStarted: (callback: (data: { jobId: string; runId: string }) => void) => void
+  onCronJobStarted: (callback: (data: { jobId: string; runId: string; tabId: string }) => void) => void
   onCronJobCompleted: (callback: (data: { jobId: string; runId: string; status: string }) => void) => void
   onCronJobNodeUpdate: (callback: (data: { jobId: string; runId: string; nodeId: string; status: string }) => void) => void
   removeCronJobListeners: () => void

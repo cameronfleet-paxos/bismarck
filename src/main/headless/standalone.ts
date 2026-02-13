@@ -531,6 +531,31 @@ export async function startStandaloneHeadlessAgent(
 }
 
 /**
+ * Wait for a standalone headless agent to complete.
+ * Resolves with true if successful, false if failed.
+ */
+export function waitForStandaloneAgentCompletion(headlessId: string): Promise<boolean> {
+  const agent = standaloneHeadlessAgents.get(headlessId)
+  if (!agent) {
+    // Agent not found in active map — check if it already completed
+    const info = standaloneHeadlessAgentInfo.get(headlessId)
+    if (info && (info.status === 'completed' || info.status === 'failed')) {
+      return Promise.resolve(info.status === 'completed')
+    }
+    return Promise.resolve(false)
+  }
+
+  return new Promise<boolean>((resolve) => {
+    agent.on('complete', (result) => {
+      resolve(result.success)
+    })
+    agent.on('error', () => {
+      resolve(false)
+    })
+  })
+}
+
+/**
  * Get all standalone headless agent info
  */
 export function getStandaloneHeadlessAgents(): HeadlessAgentInfo[] {

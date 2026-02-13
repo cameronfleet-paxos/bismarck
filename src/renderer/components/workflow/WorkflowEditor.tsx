@@ -306,7 +306,7 @@ export function WorkflowEditor({ jobId, onSave, onCancel }: WorkflowEditorProps)
   }
 
   return (
-    <div data-testid="workflow-editor" className="flex flex-col h-full">
+    <div data-testid="workflow-editor" className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
       {/* Top bar */}
       <div className="flex items-center gap-3 pb-4 border-b mb-4">
         <Input

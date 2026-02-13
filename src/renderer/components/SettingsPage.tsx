@@ -147,9 +147,10 @@ interface SettingsPageProps {
   onBack: () => void
   initialSection?: string
   onSectionChange?: () => void
+  onNavigateToTab?: (tabId: string) => void
 }
 
-export function SettingsPage({ onBack, initialSection, onSectionChange }: SettingsPageProps) {
+export function SettingsPage({ onBack, initialSection, onSectionChange, onNavigateToTab }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(
     (initialSection as SettingsSection) || 'general'
   )
@@ -597,7 +598,7 @@ export function SettingsPage({ onBack, initialSection, onSectionChange }: Settin
       case 'cron-jobs':
         return (
           <div className="bg-card border rounded-lg p-6">
-            <CronJobsSettings onSettingsChange={loadSettings} />
+            <CronJobsSettings onSettingsChange={loadSettings} onNavigateToTab={onNavigateToTab} />
           </div>
         )
 

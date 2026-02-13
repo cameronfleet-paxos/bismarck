@@ -1472,7 +1472,7 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle('run-cron-job-now', async (_event, id: string) => {
-    await runCronJobNow(id)
+    return runCronJobNow(id)
   })
 
   ipcMain.handle('get-cron-job-runs', async (_event, cronJobId: string) => {
