@@ -266,9 +266,11 @@ IMPORTANT:
 - Each commit provides context for subsequent iterations
 
 === GIT WORKFLOW ===
-1. Commit your changes:
+1. Commit your changes (ALWAYS include Co-Authored-By trailer):
    git add <files>
-   git commit -m "Brief description of change"
+   git commit -m "Brief description of change
+
+   Co-Authored-By: Claude <noreply@anthropic.com>"
 
 2. Push your branch periodically:
    git push -u origin ${branchName}
