@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, X, Pencil, GripVertical, Loader2 } from 'lucide-react'
+import { Plus, X, Pencil, GripVertical, Loader2, Eye } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import type { AgentTab } from '@/shared/types'
 
@@ -20,6 +20,8 @@ interface TabBarProps {
   onTabReorder?: (draggedTabId: string, targetTabId: string) => void
   // Set of tab IDs currently being closed (shows spinner)
   closingTabIds?: Set<string>
+  // Cron workflow status viewer
+  onCronWorkflowView?: (tabId: string) => void
 }
 
 export function TabBar({
@@ -36,6 +38,7 @@ export function TabBar({
   onTabDrop,
   onTabReorder,
   closingTabIds,
+  onCronWorkflowView,
 }: TabBarProps) {
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
@@ -161,6 +164,8 @@ export function TabBar({
               <>
                 <GripVertical className="w-3 h-3 text-muted-foreground/50 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span
+                  className="truncate max-w-[35ch]"
+                  title={tab.name}
                   onDoubleClick={(e) => {
                     e.stopPropagation()
                     handleStartRename(tab)
@@ -176,6 +181,18 @@ export function TabBar({
 
             {!isEditing && (
               <div className="flex items-center gap-0.5 ml-1">
+                {tab.cronJobId && onCronWorkflowView && (
+                  <button
+                    className="p-0.5 hover:bg-muted rounded"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCronWorkflowView(tab.id)
+                    }}
+                    title="View workflow status"
+                  >
+                    <Eye className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                  </button>
+                )}
                 {isClosing ? (
                   <Loader2 className="h-3 w-3 text-muted-foreground animate-spin ml-1" />
                 ) : (

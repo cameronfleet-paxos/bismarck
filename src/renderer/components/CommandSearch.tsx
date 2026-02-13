@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, HelpCircle, TerminalSquare } from 'lucide-react'
+import { Search, Container, ChevronLeft, FileText, RefreshCw, Save, MessageSquare, HelpCircle, TerminalSquare, Clock, Settings } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -18,10 +18,10 @@ interface ActiveTerminal {
   workspaceId: string
 }
 
-type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config'
+type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config' | 'cron-schedule'
 
 // Track which command triggered agent selection
-type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | null
+type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | 'cron-headless' | null
 
 interface Command {
   id: string
@@ -36,6 +36,8 @@ const commands: Command[] = [
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
   { id: 'start-ralph-loop-discussion', label: 'Discuss: Ralph Loop', icon: MessageSquare },
   { id: 'start-plan', label: 'Start: Plan', icon: FileText },
+  { id: 'cron-headless', label: 'Cron: Headless Agent', icon: Clock },
+  { id: 'cron-automation', label: 'Cron: Automation', icon: Settings },
 ]
 
 interface CommandSearchProps {
@@ -53,6 +55,7 @@ interface CommandSearchProps {
   onStartPlan?: () => void
   onOpenTerminal?: (agentId: string) => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
+  onOpenCronAutomation?: () => void
   prefillRalphLoopConfig?: {
     referenceAgentId: string
     prompt: string
@@ -76,6 +79,7 @@ export function CommandSearch({
   onStartPlan,
   onOpenTerminal,
   onStartRalphLoop,
+  onOpenCronAutomation,
   prefillRalphLoopConfig,
 }: CommandSearchProps) {
   const { isActive: tutorialActive } = useTutorial()
@@ -86,6 +90,10 @@ export function CommandSearch({
   const [prompt, setPrompt] = useState('')
   const [planPhase, setPlanPhase] = useState(true)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null)
+
+  // Cron schedule state
+  const [cronSchedule, setCronSchedule] = useState('0 9 * * *')
+  const [cronSchedulePreset, setCronSchedulePreset] = useState('0 9 * * *')
 
   // Ralph Loop config state
   const [completionPhrase, setCompletionPhrase] = useState('<promise>COMPLETE</promise>')
@@ -253,7 +261,9 @@ export function CommandSearch({
   }, [selectedIndex])
 
   const handleBack = () => {
-    if (mode === 'prompt-input') {
+    if (mode === 'cron-schedule') {
+      setMode('prompt-input')
+    } else if (mode === 'prompt-input') {
       setMode('agent-select')
       setPrompt('')
     } else if (mode === 'ralph-loop-config') {
@@ -295,6 +305,15 @@ export function CommandSearch({
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         handleStartRalphLoop()
+      }
+      return
+    }
+
+    // In cron-schedule mode, handle Enter to create
+    if (mode === 'cron-schedule') {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        handleSubmitCronSchedule()
       }
       return
     }
@@ -363,6 +382,14 @@ export function CommandSearch({
         } else if (command.id === 'start-plan') {
           onStartPlan?.()
           onOpenChange(false)
+        } else if (command.id === 'cron-headless') {
+          setPendingCommand('cron-headless')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
+        } else if (command.id === 'cron-automation') {
+          onOpenCronAutomation?.()
+          onOpenChange(false)
         }
       } else {
         // Selected an agent directly
@@ -407,8 +434,45 @@ export function CommandSearch({
     }
   }
 
+  const handleSubmitCronSchedule = async () => {
+    if (selectedAgent && prompt.trim() && cronSchedule) {
+      try {
+        const jobName = `${selectedAgent.name} - ${prompt.trim().slice(0, 30)}`
+        await window.electronAPI.createCronJob({
+          name: jobName,
+          schedule: cronSchedule,
+          enabled: true,
+          workflowGraph: {
+            nodes: [{
+              id: crypto.randomUUID(),
+              type: 'headless-agent' as const,
+              position: { x: 200, y: 100 },
+              data: {
+                referenceAgentId: selectedAgent.id,
+                prompt: prompt.trim(),
+                model: 'sonnet' as const,
+                planPhase,
+              },
+              label: 'Headless Agent',
+            }],
+            edges: [],
+          },
+        })
+        onOpenChange(false)
+        onOpenCronAutomation?.()
+      } catch (error) {
+        console.error('Failed to create cron job:', error)
+      }
+    }
+  }
+
   const handleSubmitPrompt = (model: 'opus' | 'sonnet') => {
     if (selectedAgent && prompt.trim()) {
+      if (pendingCommand === 'cron-headless') {
+        // Transition to schedule picker instead of launching
+        setMode('cron-schedule')
+        return
+      }
       if (pendingCommand === 'headless-discussion') {
         onStartHeadlessDiscussion?.(selectedAgent.id, prompt.trim())
         onOpenChange(false)
@@ -478,11 +542,15 @@ export function CommandSearch({
         if (pendingCommand === 'ralph-loop') return 'Start: Ralph Loop'
         if (pendingCommand === 'ralph-loop-discussion') return 'Discuss: Ralph Loop'
         if (pendingCommand === 'headless-discussion') return 'Discuss: Headless Agent'
+        if (pendingCommand === 'cron-headless') return 'Cron: Headless Agent'
         return 'Start: Headless Agent'
       case 'prompt-input':
+        if (pendingCommand === 'cron-headless') return `Cron: Headless Agent - ${selectedAgent?.name}`
         if (pendingCommand === 'headless-discussion') return `Discuss: Headless Agent - ${selectedAgent?.name}`
         if (pendingCommand === 'ralph-loop-discussion') return `Discuss: Ralph Loop - ${selectedAgent?.name}`
         return `Headless Agent - ${selectedAgent?.name}`
+      case 'cron-schedule':
+        return `Schedule - ${selectedAgent?.name}`
       case 'ralph-loop-config':
         return `Ralph Loop - ${selectedAgent?.name}`
       default:
@@ -576,6 +644,71 @@ export function CommandSearch({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        ) : mode === 'cron-schedule' ? (
+          <div className="p-4 space-y-4" onKeyDown={handleKeyDown}>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Schedule</label>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {[
+                  { label: 'Every hour', cron: '0 * * * *' },
+                  { label: 'Every 6 hours', cron: '0 */6 * * *' },
+                  { label: 'Daily at 9am', cron: '0 9 * * *' },
+                  { label: 'Weekdays at 9am', cron: '0 9 * * 1-5' },
+                  { label: 'Weekly (Mon 9am)', cron: '0 9 * * 1' },
+                ].map((preset) => (
+                  <button
+                    key={preset.cron}
+                    onClick={() => {
+                      setCronSchedule(preset.cron)
+                      setCronSchedulePreset(preset.cron)
+                    }}
+                    className={`px-2.5 py-1.5 text-xs font-medium rounded ${
+                      cronSchedulePreset === preset.cron
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCronSchedulePreset('custom')}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded ${
+                    cronSchedulePreset === 'custom'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                >
+                  Custom
+                </button>
+              </div>
+              {cronSchedulePreset === 'custom' && (
+                <input
+                  type="text"
+                  value={cronSchedule}
+                  onChange={(e) => setCronSchedule(e.target.value)}
+                  placeholder="* * * * * (min hour dom month dow)"
+                  className="w-full p-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                />
+              )}
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium">Agent:</span> {selectedAgent?.name}
+              <br />
+              <span className="font-medium">Prompt:</span> {prompt.trim().slice(0, 60)}{prompt.length > 60 ? '...' : ''}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleSubmitCronSchedule}
+                disabled={!cronSchedule}
+                className="px-4 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Create Cron Job
+              </button>
             </div>
           </div>
         ) : mode === 'ralph-loop-config' ? (
@@ -945,7 +1078,12 @@ export function CommandSearch({
 
         {/* Footer with hints */}
         <div className="border-t px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
-          {mode === 'prompt-input' ? (
+          {mode === 'prompt-input' && pendingCommand === 'cron-headless' ? (
+            <span className="flex items-center gap-1">
+              <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
+              set schedule
+            </span>
+          ) : mode === 'prompt-input' ? (
             <>
               <span className="flex items-center gap-1">
                 <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
@@ -956,6 +1094,11 @@ export function CommandSearch({
                 Opus
               </span>
             </>
+          ) : mode === 'cron-schedule' ? (
+            <span className="flex items-center gap-1">
+              <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
+              create cron job
+            </span>
           ) : mode === 'ralph-loop-config' ? (
             <span className="flex items-center gap-1">
               <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>

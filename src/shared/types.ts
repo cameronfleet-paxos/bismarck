@@ -99,6 +99,7 @@ export interface AgentTab {
   workspaceIds: string[] // Order = grid position (row-major: TL, TR, ..., BL, BR, ...)
   isPlanTab?: boolean // Identifies plan orchestrator tabs
   planId?: string // Links tab to plan for restoration
+  cronJobId?: string // Links tab to cron job (for workflow status viewer)
   isTerminalTab?: boolean // Tab dedicated to a plain terminal (no Claude agent)
 }
 
@@ -678,6 +679,7 @@ export interface RalphLoopConfig {
   maxIterations: number       // default: 50
   model: 'opus' | 'sonnet'
   referenceAgentId: string
+  tabId?: string              // Use existing tab instead of creating a new one
 }
 
 // Ralph Loop execution status

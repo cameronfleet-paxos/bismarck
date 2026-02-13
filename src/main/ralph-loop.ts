@@ -82,6 +82,7 @@ function generateRandomPhrase(): string {
 // Track active Ralph Loops
 const ralphLoops: Map<string, RalphLoopState> = new Map()
 const ralphLoopAgents: Map<string, HeadlessAgent> = new Map() // loopId -> current agent
+const completionWaiters: Map<string, Array<(status: RalphLoopStatus) => void>> = new Map()
 
 // Reference to main window for IPC
 let mainWindow: BrowserWindow | null = null
@@ -151,6 +152,18 @@ function emitRalphLoopUpdate(state: RalphLoopState): void {
     mainWindow.webContents.send('ralph-loop-update', state)
   }
   onStatusChangeCallback?.(state.id, state.status)
+
+  // Resolve any completion waiters if the loop reached a terminal status
+  const terminalStatuses: RalphLoopStatus[] = ['completed', 'failed', 'cancelled', 'max_iterations']
+  if (terminalStatuses.includes(state.status)) {
+    const waiters = completionWaiters.get(state.id)
+    if (waiters) {
+      for (const resolve of waiters) {
+        resolve(state.status)
+      }
+      completionWaiters.delete(state.id)
+    }
+  }
 }
 
 /**
@@ -360,9 +373,13 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
     repoPath: repoPath,
   }
 
-  // Create a dedicated tab for this Ralph Loop
-  const tab = createTab(`Ralph: ${phrase}`)
-  tab.isPlanTab = true // Treat like a plan tab for styling
+  // Use existing tab if provided (e.g., from cron automation), otherwise create a new one
+  const tab = config.tabId
+    ? (getState().tabs.find(t => t.id === config.tabId) || createTab(`Ralph: ${phrase}`))
+    : createTab(`Ralph: ${phrase}`)
+  if (!config.tabId) {
+    tab.isPlanTab = true // Treat like a plan tab for styling
+  }
 
   // Create the initial state
   const state: RalphLoopState = {
@@ -688,6 +705,27 @@ export async function retryRalphLoop(loopId: string): Promise<void> {
 
   // Continue execution (executeLoop sets status to 'running' and increments currentIteration)
   executeLoop(state)
+}
+
+/**
+ * Wait for a Ralph Loop to reach a terminal status.
+ * Resolves with true if completed successfully, false otherwise.
+ */
+export function waitForRalphLoopCompletion(loopId: string): Promise<boolean> {
+  const state = ralphLoops.get(loopId)
+  if (!state) return Promise.resolve(false)
+
+  // Already in a terminal state
+  const terminalStatuses: RalphLoopStatus[] = ['completed', 'failed', 'cancelled', 'max_iterations']
+  if (terminalStatuses.includes(state.status)) {
+    return Promise.resolve(state.status === 'completed')
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const waiters = completionWaiters.get(loopId) || []
+    waiters.push((status) => resolve(status === 'completed'))
+    completionWaiters.set(loopId, waiters)
+  })
 }
 
 /**

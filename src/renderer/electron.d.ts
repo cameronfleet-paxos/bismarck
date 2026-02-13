@@ -1,5 +1,6 @@
 import type { Workspace, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, Repository, HeadlessAgentInfo, StreamEvent, BranchStrategy, TeamMode, BeadTask, PromptType, DiscoveredRepo, RalphLoopConfig, RalphLoopState, DescriptionProgressEvent, DiffResult, FileDiffContent } from '../shared/types'
 import type { AppSettings, ProxiedTool } from '../main/settings-manager'
+import type { CronJob, CronJobRun, WorkflowGraph } from '../shared/cron-types'
 
 // Tool auth status from the auth checker
 export interface ToolAuthStatus {
@@ -311,6 +312,24 @@ export interface ElectronAPI {
   detectToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
   getToolPaths?: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
   updateToolPaths?: (paths: Partial<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>) => Promise<void>
+
+  // Cron Job Automations
+  getCronJobs: () => Promise<CronJob[]>
+  getCronJob: (id: string) => Promise<CronJob | null>
+  createCronJob: (data: { name: string; schedule: string; enabled: boolean; workflowGraph: WorkflowGraph }) => Promise<CronJob>
+  updateCronJob: (id: string, updates: Partial<CronJob>) => Promise<CronJob | null>
+  deleteCronJob: (id: string) => Promise<boolean>
+  toggleCronJobEnabled: (id: string, enabled: boolean) => Promise<CronJob | null>
+  runCronJobNow: (id: string) => Promise<{ tabId: string } | undefined>
+  getCronJobRuns: (cronJobId: string) => Promise<CronJobRun[]>
+  getNextCronRunTime: (cronExpression: string) => Promise<string | null>
+  validateCronExpression: (cron: string) => Promise<boolean>
+
+  // Cron Job events
+  onCronJobStarted: (callback: (data: { jobId: string; runId: string; tabId: string }) => void) => void
+  onCronJobCompleted: (callback: (data: { jobId: string; runId: string; status: string }) => void) => void
+  onCronJobNodeUpdate: (callback: (data: { jobId: string; runId: string; nodeId: string; status: string }) => void) => void
+  removeCronJobListeners: () => void
 
   // Tray updates
   updateTray: (count: number) => void
