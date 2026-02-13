@@ -5,25 +5,26 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { logger, LogContext } from './logger';
-import { execWithPath } from './exec-utils';
-
-// Use shared exec utility with extended PATH for git commands
-const exec = execWithPath;
+import { spawnWithPathAsync } from './exec-utils';
 
 /**
- * Execute a git command in the specified directory
- * @param command - The git command to execute
+ * Execute a git command in the specified directory using spawn with args array.
+ * This avoids shell string interpolation and prevents command injection via
+ * branch names, paths, or other user-controlled inputs.
+ *
+ * @param args - Array of arguments to pass to git (e.g., ['checkout', '-b', branchName])
  * @param cwd - The working directory
  * @param logContext - Optional logging context for correlation
  */
 async function gitExec(
-  command: string,
+  args: string[],
   cwd: string,
   logContext?: LogContext
 ): Promise<{ stdout: string; stderr: string }> {
+  const command = `git ${args.join(' ')}`;
   const startTime = Date.now();
   try {
-    const result = await exec(command, { cwd });
+    const result = await spawnWithPathAsync('git', args, { cwd });
     const duration = Date.now() - startTime;
     logger.debug('git', `Executed (${duration}ms): ${command}`, { ...logContext, repo: cwd }, {
       stdout: result.stdout.substring(0, 200),
@@ -48,7 +49,7 @@ async function gitExec(
  */
 export async function isGitRepo(directory: string): Promise<boolean> {
   try {
-    await gitExec('git rev-parse --git-dir', directory);
+    await gitExec(['rev-parse', '--git-dir'], directory);
     return true;
   } catch {
     return false;
@@ -62,7 +63,7 @@ export async function isGitRepo(directory: string): Promise<boolean> {
 export async function getRepoRoot(directory: string): Promise<string | null> {
   try {
     const { stdout } = await gitExec(
-      'git rev-parse --show-toplevel',
+      ['rev-parse', '--show-toplevel'],
       directory
     );
     return stdout.trim();
@@ -80,7 +81,7 @@ export async function getGitCommonDir(
 ): Promise<string | null> {
   try {
     const { stdout } = await gitExec(
-      'git rev-parse --path-format=absolute --git-common-dir',
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
       directory
     );
     return stdout.trim();
@@ -94,7 +95,7 @@ export async function getGitCommonDir(
  */
 export async function isWorktree(directory: string): Promise<boolean> {
   try {
-    const gitDir = await gitExec('git rev-parse --git-dir', directory);
+    const gitDir = await gitExec(['rev-parse', '--git-dir'], directory);
     const gitDirPath = gitDir.stdout.trim();
 
     // If the .git dir is a file (not a directory), it's a worktree
@@ -152,7 +153,7 @@ export async function getDefaultBranch(directory: string): Promise<string> {
   try {
     // Try to get the default branch from the remote
     const { stdout } = await gitExec(
-      'git symbolic-ref refs/remotes/origin/HEAD',
+      ['symbolic-ref', 'refs/remotes/origin/HEAD'],
       directory
     );
     const ref = stdout.trim();
@@ -161,17 +162,17 @@ export async function getDefaultBranch(directory: string): Promise<string> {
   } catch {
     // Fallback: check if main or master exists
     try {
-      await gitExec('git rev-parse --verify main', directory);
+      await gitExec(['rev-parse', '--verify', 'main'], directory);
       return 'main';
     } catch {
       try {
-        await gitExec('git rev-parse --verify master', directory);
+        await gitExec(['rev-parse', '--verify', 'master'], directory);
         return 'master';
       } catch {
         // Last resort: get current branch
         try {
           const { stdout } = await gitExec(
-            'git branch --show-current',
+            ['branch', '--show-current'],
             directory
           );
           return stdout.trim() || 'main';
@@ -188,7 +189,7 @@ export async function getDefaultBranch(directory: string): Promise<string> {
  */
 export async function getCurrentBranch(directory: string): Promise<string> {
   try {
-    const { stdout } = await gitExec('git branch --show-current', directory);
+    const { stdout } = await gitExec(['branch', '--show-current'], directory);
     return stdout.trim();
   } catch {
     return '';
@@ -201,7 +202,7 @@ export async function getCurrentBranch(directory: string): Promise<string> {
 export async function getRemoteUrl(directory: string): Promise<string | null> {
   try {
     const { stdout } = await gitExec(
-      'git remote get-url origin',
+      ['remote', 'get-url', 'origin'],
       directory
     );
     return stdout.trim() || null;
@@ -217,7 +218,7 @@ export async function getRemoteUrl(directory: string): Promise<string | null> {
 export async function getLastCommitDate(directory: string): Promise<string | null> {
   try {
     const { stdout } = await gitExec(
-      'git log -1 --format=%aI',  // %aI = author date, ISO 8601 format
+      ['log', '-1', '--format=%aI'],  // %aI = author date, ISO 8601 format
       directory
     );
     const trimmed = stdout.trim();
@@ -249,13 +250,13 @@ export async function createWorktree(
       logger.warn('worktree', 'Worktree path already exists, removing it first', ctx);
       // First try git worktree remove in case it's a valid worktree
       try {
-        await gitExec(`git worktree remove "${worktreePath}" --force`, repoPath, ctx);
+        await gitExec(['worktree', 'remove', worktreePath, '--force'], repoPath, ctx);
       } catch {
         // Not a valid worktree, just remove the directory
         await fs.rm(worktreePath, { recursive: true, force: true });
       }
       // Prune stale refs
-      await gitExec('git worktree prune', repoPath, ctx);
+      await gitExec(['worktree', 'prune'], repoPath, ctx);
     }
   } catch {
     // Path doesn't exist, which is good
@@ -270,7 +271,7 @@ export async function createWorktree(
   // A general 'git fetch origin' may not update the ref if it was just pushed
   try {
     await gitExec(
-      `git fetch origin "${baseBranch}:refs/remotes/origin/${baseBranch}" --force`,
+      ['fetch', 'origin', `${baseBranch}:refs/remotes/origin/${baseBranch}`, '--force'],
       repoPath,
       ctx
     );
@@ -279,7 +280,7 @@ export async function createWorktree(
     // Fallback to general fetch if explicit fetch fails (branch may not exist on remote yet)
     logger.debug('worktree', 'Explicit fetch failed, trying general fetch', ctx, { baseBranch });
     try {
-      await gitExec('git fetch origin', repoPath, ctx);
+      await gitExec(['fetch', 'origin'], repoPath, ctx);
     } catch {
       logger.debug('worktree', 'Fetch failed (network may be unavailable)', ctx);
       // Ignore fetch errors (might not have network)
@@ -290,7 +291,7 @@ export async function createWorktree(
   // Use origin/<baseBranch> to ensure we're based on the latest remote
   try {
     await gitExec(
-      `git worktree add -b "${branchName}" "${worktreePath}" "origin/${baseBranch}"`,
+      ['worktree', 'add', '-b', branchName, worktreePath, `origin/${baseBranch}`],
       repoPath,
       ctx
     );
@@ -299,7 +300,7 @@ export async function createWorktree(
     // Fallback to local branch if remote doesn't exist
     logger.debug('worktree', 'Falling back to local branch (remote not found)', ctx);
     await gitExec(
-      `git worktree add -b "${branchName}" "${worktreePath}" "${baseBranch}"`,
+      ['worktree', 'add', '-b', branchName, worktreePath, baseBranch],
       repoPath,
       ctx
     );
@@ -333,10 +334,11 @@ export async function removeWorktree(
   const ctx = { ...logContext, repo: repoPath, worktreePath };
   logger.info('worktree', `Removing worktree`, ctx, { force });
 
-  const forceFlag = force ? ' --force' : '';
+  const args = ['worktree', 'remove', worktreePath];
+  if (force) args.push('--force');
   try {
     await gitExec(
-      `git worktree remove "${worktreePath}"${forceFlag}`,
+      args,
       repoPath,
       ctx
     );
@@ -360,7 +362,7 @@ export async function removeWorktree(
  */
 export async function pruneWorktrees(repoPath: string, logContext?: LogContext): Promise<void> {
   logger.debug('worktree', 'Pruning stale worktree references', { ...logContext, repo: repoPath });
-  await gitExec('git worktree prune', repoPath, logContext);
+  await gitExec(['worktree', 'prune'], repoPath, logContext);
 }
 
 /**
@@ -371,7 +373,7 @@ export async function listWorktrees(
 ): Promise<Array<{ path: string; branch: string; head: string }>> {
   try {
     const { stdout } = await gitExec(
-      'git worktree list --porcelain',
+      ['worktree', 'list', '--porcelain'],
       repoPath
     );
 
@@ -405,12 +407,12 @@ export async function branchExists(
   branchName: string
 ): Promise<boolean> {
   try {
-    await gitExec(`git rev-parse --verify "${branchName}"`, repoPath);
+    await gitExec(['rev-parse', '--verify', branchName], repoPath);
     return true;
   } catch {
     try {
       await gitExec(
-        `git rev-parse --verify "origin/${branchName}"`,
+        ['rev-parse', '--verify', `origin/${branchName}`],
         repoPath
       );
       return true;
@@ -452,9 +454,11 @@ export async function pushBranch(
   const ctx = { ...logContext, repo: repoPath, branch: branchName };
   logger.info('git', `Pushing branch to ${remote}`, ctx, { setUpstream });
 
-  const upstreamFlag = setUpstream ? '-u ' : '';
+  const args = ['push'];
+  if (setUpstream) args.push('-u');
+  args.push(remote, branchName);
   await gitExec(
-    `git push ${upstreamFlag}${remote} "${branchName}"`,
+    args,
     repoPath,
     ctx
   );
@@ -480,9 +484,11 @@ export async function pushBranchToRemoteBranch(
   logger.info('git', `Pushing ${localRef} to ${remote}/${remoteBranch}`, ctx, { forceWithLease });
 
   // git push origin HEAD:refs/heads/feature-branch
-  const forceFlag = forceWithLease ? '--force-with-lease ' : '';
+  const args = ['push'];
+  if (forceWithLease) args.push('--force-with-lease');
+  args.push(remote, `${localRef}:refs/heads/${remoteBranch}`);
   await gitExec(
-    `git push ${forceFlag}${remote} "${localRef}:refs/heads/${remoteBranch}"`,
+    args,
     repoPath,
     ctx
   );
@@ -501,7 +507,7 @@ export async function getCommitsBetween(
   try {
     // Use %H for full sha, %h for short sha, %s for subject, %aI for ISO timestamp
     const { stdout } = await gitExec(
-      `git log --format="%H|%h|%s|%aI" "${baseRef}..${headRef}"`,
+      ['log', '--format=%H|%h|%s|%aI', `${baseRef}..${headRef}`],
       repoPath
     );
 
@@ -536,10 +542,10 @@ export async function fetchAndRebase(
   logger.time(`rebase-${repoPath}`);
 
   // Fetch latest from remote
-  await gitExec(`git fetch ${remote}`, repoPath, ctx);
+  await gitExec(['fetch', remote], repoPath, ctx);
 
   // Rebase onto the target branch
-  await gitExec(`git rebase "${remote}/${targetBranch}"`, repoPath, ctx);
+  await gitExec(['rebase', `${remote}/${targetBranch}`], repoPath, ctx);
 
   logger.timeEnd(`rebase-${repoPath}`, 'git', 'Fetch and rebase completed', ctx);
 }
@@ -564,15 +570,15 @@ export async function pushWithRetry(
       if (attempt > 1) {
         logger.info('git', `Retry attempt ${attempt}/${maxRetries}: fetch and rebase`, ctx);
         try {
-          await gitExec(`git fetch ${remote}`, repoPath, ctx);
-          await gitExec(`git rebase "${remote}/${remoteBranch}"`, repoPath, ctx);
+          await gitExec(['fetch', remote], repoPath, ctx);
+          await gitExec(['rebase', `${remote}/${remoteBranch}`], repoPath, ctx);
         } catch (rebaseError) {
           const err = rebaseError as Error;
           // Rebase conflict - abort and propagate error
           if (err.message.includes('CONFLICT') || err.message.includes('could not apply')) {
             logger.error('git', 'Rebase conflict detected, aborting', ctx);
             try {
-              await gitExec('git rebase --abort', repoPath, ctx);
+              await gitExec(['rebase', '--abort'], repoPath, ctx);
             } catch { /* ignore abort errors */ }
             throw new Error(`Rebase conflict while pushing to ${remoteBranch}. Manual resolution required.`);
           }
@@ -632,7 +638,7 @@ export function getGitHubUrlFromRemote(remoteUrl: string | null | undefined): st
  */
 export async function getHeadCommit(repoPath: string): Promise<string | null> {
   try {
-    const { stdout } = await gitExec('git rev-parse HEAD', repoPath);
+    const { stdout } = await gitExec(['rev-parse', 'HEAD'], repoPath);
     return stdout.trim();
   } catch {
     return null;
@@ -654,7 +660,7 @@ export async function createBranch(
 
   // Fetch latest first
   try {
-    await gitExec('git fetch origin', repoPath, ctx);
+    await gitExec(['fetch', 'origin'], repoPath, ctx);
   } catch {
     logger.debug('git', 'Fetch failed (network may be unavailable)', ctx);
     // Ignore fetch errors (might not have network)
@@ -663,7 +669,7 @@ export async function createBranch(
   // Create branch from origin/baseBranch if available, otherwise local
   try {
     await gitExec(
-      `git checkout -b "${branchName}" "origin/${baseBranch}"`,
+      ['checkout', '-b', branchName, `origin/${baseBranch}`],
       repoPath,
       ctx
     );
@@ -671,7 +677,7 @@ export async function createBranch(
   } catch {
     logger.debug('git', 'Falling back to local base branch', ctx);
     await gitExec(
-      `git checkout -b "${branchName}" "${baseBranch}"`,
+      ['checkout', '-b', branchName, baseBranch],
       repoPath,
       ctx
     );
@@ -686,7 +692,7 @@ export async function checkoutBranch(
   repoPath: string,
   branchName: string
 ): Promise<void> {
-  await gitExec(`git checkout "${branchName}"`, repoPath);
+  await gitExec(['checkout', branchName], repoPath);
 }
 
 /**
@@ -696,7 +702,7 @@ export async function pullBranch(
   repoPath: string,
   remote = 'origin'
 ): Promise<void> {
-  await gitExec(`git pull ${remote}`, repoPath);
+  await gitExec(['pull', remote], repoPath);
 }
 
 /**
@@ -712,7 +718,7 @@ export async function fetchBranch(
 ): Promise<void> {
   const ctx = { ...logContext, repo: repoPath, branch: branchName };
   logger.debug('git', `Fetching branch from ${remote}`, ctx);
-  await gitExec(`git fetch ${remote} "${branchName}"`, repoPath, ctx);
+  await gitExec(['fetch', remote, branchName], repoPath, ctx);
 }
 
 /**
@@ -729,7 +735,7 @@ export async function fetchBranchWithForce(
   const ctx = { ...logContext, repo: repoPath, branch: branchName };
   logger.debug('git', `Force fetching branch from ${remote}`, ctx);
   await gitExec(
-    `git fetch ${remote} "${branchName}:refs/remotes/${remote}/${branchName}" --force`,
+    ['fetch', remote, `${branchName}:refs/remotes/${remote}/${branchName}`, '--force'],
     repoPath,
     ctx
   );
@@ -750,7 +756,7 @@ export async function rebaseOntoRemoteBranch(
   logger.info('git', `Rebasing onto ${remote}/${targetBranch}`, ctx);
 
   try {
-    await gitExec(`git rebase "${remote}/${targetBranch}"`, repoPath, ctx);
+    await gitExec(['rebase', `${remote}/${targetBranch}`], repoPath, ctx);
     return { success: true };
   } catch (error) {
     const err = error as Error;
@@ -764,7 +770,7 @@ export async function rebaseOntoRemoteBranch(
     if (isConflict) {
       logger.warn('git', 'Rebase conflict detected, aborting rebase', ctx);
       try {
-        await gitExec('git rebase --abort', repoPath, ctx);
+        await gitExec(['rebase', '--abort'], repoPath, ctx);
       } catch {
         // Ignore abort errors
       }
@@ -785,7 +791,7 @@ export async function remoteBranchExists(
   remote = 'origin'
 ): Promise<boolean> {
   try {
-    await gitExec(`git ls-remote --exit-code --heads ${remote} "${branchName}"`, repoPath);
+    await gitExec(['ls-remote', '--exit-code', '--heads', remote, branchName], repoPath);
     return true;
   } catch {
     return false;
@@ -804,7 +810,7 @@ export async function deleteRemoteBranch(
 ): Promise<void> {
   const ctx = { ...logContext, repo: repoPath, branch: branchName };
   logger.info('git', `Deleting remote branch from ${remote}`, ctx);
-  await gitExec(`git push ${remote} --delete "${branchName}"`, repoPath, ctx);
+  await gitExec(['push', remote, '--delete', branchName], repoPath, ctx);
   logger.info('git', 'Remote branch deleted', ctx);
 }
 
@@ -819,7 +825,7 @@ export async function deleteLocalBranch(
 ): Promise<void> {
   const ctx = { ...logContext, repo: repoPath, branch: branchName };
   logger.debug('git', 'Deleting local branch', ctx);
-  await gitExec(`git branch -D "${branchName}"`, repoPath, ctx);
+  await gitExec(['branch', '-D', branchName], repoPath, ctx);
 }
 
 /**
@@ -848,7 +854,7 @@ export async function getGitUserConfig(cwd?: string): Promise<GitUserConfig> {
 
     const getGlobalConfigValue = async (key: string): Promise<string | null> => {
       try {
-        const { stdout } = await exec(`git config --global --get ${key}`);
+        const { stdout } = await spawnWithPathAsync('git', ['config', '--global', '--get', key]);
         return stdout.trim() || null;
       } catch {
         return null;
@@ -867,7 +873,7 @@ export async function getGitUserConfig(cwd?: string): Promise<GitUserConfig> {
   // Get config in directory context (includes local repo settings)
   const getConfigValue = async (key: string): Promise<string | null> => {
     try {
-      const { stdout } = await exec(`git config --get ${key}`, { cwd });
+      const { stdout } = await spawnWithPathAsync('git', ['config', '--get', key], { cwd });
       return stdout.trim() || null;
     } catch {
       return null;
