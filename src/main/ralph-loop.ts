@@ -57,27 +57,7 @@ import type {
 } from '../shared/types'
 import { execWithPath } from './exec-utils'
 import * as fsPromises from 'fs/promises'
-
-// Word lists for fun random names (same as standalone-headless)
-const ADJECTIVES = [
-  'fluffy', 'happy', 'brave', 'swift', 'clever', 'gentle', 'mighty', 'calm',
-  'wild', 'eager', 'jolly', 'lucky', 'plucky', 'zesty', 'snappy', 'peppy'
-]
-
-const NOUNS = [
-  'bunny', 'panda', 'koala', 'otter', 'falcon', 'dolphin', 'fox', 'owl',
-  'tiger', 'eagle', 'wolf', 'bear', 'hawk', 'lynx', 'raven', 'seal'
-]
-
-/**
- * Generate a fun, memorable random phrase
- * Format: {adjective}-{noun} (e.g., "plucky-otter")
- */
-function generateRandomPhrase(): string {
-  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
-  return `${adjective}-${noun}`
-}
+import { generateBranchSlug } from './naming-utils'
 
 // Track active Ralph Loops
 const ralphLoops: Map<string, RalphLoopState> = new Map()
@@ -331,7 +311,6 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
 
   // Generate unique IDs
   const loopId = `ralph-loop-${Date.now()}`
-  const phrase = generateRandomPhrase()
 
   // Get repository info
   const repoPath = await getMainRepoRoot(referenceAgent.directory)
@@ -340,11 +319,14 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
   }
   const repoName = path.basename(repoPath)
 
+  // Generate prompt-aware slug for branch name
+  const phrase = generateBranchSlug(config.prompt)
+
   // Get default branch as base for worktree
   const baseBranch = await getDefaultBranch(repoPath)
 
   // Generate branch and worktree paths
-  const branchName = `ralph/${repoName}-${phrase}`
+  const branchName = `bismarck-ralph/${repoName}-${phrase}`
   const worktreePath = getStandaloneWorktreePath(repoName, `ralph-${phrase}`)
 
   // Ensure directory exists
@@ -378,7 +360,7 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
     ? (getState().tabs.find(t => t.id === config.tabId) || createTab(`Ralph: ${phrase}`))
     : createTab(`Ralph: ${phrase}`)
   if (!config.tabId) {
-    tab.isPlanTab = true // Treat like a plan tab for styling
+    tab.isDedicatedTab = true // Dedicated to this ralph loop — not for standalone agents
   }
 
   // Create the initial state

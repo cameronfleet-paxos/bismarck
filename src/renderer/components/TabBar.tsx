@@ -84,7 +84,7 @@ export function TabBar({
         // Check if this tab can accept a dropped agent
         const canAcceptDrop = draggedWorkspaceId &&
           !tab.workspaceIds.includes(draggedWorkspaceId) &&
-          (tab.isPlanTab || agentCount < 4)
+          (tab.isDedicatedTab || agentCount < 4)
         const isDropTarget = dropTargetTabId === tab.id && canAcceptDrop
         // Tab reordering state
         const isDraggingThisTab = draggedTabId === tab.id
@@ -98,7 +98,7 @@ export function TabBar({
             data-testid={`tab-item-${tab.id}`}
             draggable={!isEditing}
             className={`group flex items-center gap-1 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
-              tab.isPlanTab
+              tab.isDedicatedTab
                 ? isActive
                   ? 'bg-blue-600 text-white border border-blue-500 shadow-sm'
                   : 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
@@ -174,7 +174,7 @@ export function TabBar({
                   {tab.name}
                 </span>
                 <span className="text-muted-foreground text-xs">
-                  {tab.isPlanTab ? `(${agentCount})` : `(${agentCount}/4)`}
+                  {tab.isDedicatedTab ? `(${agentCount})` : `(${agentCount}/4)`}
                 </span>
               </>
             )}

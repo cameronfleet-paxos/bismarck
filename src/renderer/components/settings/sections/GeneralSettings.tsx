@@ -113,8 +113,8 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     if (newMax < currentMax) {
       try {
         const tabs = await window.electronAPI.getTabs()
-        // Only count non-plan tabs (plan tabs can have unlimited agents)
-        const nonPlanTabs = tabs.filter((tab: AgentTab) => !tab.isPlanTab)
+        // Only count standard tabs (dedicated tabs can have unlimited agents)
+        const nonPlanTabs = tabs.filter((tab: AgentTab) => !tab.isDedicatedTab)
         let affectedAgents = 0
         let affectedTabs = 0
 

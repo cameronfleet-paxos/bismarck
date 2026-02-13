@@ -359,7 +359,7 @@ async function executeWorkflow(job: CronJob, existingTabId?: string): Promise<{ 
     tabId = existingTabId
   } else {
     const tab = createTab(`Cron: ${job.name}`)
-    tab.isPlanTab = true
+    tab.isDedicatedTab = true
     tab.cronJobId = job.id
     setActiveTab(tab.id)
     tabId = tab.id
@@ -527,7 +527,7 @@ export async function runCronJobNow(jobId: string): Promise<{ tabId: string } | 
 
   // Create the tab immediately so we can return it to the caller
   const tab = createTab(`Cron: ${job.name}`)
-  tab.isPlanTab = true
+  tab.isDedicatedTab = true
   tab.cronJobId = job.id
   setActiveTab(tab.id)
   emitStateUpdate() // Notify renderer immediately so the tab appears

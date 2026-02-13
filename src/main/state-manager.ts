@@ -118,12 +118,12 @@ export function setFocusedWorkspace(workspaceId: string | undefined): void {
 
 // Tab management functions
 
-export function createTab(name?: string, options?: { isPlanTab?: boolean; planId?: string; isTerminalTab?: boolean }): AgentTab {
+export function createTab(name?: string, options?: { isDedicatedTab?: boolean; planId?: string; isTerminalTab?: boolean }): AgentTab {
   const tab: AgentTab = {
     id: generateTabId(),
     name: name || getNextTabName(),
     workspaceIds: [],
-    isPlanTab: options?.isPlanTab,
+    isDedicatedTab: options?.isDedicatedTab,
     planId: options?.planId,
     isTerminalTab: options?.isTerminalTab,
   }
@@ -212,7 +212,7 @@ export function addWorkspaceToTab(
   }
 
   // Plan tabs have no limit - just append
-  if (tab.isPlanTab) {
+  if (tab.isDedicatedTab) {
     tab.workspaceIds.push(workspaceId)
     persistState()
     return true
@@ -362,8 +362,10 @@ export function getOrCreateTabForWorkspace(workspaceId: string): AgentTab {
     }
   }
 
-  // Find first tab with space (account for sparse arrays)
+  // Find first standard tab with space (account for sparse arrays)
+  // Skip plan/cron/ralph tabs — standalone agents should only go in standard tabs
   for (const tab of currentState.tabs) {
+    if (tab.isDedicatedTab) continue
     // Count actual workspaces (filter out undefined/null from sparse array)
     const actualCount = tab.workspaceIds.filter(Boolean).length
     if (actualCount < getMaxAgentsPerTab()) {
@@ -395,10 +397,12 @@ export function getOrCreateTabForWorkspaceWithPreference(
     }
   }
 
-  // Look for first tab with space starting from the preferred tab's position
+  // Look for first standard tab with space starting from the preferred tab's position
   // This ensures we don't backfill empty slots on earlier tabs
+  // Skip plan/cron/ralph tabs — standalone agents should only go in standard tabs
   for (let i = startIndex; i < currentState.tabs.length; i++) {
     const tab = currentState.tabs[i]
+    if (tab.isDedicatedTab) continue
     const actualCount = tab.workspaceIds.filter(Boolean).length
     if (actualCount < getMaxAgentsPerTab()) {
       return tab

@@ -1739,7 +1739,7 @@ function App() {
     if (!slot) {
       // All tabs full — optimistically create a temporary tab
       const tempTabId = `tab-temp-${Date.now()}`
-      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tabNumber = tabs.filter(t => !t.isDedicatedTab && !t.isTerminalTab).length + 1
       const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
       setTabs(prev => [...prev, tempTab])
       slot = { tabId: tempTabId, position: 0 }
@@ -1943,7 +1943,7 @@ function App() {
     let ipcTabId = slot?.tabId || activeTabId || tabs[0]?.id
     if (!slot) {
       const tempTabId = `tab-temp-${Date.now()}`
-      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tabNumber = tabs.filter(t => !t.isDedicatedTab && !t.isTerminalTab).length + 1
       const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
       setTabs(prev => [...prev, tempTab])
       slot = { tabId: tempTabId, position: 0 }
@@ -2248,7 +2248,7 @@ function App() {
     const plan = plans.find((p) => p.orchestratorTabId === tab.id)
     if (!plan) {
       // Only log for plan tabs to avoid noise
-      if (tab.isPlanTab) {
+      if (tab.isDedicatedTab) {
         devLog('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
       }
       return []
@@ -2334,7 +2334,7 @@ function App() {
     // Search tabs starting from the active tab's position
     for (let i = startIndex; i < currentTabs.length; i++) {
       const tab = currentTabs[i]
-      if (tab.isPlanTab) continue
+      if (tab.isDedicatedTab) continue
       const claimed = claimedPositions.get(tab.id) || new Set()
       for (let pos = 0; pos < maxAgents; pos++) {
         if (!tab.workspaceIds[pos] && !claimed.has(pos)) {
@@ -2993,7 +2993,7 @@ function App() {
               >
                 {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
-                    const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
+                    const discussedPlan = tab.isDedicatedTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {
                       const selectedAgentId = discussionExecuteAgent[discussedPlan.id] || ''
                       const selectedTeamMode = discussionExecuteTeamMode[discussedPlan.id] || 'top-down'
@@ -3128,8 +3128,8 @@ function App() {
                       </div>
                     )
                   })()
-                ) : tab.isPlanTab ? (
-                  // Scrollable 2-column grid for plan tabs (unlimited agents)
+                ) : tab.isDedicatedTab ? (
+                  // Scrollable 2-column grid for dedicated tabs (unlimited agents)
                   // Use CSS grid with fixed row heights that match the regular 2x2 layout
                   <div
                     className="h-full overflow-y-auto grid gap-2 p-1 relative"

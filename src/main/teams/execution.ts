@@ -104,7 +104,7 @@ export async function executePlan(planId: string, referenceAgentId: string, team
   plan.updatedAt = new Date().toISOString()
 
   // Create a dedicated tab for the planner/orchestrator
-  const orchestratorTab = createTab(plan.title.substring(0, 20), { isPlanTab: true, planId: plan.id })
+  const orchestratorTab = createTab(plan.title.substring(0, 20), { isDedicatedTab: true, planId: plan.id })
   plan.orchestratorTabId = orchestratorTab.id
 
   await savePlan(plan)
