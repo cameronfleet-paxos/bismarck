@@ -353,6 +353,14 @@ export function loadState(): AppState {
       state.preferences.keyboardShortcuts = getDefaultKeyboardShortcuts()
       needsSave = true
     }
+    // Migration: rename isPlanTab → isDedicatedTab on existing tabs
+    for (const tab of state.tabs) {
+      if ('isPlanTab' in tab) {
+        (tab as any).isDedicatedTab = (tab as any).isPlanTab
+        delete (tab as any).isPlanTab
+        needsSave = true
+      }
+    }
     // Persist migrations
     if (needsSave) {
       writeConfigAtomic(statePath, state)
