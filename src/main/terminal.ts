@@ -5,7 +5,7 @@ import * as path from 'path'
 import * as crypto from 'crypto'
 import { EventEmitter } from 'events'
 import { BrowserWindow } from 'electron'
-import { getWorkspaceById, saveWorkspace } from './config'
+import { getWorkspaceById, saveWorkspace, getConfigDir } from './config'
 import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 import { devLog } from './dev-log'
@@ -249,6 +249,23 @@ export function createTerminal(
       resume = true
     }
     agentCmd = buildCodexCommand({ directory: cwd, sessionId, resume, initialPrompt })
+  }
+
+  // Write CWD-based mapping file for Codex agents
+  // The codex-notify-hook.sh uses this to route attention events to the correct workspace
+  if (provider === 'codex') {
+    try {
+      const hash = crypto.createHash('sha256').update(cwd).digest('hex').slice(0, 16)
+      const sessionsDir = path.join(getConfigDir(), 'sessions')
+      fs.mkdirSync(sessionsDir, { recursive: true })
+      const mappingPath = path.join(sessionsDir, `codex-${hash}.json`)
+      fs.writeFileSync(mappingPath, JSON.stringify({
+        workspaceId,
+        instanceId: getInstanceId(),
+      }))
+    } catch (err) {
+      devLog(`[Terminal] Failed to write Codex mapping file for workspace ${workspaceId}:`, err)
+    }
   }
 
   // Benchmark: start PTY spawn timing
