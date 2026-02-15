@@ -10,6 +10,9 @@ import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 import { devLog } from './dev-log'
 import { buildInteractiveDockerArgs, type InteractiveDockerOptions } from './docker-sandbox'
+import { getAgentProvider } from '../shared/types'
+import type { AgentProvider } from '../shared/types'
+import { findBinary } from './exec-utils'
 
 /**
  * Strip ANSI escape codes from terminal output
@@ -57,6 +60,130 @@ function claudeSessionExists(sessionId: string): boolean {
     return false
   }
   return false
+}
+
+/**
+ * Recursively find all .jsonl files under a directory.
+ * Used for scanning Codex session storage.
+ */
+function findJsonlFilesRecursive(dir: string): string[] {
+  const results: string[] = []
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        results.push(...findJsonlFilesRecursive(fullPath))
+      } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        results.push(fullPath)
+      }
+    }
+  } catch {
+    // Directory may not exist or be inaccessible
+  }
+  return results
+}
+
+/**
+ * Check if a Codex session exists by its UUID.
+ * Codex stores sessions in ~/.codex/sessions/ as JSONL files.
+ * The first line is SessionMeta JSON containing the session UUID in the `id` field.
+ */
+function codexSessionExists(sessionId: string): boolean {
+  const sessionsDir = path.join(os.homedir(), '.codex', 'sessions')
+  if (!fs.existsSync(sessionsDir)) return false
+
+  const jsonlFiles = findJsonlFilesRecursive(sessionsDir)
+  for (const file of jsonlFiles) {
+    try {
+      const firstLine = fs.readFileSync(file, 'utf-8').split('\n')[0]
+      const meta = JSON.parse(firstLine)
+      // Handle both bare SessionMeta and RolloutLine envelope format
+      const id = meta.id || meta.payload?.id
+      if (id === sessionId) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+/**
+ * Find the most recent Codex session for a given working directory.
+ * Scans ~/.codex/sessions/ recursively, reads SessionMeta from first line of each JSONL file,
+ * and matches by cwd field. Returns the session UUID or null if not found.
+ */
+function findCodexSessionForDirectory(directory: string): string | null {
+  const sessionsDir = path.join(os.homedir(), '.codex', 'sessions')
+  if (!fs.existsSync(sessionsDir)) return null
+
+  // Find all session files, sorted newest first
+  const jsonlFiles = findJsonlFilesRecursive(sessionsDir)
+    .map(file => ({ file, mtime: fs.statSync(file).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map(entry => entry.file)
+
+  for (const file of jsonlFiles) {
+    try {
+      const firstLine = fs.readFileSync(file, 'utf-8').split('\n')[0]
+      const meta = JSON.parse(firstLine)
+      // Handle both bare SessionMeta and RolloutLine envelope format
+      const cwd = meta.cwd || meta.payload?.cwd
+      if (cwd === directory) {
+        return meta.id || meta.payload?.id || null
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Build the Claude CLI command string.
+ * Extracted from existing inline code — flag ordering preserved (flags before --resume/--session-id).
+ */
+function buildClaudeCommand(options: {
+  sessionId?: string
+  resume: boolean
+  claudeFlags?: string
+  initialPrompt?: string
+}): string {
+  let cmd = 'claude'
+  if (options.claudeFlags) cmd += ` ${options.claudeFlags}`
+  if (options.resume && options.sessionId) {
+    cmd += ` --resume ${options.sessionId}`
+  } else if (options.sessionId) {
+    cmd += ` --session-id ${options.sessionId}`
+  }
+  if (options.initialPrompt) {
+    const escaped = options.initialPrompt.replace(/'/g, "'\\''")
+    cmd += ` '${escaped}'`
+  }
+  return cmd + '\n'
+}
+
+/**
+ * Build the Codex CLI command string.
+ * New session: codex --cd <dir> [prompt]
+ * Resume: codex resume <UUID> --cd <dir>
+ * Directory paths are single-quoted to handle spaces.
+ */
+function buildCodexCommand(options: {
+  directory: string
+  sessionId?: string
+  resume: boolean
+  initialPrompt?: string
+}): string {
+  if (options.resume && options.sessionId) {
+    return `codex resume ${options.sessionId} --cd '${options.directory}'\n`
+  }
+  let cmd = `codex --cd '${options.directory}'`
+  if (options.initialPrompt) {
+    const escaped = options.initialPrompt.replace(/'/g, "'\\''")
+    cmd += ` '${escaped}'`
+  }
+  return cmd + '\n'
 }
 
 interface TerminalProcess {
