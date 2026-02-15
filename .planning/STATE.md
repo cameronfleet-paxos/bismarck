@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Phase
-Phase 3 -- Attention Hooks for Codex (in progress)
+Phase 3 -- Attention Hooks for Codex (complete)
 
 ## Milestone
 Milestone 1: Interactive Codex Agents
@@ -19,12 +19,16 @@ Milestone 1: Interactive Codex Agents
 - [x] Phase 2 Plan 01: Remove dead terminal code (autoAcceptMode, trust prompt, accept-mode cycling)
 - [x] Phase 2 Plan 02: Provider-aware terminal spawning (Codex command building, session management, binary detection)
 
+- [x] Phase 3 Plan 01: Codex notify hook registration (smol-toml, codex-notify-hook.sh, configureCodexHook)
 - [x] Phase 3 Plan 02: CWD-based mapping file creation for Codex agents in terminal.ts
 
 ## Next Action
-Execute Phase 3 Plan 01 (Codex notify hook script and configureCodexHook)
+Phase 3 complete. Plan and execute Phase 4.
 
 ## Decisions
+- smol-toml for TOML parsing (most popular, TOML 1.1.0, parse+stringify)
+- configureCodexHook gates on hasBinary('codex') AND provider=codex agent exists
+- Skip (not overwrite) if user has existing notify command in config.toml
 - Codex CWD mapping uses SHA-256 hash of directory path, first 16 hex chars
 - Mapping file created BEFORE PTY spawn so hook script has data when Codex fires events
 - Mapping failure wrapped in try/catch -- cannot block terminal spawn
@@ -44,6 +48,7 @@ Execute Phase 3 Plan 01 (Codex notify hook script and configureCodexHook)
 | 01    | 01   | 167s     | 3     | 3     |
 | 02    | 01   | 140s     | 2     | 2     |
 | 02    | 02   | 270s     | 3     | 1     |
+| 03    | 01   | 221s     | 3     | 4     |
 | 03    | 02   | 113s     | 1     | 1     |
 
 ## Key Research Findings
@@ -59,5 +64,5 @@ Execute Phase 3 Plan 01 (Codex notify hook script and configureCodexHook)
 - Bismarck's Unix socket attention bus is already agent-agnostic
 
 ## Last Session
-- **Stopped at:** Completed 03-02-PLAN.md
-- **Timestamp:** 2026-02-15T23:32:13Z
+- **Stopped at:** Completed 03-01-PLAN.md (Phase 3 complete)
+- **Timestamp:** 2026-02-15T23:33:51Z
