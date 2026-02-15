@@ -359,6 +359,17 @@ async function handleGitRequest(
 
     const args = body.args || []
 
+    // Auto-inject Co-authored-by trailer for git commit commands
+    if (args[0] === 'commit') {
+      const msgIndex = args.indexOf('-m')
+      if (msgIndex !== -1 && msgIndex + 1 < args.length) {
+        const msg = args[msgIndex + 1]
+        if (!msg.toLowerCase().includes('co-authored-by:')) {
+          args[msgIndex + 1] = msg + '\n\nCo-authored-by: Claude <noreply@anthropic.com>'
+        }
+      }
+    }
+
     logger.info('proxy', `git request received: git ${args.join(' ')}`, { worktreePath: cwd })
 
     // Log the operation
