@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Phase
-Phase 2 -- Terminal Spawning for Codex (complete)
+Phase 3 -- Attention Hooks for Codex (in progress)
 
 ## Milestone
 Milestone 1: Interactive Codex Agents
@@ -19,10 +19,15 @@ Milestone 1: Interactive Codex Agents
 - [x] Phase 2 Plan 01: Remove dead terminal code (autoAcceptMode, trust prompt, accept-mode cycling)
 - [x] Phase 2 Plan 02: Provider-aware terminal spawning (Codex command building, session management, binary detection)
 
+- [x] Phase 3 Plan 02: CWD-based mapping file creation for Codex agents in terminal.ts
+
 ## Next Action
-Plan and execute Phase 3
+Execute Phase 3 Plan 01 (Codex notify hook script and configureCodexHook)
 
 ## Decisions
+- Codex CWD mapping uses SHA-256 hash of directory path, first 16 hex chars
+- Mapping file created BEFORE PTY spawn so hook script has data when Codex fires events
+- Mapping failure wrapped in try/catch -- cannot block terminal spawn
 - AgentProvider is a strict union type ('claude' | 'codex'), not an enum
 - Agent.provider is optional with runtime fallback via getAgentProvider()
 - defaultProvider lives in AppSettings (configuration), not AppPreferences (runtime state)
@@ -39,6 +44,7 @@ Plan and execute Phase 3
 | 01    | 01   | 167s     | 3     | 3     |
 | 02    | 01   | 140s     | 2     | 2     |
 | 02    | 02   | 270s     | 3     | 1     |
+| 03    | 02   | 113s     | 1     | 1     |
 
 ## Key Research Findings
 - Codex binary: `codex`, installed via `npm install -g @openai/codex` (Rust native binary)
@@ -53,5 +59,5 @@ Plan and execute Phase 3
 - Bismarck's Unix socket attention bus is already agent-agnostic
 
 ## Last Session
-- **Stopped at:** Completed 02-02-PLAN.md (Phase 2 complete)
-- **Timestamp:** 2026-02-15T23:04:22Z
+- **Stopped at:** Completed 03-02-PLAN.md
+- **Timestamp:** 2026-02-15T23:32:13Z
