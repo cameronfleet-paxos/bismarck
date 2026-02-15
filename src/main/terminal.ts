@@ -72,7 +72,6 @@ export function createTerminal(
   mainWindow: BrowserWindow | null,
   initialPrompt?: string,
   claudeFlags?: string,
-  autoAcceptMode?: boolean
 ): string {
   const workspace = getWorkspaceById(workspaceId)
   if (!workspace) {
@@ -176,78 +175,6 @@ export function createTerminal(
       }
     }
   })
-
-  // Auto-accept workspace trust prompts for .bismarck directories
-  // This handles both the main terminal and subagents spawned by Claude's Task tool
-  // The prompt shows "Yes, I trust this folder" as option 1
-  // Buffer data to handle prompts that arrive across multiple chunks
-  let trustPromptBuffer = ''
-  let trustPromptDebounce = false
-  let trustBufferClearTimeout: NodeJS.Timeout | null = null
-
-  ptyProcess.onData((data) => {
-    // Accumulate data for trust prompt detection
-    trustPromptBuffer += data
-
-    // Clear buffer after 2 seconds of inactivity to avoid stale matches
-    if (trustBufferClearTimeout) clearTimeout(trustBufferClearTimeout)
-    trustBufferClearTimeout = setTimeout(() => {
-      trustPromptBuffer = ''
-    }, 2000)
-
-    // Check for the trust prompt in accumulated buffer (matches both .bismarck and .bismarck-dev)
-    if (trustPromptBuffer.includes('Yes, I trust this folder') && (trustPromptBuffer.includes('.bismarck') || trustPromptBuffer.includes('.bismarck-dev'))) {
-      if (trustPromptDebounce) return
-      trustPromptDebounce = true
-      trustPromptBuffer = '' // Clear buffer once matched
-      devLog(`[Terminal] Auto-accepting workspace trust prompt for bismarck directory`)
-      // Send '1' to select "Yes, I trust this folder" after a short delay
-      setTimeout(() => {
-        ptyProcess.write('1\r')
-        trustPromptDebounce = false
-      }, 200)
-    }
-  })
-
-  // Auto-cycle to "accept edits on" mode for task agents
-  // Shift+Tab cycles through accept modes until we see the desired state
-  if (autoAcceptMode) {
-    let acceptModeAttempts = 0
-    const MAX_ACCEPT_MODE_ATTEMPTS = 5
-    let acceptModeDebounce = false
-    let acceptModeDone = false
-
-    ptyProcess.onData((data) => {
-      if (acceptModeDone) return
-
-      // Already in accept mode - stop listening
-      if (data.includes('accept edits on')) {
-        devLog(`[Terminal] Task agent in auto-accept mode`)
-        acceptModeDone = true
-        return
-      }
-
-      // Claude is ready (showing status line) but not in accept mode yet
-      // Look for the mode indicator without "accept edits on"
-      if (data.includes('⏵') && !data.includes('accept edits on')) {
-        if (acceptModeDebounce) return
-        if (acceptModeAttempts >= MAX_ACCEPT_MODE_ATTEMPTS) {
-          devLog(`[Terminal] Max accept mode attempts reached`)
-          acceptModeDone = true
-          return
-        }
-
-        acceptModeDebounce = true
-        acceptModeAttempts++
-        devLog(`[Terminal] Cycling accept mode (attempt ${acceptModeAttempts})`)
-
-        setTimeout(() => {
-          ptyProcess.write('\x1b[Z') // Shift+Tab
-          acceptModeDebounce = false
-        }, 300)
-      }
-    })
-  }
 
   // Auto-start claude when shell prompt is detected (instead of fixed delay)
   // This ensures asdf and other shell initialization is complete
