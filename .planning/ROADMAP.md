@@ -7,7 +7,7 @@
 **Plans:** 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md -- Add AgentProvider type, provider field on Agent, display name mapping, defaultProvider setting
+- [x] 01-01-PLAN.md -- Add AgentProvider type, provider field on Agent, display name mapping, defaultProvider setting
 
 **Changes:**
 - `src/shared/types.ts` — Add `AgentProvider` type (`'claude' | 'codex'`), add `provider` field to `Agent` interface
@@ -21,16 +21,19 @@ Plans:
 ---
 
 ### Phase 2: Terminal Spawning for Codex
-**Goal:** Spawn `codex` binary in PTY when agent provider is `codex`.
+**Goal:** Spawn `codex` binary in PTY when agent provider is `codex`. Clean up dead code (trust prompts, accept-mode cycling). Full session support for both providers.
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md -- Dead code cleanup: remove trust prompt auto-accept, accept-mode cycling, autoAcceptMode parameter
+- [ ] 02-02-PLAN.md -- Provider-aware command building, binary detection, session management, provider-specific hooks
 
 **Changes:**
-- `src/main/terminal.ts` — Branch on `workspace.provider` to build either `claude` or `codex` command
-- Codex command: `codex --cd <directory>` (no session resume in v1)
-- Handle `codex` binary not found gracefully (error message to renderer)
-- Skip Claude-specific session management (sessionId, `claudeSessionExists`) for Codex agents
+- `src/main/terminal.ts` — Remove dead code, add provider-aware command building, Codex session management
+- `src/main/terminal-queue.ts` — Remove `autoAcceptMode` from options interface and call site
 
 **Requires:** Phase 1
-**Validates:** Codex terminal launches and renders in xterm.js, Claude terminals unchanged
+**Validates:** Codex terminal launches and renders in xterm.js, Claude terminals unchanged, TypeScript compiles
 
 ---
 
