@@ -9,6 +9,7 @@ import { getWorkspaceById, saveWorkspace } from './config'
 import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 import { devLog } from './dev-log'
+import { buildInteractiveDockerArgs, type InteractiveDockerOptions } from './docker-sandbox'
 
 /**
  * Strip ANSI escape codes from terminal output
@@ -526,6 +527,63 @@ export function createPlainTerminal(
   })
 
   // Forward data to renderer (uses same 'terminal-data' channel as agent terminals)
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', terminalId, data)
+    }
+  })
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
+    }
+    terminals.delete(terminalId)
+  })
+
+  return terminalId
+}
+
+/**
+ * Create a Docker terminal (interactive Docker container via PTY).
+ * Used for interactive Docker terminal sessions.
+ */
+export async function createDockerTerminal(
+  options: InteractiveDockerOptions,
+  mainWindow: BrowserWindow | null,
+): Promise<string> {
+  const terminalId = `docker-terminal-${Date.now()}`
+  const dockerArgs = await buildInteractiveDockerArgs(options)
+
+  // Validate directory exists, fall back to home if not
+  let cwd = options.workingDir
+  if (!fs.existsSync(cwd)) {
+    console.warn(`Directory ${cwd} does not exist, using home directory`)
+    cwd = os.homedir()
+  }
+
+  // Spawn docker run -it via PTY
+  const ptyProcess = pty.spawn('docker', dockerArgs, {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+    },
+  })
+
+  // Create emitter for terminal output listening
+  const emitter = new EventEmitter()
+
+  terminals.set(terminalId, {
+    pty: ptyProcess,
+    workspaceId: `plain-${terminalId}`, // Reuse plain- prefix for zero rendering changes
+    emitter,
+  })
+
+  // Forward data to renderer
   ptyProcess.onData((data) => {
     emitter.emit('data', data)
     if (mainWindow && !mainWindow.isDestroyed()) {

@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Plain terminal management (non-agent shell terminals)
   createPlainTerminal: (directory: string, name?: string): Promise<{ terminalId: string; tabId: string }> =>
     ipcRenderer.invoke('create-plain-terminal', directory, name),
+  createDockerTerminal: (options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }): Promise<{ terminalId: string; tabId: string }> =>
+    ipcRenderer.invoke('create-docker-terminal', options),
   closePlainTerminal: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('close-plain-terminal', terminalId),
   renamePlainTerminal: (terminalId: string, name: string): Promise<void> =>

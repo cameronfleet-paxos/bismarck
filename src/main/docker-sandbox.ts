@@ -23,6 +23,13 @@ import { spawnWithPath } from './exec-utils'
 import { loadSettings, saveSettings } from './settings-manager'
 import { devLog } from './dev-log'
 
+export interface InteractiveDockerOptions {
+  workingDir: string          // Host directory to mount at /workspace
+  command: string[]           // Command to run (e.g., ['claude', '--dangerously-skip-permissions'])
+  claudeConfigDir?: string    // Host ~/.claude to mount (for skills, hooks, etc.)
+  env?: Record<string, string> // Additional env vars
+}
+
 export interface ContainerConfig {
   image: string // Docker image name (e.g., "bismarck-agent:latest")
   workingDir: string // Path to mount as /workspace
@@ -94,6 +101,129 @@ const runningContainers: Map<
     containerId: string | null
   }
 > = new Map()
+
+/**
+ * Build docker run arguments for an interactive Docker terminal session.
+ * Generic and reusable for any interactive Docker use case.
+ */
+export async function buildInteractiveDockerArgs(options: InteractiveDockerOptions): Promise<string[]> {
+  const settings = await loadSettings()
+  const { getSelectedDockerImage, getGitHubToken } = await import('./settings-manager')
+
+  const args: string[] = [
+    'run',
+    '--rm',
+    '-it', // Interactive + TTY for full TUI support
+  ]
+
+  // Mount working directory
+  args.push('-v', `${options.workingDir}:/workspace`)
+  args.push('-w', '/workspace')
+
+  // Mount host ~/.claude read-write so Claude Code can persist settings,
+  // theme preferences, and session state across interactive runs.
+  if (options.claudeConfigDir) {
+    args.push('-v', `${options.claudeConfigDir}:/home/agent/.claude`)
+  }
+
+  // Tool proxy URL + token
+  const proxyUrl = getProxyUrl()
+  args.push('-e', `TOOL_PROXY_URL=${proxyUrl}`)
+  const token = getProxyToken()
+  if (token) {
+    args.push('-e', `TOOL_PROXY_TOKEN=${token}`)
+  }
+
+  // Host worktree path for git proxy commands
+  args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${options.workingDir}`)
+
+  // SSH agent forwarding
+  if (settings.docker.sshAgent?.enabled !== false) {
+    if (process.platform === 'darwin') {
+      args.push('--mount', 'type=bind,src=/run/host-services/ssh-auth.sock,target=/ssh-agent')
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+      args.push('--group-add', '0')
+    } else if (process.env.SSH_AUTH_SOCK) {
+      args.push('-v', `${process.env.SSH_AUTH_SOCK}:/ssh-agent`)
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+    }
+  }
+
+  // Docker socket forwarding if enabled
+  if (settings.docker.dockerSocket?.enabled) {
+    const socketPath = settings.docker.dockerSocket.path || '/var/run/docker.sock'
+    args.push('-v', `${socketPath}:${socketPath}`)
+    if (process.platform !== 'darwin' || settings.docker.sshAgent?.enabled === false) {
+      args.push('--group-add', '0')
+    }
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      args.push('-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal')
+    }
+    args.push('-e', `DOCKER_HOST=unix://${socketPath}`)
+  }
+
+  // Tool wrapper mounts (generate wrappers for custom proxied tools)
+  const { generateToolWrappers } = await import('./wrapper-generator')
+  const wrapperDir = await generateToolWrappers(`interactive-${Date.now()}`)
+  if (wrapperDir) {
+    args.push('-v', `${wrapperDir}:/bismarck-tools:ro`)
+    args.push('-e', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/bismarck-tools')
+  }
+
+  // OAuth token
+  const oauthToken = getClaudeOAuthToken()
+  if (oauthToken) {
+    args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
+  }
+
+  // Mount host ~/.claude.json so Claude Code skips onboarding when
+  // CLAUDE_CODE_OAUTH_TOKEN is set (it checks hasCompletedOnboarding).
+  if (options.claudeConfigDir) {
+    const claudeJsonPath = path.join(path.dirname(options.claudeConfigDir), '.claude.json')
+    const fs = await import('fs')
+    if (fs.existsSync(claudeJsonPath)) {
+      args.push('-v', `${claudeJsonPath}:/home/agent/.claude.json`)
+    }
+  }
+
+  // GitHub token
+  const githubToken = await getGitHubToken()
+  if (githubToken) {
+    args.push('-e', `GITHUB_TOKEN=${githubToken}`)
+  }
+
+  // Additional env vars
+  if (options.env) {
+    for (const [key, value] of Object.entries(options.env)) {
+      args.push('-e', `${key}=${value}`)
+    }
+  }
+
+  // host.docker.internal
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    args.push('--add-host', 'host.docker.internal:host-gateway')
+  }
+
+  // Resource limits
+  if (settings.docker.resourceLimits?.memory) {
+    args.push('--memory', settings.docker.resourceLimits.memory)
+  }
+  if (settings.docker.resourceLimits?.cpu) {
+    args.push('--cpus', settings.docker.resourceLimits.cpu)
+  }
+  if (settings.docker.resourceLimits?.gomaxprocs) {
+    args.push('-e', `GOMAXPROCS=${settings.docker.resourceLimits.gomaxprocs}`)
+  }
+
+  // Image
+  const selectedImage = await getSelectedDockerImage()
+  args.push(selectedImage)
+
+  // Command
+  args.push(...options.command)
+
+  return args
+}
 
 /**
  * Build the docker run command arguments

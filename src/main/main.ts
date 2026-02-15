@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
 import { devLog } from './dev-log'
-import { reloadToolConfig } from './tool-proxy'
+import { reloadToolConfig, startToolProxy } from './tool-proxy'
 import {
   initBenchmark,
   startTimer,
@@ -38,6 +38,7 @@ import {
   closeAllTerminals,
   getTerminalForWorkspace,
   createPlainTerminal,
+  createDockerTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -207,7 +208,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, checkImageExists, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -517,6 +518,53 @@ function registerIpcHandlers() {
 
     // Persist plain terminal info for restoration on restart
     addPlainTerminal({ id: plainId, terminalId, tabId: tab.id, name: name || '', directory })
+
+    return { terminalId, tabId: tab.id }
+  })
+
+  // Docker terminal management (interactive Docker container via PTY)
+  ipcMain.handle('create-docker-terminal', async (_event, options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }) => {
+    // Pre-flight checks
+    const dockerAvailable = await checkDockerAvailable()
+    if (!dockerAvailable) {
+      throw new Error('Docker is not available. Please start Docker Desktop.')
+    }
+
+    // Ensure tool proxy is running
+    await startToolProxy()
+
+    // Build InteractiveDockerOptions
+    const dockerOptions: import('./docker-sandbox').InteractiveDockerOptions = {
+      workingDir: options.directory,
+      command: options.command,
+      env: options.env,
+    }
+
+    // Mount ~/.claude read-only if requested
+    if (options.mountClaudeConfig) {
+      const claudeDir = path.join(app.getPath('home'), '.claude')
+      if (fs.existsSync(claudeDir)) {
+        dockerOptions.claudeConfigDir = claudeDir
+      }
+    }
+
+    const terminalId = await createDockerTerminal(dockerOptions, mainWindow)
+    const plainId = `plain-${terminalId}`
+
+    // Place in next available grid slot (same as create-plain-terminal)
+    const state = getState()
+    const tab = getOrCreateTabForWorkspaceWithPreference(plainId, state.activeTabId || undefined)
+    addWorkspaceToTab(plainId, tab.id)
+    setActiveTab(tab.id)
+
+    // Persist as plain terminal for tab management
+    addPlainTerminal({ id: plainId, terminalId, tabId: tab.id, name: options.name || '', directory: options.directory })
 
     return { terminalId, tabId: tab.id }
   })

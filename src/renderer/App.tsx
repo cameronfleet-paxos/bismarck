@@ -1874,6 +1874,38 @@ function App() {
     }
   }
 
+  // Open Docker terminal handler (interactive bash shell inside the Docker sandbox)
+  const handleStartDockerTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory: agent.directory,
+        command: ['bash'],
+        name: `Docker — ${agent.name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${agent.name}`,
+          directory: agent.directory,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+
+        // Refresh state to pick up the new workspace slot and active tab
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal:', err)
+    }
+  }
+
   // Open plain terminal handler (non-agent shell terminal)
   const handleOpenTerminal = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -4445,6 +4477,7 @@ function App() {
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onOpenTerminal={handleOpenTerminal}
+        onStartDockerTerminal={handleStartDockerTerminal}
         onStartRalphLoop={handleStartRalphLoop}
         onOpenCronAutomation={() => {
           setSettingsInitialSection('cron-jobs')
