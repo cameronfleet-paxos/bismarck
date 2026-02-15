@@ -294,15 +294,18 @@ export function createTerminal(
 
   // Detect /clear command and clear session ID so next open starts fresh
   // Claude outputs "(no content)" after /clear completes
-  ptyProcess.onData((data) => {
-    if (data.includes('(no content)')) {
-      const currentWorkspace = getWorkspaceById(workspaceId)
-      if (currentWorkspace?.sessionId) {
-        saveWorkspace({ ...currentWorkspace, sessionId: undefined })
-        devLog(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
+  // Codex has no /clear equivalent (/new instead, which doesn't need session clearing)
+  if (provider === 'claude') {
+    ptyProcess.onData((data) => {
+      if (data.includes('(no content)')) {
+        const currentWorkspace = getWorkspaceById(workspaceId)
+        if (currentWorkspace?.sessionId) {
+          saveWorkspace({ ...currentWorkspace, sessionId: undefined })
+          devLog(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
+        }
       }
-    }
-  })
+    })
+  }
 
   // Auto-start claude when shell prompt is detected (instead of fixed delay)
   // This ensures asdf and other shell initialization is complete
@@ -324,6 +327,15 @@ export function createTerminal(
           ptyProcess.write("printf '\\n\\033[31m  codex not found\\033[0m\\n\\n  Install with: \\033[36mnpm install -g @openai/codex\\033[0m\\n  Or:           \\033[36mbrew install --cask codex\\033[0m\\n\\n'\n")
         } else {
           ptyProcess.write(agentCmd)
+          // For non-Claude providers, report ready immediately after command write
+          // (no TUI ready signal to detect — Codex's Ratatui TUI has no simple indicator)
+          if (provider !== 'claude') {
+            endTimer(`agent:claude-start:${workspaceId}`)
+            if (!firstAgentReadyReported) {
+              firstAgentReadyReported = true
+              milestone('first-agent-ready')
+            }
+          }
         }
       }, 100)
     }
@@ -344,22 +356,40 @@ export function createTerminal(
     }
   }, 3000)
 
-  // Detect when Claude is ready (shows the status line with ⏵)
-  let claudeReadyDetected = false
-  ptyProcess.onData((data) => {
-    if (!claudeReadyDetected && data.includes('⏵')) {
-      claudeReadyDetected = true
-      endTimer(`agent:claude-start:${workspaceId}`)
-      // Report first-agent-ready milestone only once
-      if (!firstAgentReadyReported) {
-        firstAgentReadyReported = true
-        milestone('first-agent-ready')
+  // Detect when agent is ready
+  if (provider === 'claude') {
+    // Claude shows the status line with ⏵ when ready
+    let claudeReadyDetected = false
+    ptyProcess.onData((data) => {
+      if (!claudeReadyDetected && data.includes('⏵')) {
+        claudeReadyDetected = true
+        endTimer(`agent:claude-start:${workspaceId}`)
+        if (!firstAgentReadyReported) {
+          firstAgentReadyReported = true
+          milestone('first-agent-ready')
+        }
       }
-    }
-  })
+    })
+  }
 
   // Handle process exit
   ptyProcess.onExit(({ exitCode }) => {
+    // For Codex agents, discover and save the session ID on exit
+    if (provider === 'codex') {
+      try {
+        const currentWorkspace = getWorkspaceById(workspaceId)
+        if (currentWorkspace) {
+          const sessionId = findCodexSessionForDirectory(currentWorkspace.directory)
+          if (sessionId) {
+            saveWorkspace({ ...currentWorkspace, sessionId })
+            devLog(`[Terminal] Captured Codex session ${sessionId} for workspace ${workspaceId}`)
+          }
+        }
+      } catch (err) {
+        devLog(`[Terminal] Failed to capture Codex session for workspace ${workspaceId}:`, err)
+      }
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
     }
