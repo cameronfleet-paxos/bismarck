@@ -59,7 +59,7 @@ import {
   removeFromWaitingQueue,
   setInstanceId,
 } from './socket-server'
-import { configureClaudeHook, createHookScript } from './hook-manager'
+import { configureClaudeHook, configureCodexHook, createHookScript } from './hook-manager'
 import { createTray, updateTray, destroyTray } from './tray'
 import {
   initializeState,
@@ -1642,6 +1642,7 @@ app.whenReady().then(async () => {
   // Create hook script and configure Claude settings
   timeSync('main:createHookScript', 'main', () => createHookScript())
   timeSync('main:configureClaudeHook', 'main', () => configureClaudeHook())
+  timeSync('main:configureCodexHook', 'main', () => configureCodexHook())
 
   // Register IPC handlers before creating window
   timeSync('main:registerIpcHandlers', 'main', () => registerIpcHandlers())
