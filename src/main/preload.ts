@@ -43,7 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('close-plain-terminal', terminalId),
   renamePlainTerminal: (terminalId: string, name: string): Promise<void> =>
     ipcRenderer.invoke('rename-plain-terminal', terminalId, name),
-  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }): Promise<{ terminalId: string; plainId: string } | null> =>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }): Promise<{ terminalId: string; plainId: string } | null> =>
     ipcRenderer.invoke('restore-plain-terminal', pt),
 
   // State management

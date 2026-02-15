@@ -564,7 +564,7 @@ function registerIpcHandlers() {
     setActiveTab(tab.id)
 
     // Persist as plain terminal for tab management
-    addPlainTerminal({ id: plainId, terminalId: result.terminalId, tabId: tab.id, name: options.name || '', directory: options.directory, isDocker: true, containerName: result.containerName })
+    addPlainTerminal({ id: plainId, terminalId: result.terminalId, tabId: tab.id, name: options.name || '', directory: options.directory, isDocker: true, containerName: result.containerName, dockerCommand: options.command })
 
     return { terminalId: result.terminalId, tabId: tab.id, containerName: result.containerName }
   })
@@ -581,18 +581,46 @@ function registerIpcHandlers() {
   })
 
   // Restore a plain terminal from a previous session (called by renderer after it's loaded)
-  ipcMain.handle('restore-plain-terminal', (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => {
+  ipcMain.handle('restore-plain-terminal', async (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }) => {
     try {
-      const newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      let newTerminalId: string
+      let newContainerName: string | undefined
+
+      if (pt.isDocker) {
+        // Restore as Docker terminal — re-launch the container
+        const dockerAvailable = await checkDockerAvailable()
+        if (!dockerAvailable) {
+          throw new Error('Docker is not available. Please start Docker Desktop.')
+        }
+        await startToolProxy()
+
+        const dockerOptions: import('./docker-sandbox').InteractiveDockerOptions = {
+          workingDir: pt.directory,
+          command: pt.dockerCommand || ['bash'],
+        }
+
+        // Mount ~/.claude config if available
+        const claudeDir = path.join(app.getPath('home'), '.claude')
+        if (fs.existsSync(claudeDir)) {
+          dockerOptions.claudeConfigDir = claudeDir
+        }
+
+        const result = await createDockerTerminal(dockerOptions, mainWindow)
+        newTerminalId = result.terminalId
+        newContainerName = result.containerName
+      } else {
+        newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      }
+
       const newPlainId = `plain-${newTerminalId}`
       // Swap workspace ID in tabs
       swapWorkspaceInTab(pt.id, newPlainId)
       // Update persisted plain terminal entry
       removePlainTerminal(pt.terminalId)
-      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId })
+      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId, containerName: newContainerName })
       return { terminalId: newTerminalId, plainId: newPlainId }
     } catch (err) {
-      console.error(`Failed to restore plain terminal in ${pt.directory}:`, err)
+      console.error(`Failed to restore ${pt.isDocker ? 'Docker' : 'plain'} terminal in ${pt.directory}:`, err)
       removePlainTerminal(pt.terminalId)
       removeWorkspaceFromTab(pt.id)
       return null

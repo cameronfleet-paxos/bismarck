@@ -48,7 +48,7 @@ export interface ElectronAPI {
   }) => Promise<{ terminalId: string; tabId: string; containerName: string }>
   closePlainTerminal: (terminalId: string) => Promise<void>
   renamePlainTerminal: (terminalId: string, name: string) => Promise<void>
-  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => Promise<{ terminalId: string; plainId: string } | null>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }) => Promise<{ terminalId: string; plainId: string } | null>
 
   // State management
   getState: () => Promise<AppState>

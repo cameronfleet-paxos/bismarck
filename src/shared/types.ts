@@ -116,6 +116,7 @@ export interface PlainTerminal {
   directory: string    // Working directory
   isDocker?: boolean   // Whether this is a Docker container terminal
   containerName?: string // Docker container name (for display/linking)
+  dockerCommand?: string[] // Command to run inside Docker container (for restoration)
 }
 
 // Attention mode determines how waiting agents are displayed
