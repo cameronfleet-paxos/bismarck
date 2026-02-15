@@ -25,8 +25,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Dead code cleanup: remove trust prompt auto-accept, accept-mode cycling, autoAcceptMode parameter
-- [ ] 02-02-PLAN.md -- Provider-aware command building, binary detection, session management, provider-specific hooks
+- [x] 02-01-PLAN.md -- Dead code cleanup: remove trust prompt auto-accept, accept-mode cycling, autoAcceptMode parameter
+- [x] 02-02-PLAN.md -- Provider-aware command building, binary detection, session management, provider-specific hooks
 
 **Changes:**
 - `src/main/terminal.ts` — Remove dead code, add provider-aware command building, Codex session management
@@ -39,6 +39,11 @@ Plans:
 
 ### Phase 3: Attention Hooks for Codex
 **Goal:** Codex agents trigger Bismarck's attention system when they finish a turn.
+**Plans:** 2 plans
+
+Plans:
+- [x] 03-01-PLAN.md -- Codex notify hook registration (smol-toml, codex-notify-hook.sh, configureCodexHook at startup)
+- [x] 03-02-PLAN.md -- CWD-based mapping file creation for Codex agents in terminal.ts
 
 **Changes:**
 - `src/main/hook-manager.ts` — Abstract hook registration per provider
