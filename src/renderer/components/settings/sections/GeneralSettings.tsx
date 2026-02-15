@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from '@/renderer/components/ui/select'
 import { getGridConfig } from '@/shared/grid-utils'
-import type { AttentionMode, GridSize, AgentTab } from '@/shared/types'
+import type { AttentionMode, GridSize, AgentTab, AgentProvider } from '@/shared/types'
+import { agentProviderNames } from '@/shared/constants'
 
 interface GeneralSettingsProps {
   onPreferencesChange: (preferences: {
@@ -48,6 +49,9 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
 
   // Agent timer state
   const [showAgentTimer, setShowAgentTimer] = useState(true)
+
+  // Default provider state
+  const [defaultProvider, setDefaultProvider] = useState<AgentProvider>('claude')
 
   // Grid size reduction confirmation state
   const [gridSizeConfirm, setGridSizeConfirm] = useState<{
@@ -90,9 +94,19 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
       }
     }
 
+    const loadProviderSettings = async () => {
+      try {
+        const settings = await window.electronAPI.getSettings()
+        setDefaultProvider(settings.defaultProvider || 'claude')
+      } catch (error) {
+        console.error('Failed to load provider settings:', error)
+      }
+    }
+
     loadPreferences()
     loadDebugSettings()
     loadPreventSleepSettings()
+    loadProviderSettings()
   }, [])
 
   const handleAttentionModeChange = (mode: AttentionMode) => {
@@ -213,6 +227,17 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
     } catch (error) {
       console.error('Failed to update prevent sleep settings:', error)
       setPreventSleepEnabled(!enabled)
+    }
+  }
+
+  const handleDefaultProviderChange = async (value: AgentProvider) => {
+    setDefaultProvider(value)
+    try {
+      await window.electronAPI.updateSettings({ defaultProvider: value })
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update default provider:', error)
     }
   }
 
@@ -354,6 +379,28 @@ export function GeneralSettings({ onPreferencesChange }: GeneralSettingsProps) {
             checked={showAgentTimer}
             onCheckedChange={handleShowAgentTimerChange}
           />
+        </div>
+
+        {/* Default Agent Provider */}
+        <div className="flex items-center justify-between py-2 border-t pt-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Default Agent Provider</Label>
+            <p className="text-sm text-muted-foreground">
+              Provider used when creating new agents
+            </p>
+          </div>
+          <Select value={defaultProvider} onValueChange={(v) => handleDefaultProviderChange(v as AgentProvider)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(agentProviderNames) as AgentProvider[]).map((key) => (
+                <SelectItem key={key} value={key}>
+                  {agentProviderNames[key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Debug Logging Toggle */}

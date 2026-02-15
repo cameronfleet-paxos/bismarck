@@ -171,6 +171,7 @@ import {
   getPreventSleepSettings,
   updatePreventSleepSettings,
   updateDockerSharedBuildCacheSettings,
+  updateSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -1266,6 +1267,10 @@ function registerIpcHandlers() {
   // Settings management
   ipcMain.handle('get-settings', async () => {
     return getSettings()
+  })
+
+  ipcMain.handle('update-settings', async (_event, updates) => {
+    return await updateSettings(updates)
   })
 
   ipcMain.handle('update-docker-resource-limits', async (_event, limits: { cpu?: string; memory?: string }) => {

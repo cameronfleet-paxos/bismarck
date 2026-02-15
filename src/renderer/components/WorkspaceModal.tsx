@@ -18,9 +18,9 @@ import {
 } from '@/renderer/components/ui/select'
 import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
-import type { Agent, ThemeName, Repository } from '@/shared/types'
+import type { Agent, AgentProvider, ThemeName, Repository } from '@/shared/types'
 import type { AgentIconName } from '@/shared/constants'
-import { themes, agentIcons } from '@/shared/constants'
+import { themes, agentIcons, agentProviderNames } from '@/shared/constants'
 import { GitBranch, X, FolderOpen } from 'lucide-react'
 
 interface AgentModalProps {
@@ -42,6 +42,7 @@ export function AgentModal({
   const [directory, setDirectory] = useState('')
   const [theme, setTheme] = useState<ThemeName>('gray')
   const [icon, setIcon] = useState<AgentIconName>('beethoven')
+  const [provider, setProvider] = useState<AgentProvider>('claude')
   const [error, setError] = useState<string | null>(null)
 
   // Git repository detection state
@@ -81,12 +82,17 @@ export function AgentModal({
       setDirectory(agent.directory)
       setTheme(agent.theme)
       setIcon(agent.icon || 'beethoven')
+      setProvider(agent.provider || 'claude')
     } else {
       setName('')
       setDirectory('')
       setTheme('gray')
       // Random icon for new agents
       setIcon(agentIcons[Math.floor(Math.random() * agentIcons.length)])
+      // Load default provider from settings
+      window.electronAPI.getSettings().then(settings => {
+        setProvider(settings.defaultProvider || 'claude')
+      })
     }
     setError(null)
     setDetectedRepo(null)
@@ -125,6 +131,7 @@ export function AgentModal({
       purpose: detectedRepo?.name || name.trim(),
       theme,
       icon,
+      provider,
       repositoryId: detectedRepo?.id,
     }
 
@@ -188,6 +195,24 @@ export function AgentModal({
                 )}
               </div>
             )}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="provider">Provider</Label>
+            <Select
+              value={provider}
+              onValueChange={(value) => setProvider(value as AgentProvider)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(agentProviderNames) as AgentProvider[]).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {agentProviderNames[key]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="theme">Theme</Label>

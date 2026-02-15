@@ -428,6 +428,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (updates: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('update-settings', updates),
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) =>
     ipcRenderer.invoke('update-docker-resource-limits', limits),
   addDockerImage: (image: string) =>

@@ -211,6 +211,7 @@ export interface ElectronAPI {
 
   // Settings management
   getSettings: () => Promise<AppSettings>
+  updateSettings: (updates: Partial<AppSettings>) => Promise<AppSettings>
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string; gomaxprocs?: string }) => Promise<void>
   addDockerImage: (image: string) => Promise<void>
   removeDockerImage: (image: string) => Promise<boolean>

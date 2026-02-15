@@ -3316,6 +3316,7 @@ function App() {
                                 terminalId={terminal.terminalId}
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
+                                provider={agent.provider}
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 searchOpen={terminalSearchAgentId === agent.id}
                                 onSearchClose={() => setTerminalSearchAgentId(null)}
@@ -3904,6 +3905,7 @@ function App() {
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
+                              provider={agent.provider}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               searchOpen={terminalSearchAgentId === agent.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
