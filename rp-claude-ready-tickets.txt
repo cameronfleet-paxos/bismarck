@@ -1,0 +1,10 @@
+TYPE	KEY	SUMMARY													STATUS		ASSIGNEE	REPORTER	PRIORITY	RESOLUTION	CREATED			UPDATED			LABELS
+Task	RP-4978	Remove Parcha Integration completely									Deployed	Lucas Cardoso	Lucas Cardoso	Medium		Done		2026-02-09 05:36:32	2026-02-09 12:26:02	claude_ready
+Task	RP-4970	Add auto approval latency metric									Ready				Lucas Cardoso	High				2026-02-04 15:23:49	2026-02-04 15:23:50	claude_ready
+Story	RP-4373	[Update Identity] Cleanup unused & new code paths							Ready		Pranshu Dixit	Cameron Fleet	None				2025-09-10 11:10:19	2026-02-04 11:38:30	claude_ready
+Task	RP-3005	ComplyAdvantage TM: 3P Partner Account ID Bug								Ready				Louise Cheung	Highest				2024-11-20 11:03:30	2026-02-04 11:31:33	claude_ready
+Spikes	RP-2990	Scope what it would take to remove KYCServer from paxos-api and funding-api				Ready				Nick Geib	High				2024-11-18 09:45:56	2026-02-04 11:28:26	claude_ready,code_cleanup
+Task	RP-2376	Remove Pax-Admin's usages of RegistrationServer.IDVerificationComplete.  Then remove the endpoint	Accepted			Nick Geib	Medium		Done		2024-08-28 12:43:38	2026-02-04 12:00:15	claude_ready,code_cleanup
+Task	RP-2228	Latest overriden risk rating is not linked to any risk breakdown					Ready				Cameron Fleet	Medium				2024-08-07 11:02:27	2026-02-04 11:53:32	claude_ready,risk-rating
+Task	RP-2219	Clean up unused configuration values									Ready				Will Eason	Medium				2024-08-06 12:57:20	2026-02-04 11:51:27	claude_ready,code_cleanup
+Task	RP-1535	Cleanup: Disable deprecated unified onboarding APIs incrementally in sandbox and prod			Ready				Sean Keever	Medium				2024-05-03 14:28:56	2026-02-04 11:44:19	claude_ready,code_cleanup
