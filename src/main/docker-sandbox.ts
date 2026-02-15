@@ -124,6 +124,21 @@ export async function buildInteractiveDockerArgs(options: InteractiveDockerOptio
   // theme preferences, and session state across interactive runs.
   if (options.claudeConfigDir) {
     args.push('-v', `${options.claudeConfigDir}:/home/agent/.claude`)
+
+    // Mount a patched settings.json with hooks removed — host hook commands
+    // reference absolute host paths that don't exist inside the container.
+    const fs = await import('fs')
+    const os = await import('os')
+    const settingsPath = path.join(options.claudeConfigDir, 'settings.json')
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      delete settings.hooks
+      const tmpDir = path.join(os.tmpdir(), 'bismarck-docker')
+      fs.mkdirSync(tmpDir, { recursive: true })
+      const patchedSettingsPath = path.join(tmpDir, 'settings.json')
+      fs.writeFileSync(patchedSettingsPath, JSON.stringify(settings, null, 2))
+      args.push('-v', `${patchedSettingsPath}:/home/agent/.claude/settings.json`)
+    } catch { /* settings.json missing or invalid — skip */ }
   }
 
   // Tool proxy URL + token
@@ -176,14 +191,23 @@ export async function buildInteractiveDockerArgs(options: InteractiveDockerOptio
     args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
   }
 
-  // Mount host ~/.claude.json so Claude Code skips onboarding when
-  // CLAUDE_CODE_OAUTH_TOKEN is set (it checks hasCompletedOnboarding).
+  // Claude Code interactive mode requires hasCompletedOnboarding in ~/.claude.json
+  // to skip the auth/onboarding flow when CLAUDE_CODE_OAUTH_TOKEN is set.
+  // Read the host's file, inject the flag, and mount a patched copy.
   if (options.claudeConfigDir) {
-    const claudeJsonPath = path.join(path.dirname(options.claudeConfigDir), '.claude.json')
     const fs = await import('fs')
-    if (fs.existsSync(claudeJsonPath)) {
-      args.push('-v', `${claudeJsonPath}:/home/agent/.claude.json`)
-    }
+    const os = await import('os')
+    const claudeJsonPath = path.join(path.dirname(options.claudeConfigDir), '.claude.json')
+    let claudeJson: Record<string, unknown> = {}
+    try {
+      claudeJson = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf-8'))
+    } catch { /* file missing or invalid — start fresh */ }
+    claudeJson.hasCompletedOnboarding = true
+    const tmpDir = path.join(os.tmpdir(), 'bismarck-docker')
+    fs.mkdirSync(tmpDir, { recursive: true })
+    const patchedPath = path.join(tmpDir, 'claude.json')
+    fs.writeFileSync(patchedPath, JSON.stringify(claudeJson))
+    args.push('-v', `${patchedPath}:/home/agent/.claude.json`)
   }
 
   // GitHub token
