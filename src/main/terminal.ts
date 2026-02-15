@@ -215,40 +215,41 @@ export function createTerminal(
     cwd = os.homedir()
   }
 
-  // Get or generate session ID for Claude session persistence
-  let sessionId = workspace.sessionId
-  let claudeCmd: string
+  // Determine agent provider
+  const provider = getAgentProvider(workspace)
 
-  if (sessionId && claudeSessionExists(sessionId)) {
-    // Session exists with content - resume it
-    // Put flags BEFORE --resume so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
+  // Check if codex binary is available
+  let skipCommand = false
+  if (provider === 'codex') {
+    const codexPath = findBinary('codex')
+    if (!codexPath) {
+      skipCommand = true
     }
-    claudeCmd += ` --resume ${sessionId}`
-  } else {
-    // No session or empty session - generate ID and start new session
-    if (!sessionId) {
+  }
+
+  // Build provider-specific agent command
+  let agentCmd = ''
+
+  if (provider === 'claude') {
+    // Claude session management (unchanged behavior)
+    let sessionId = workspace.sessionId
+    let resume = false
+    if (sessionId && claudeSessionExists(sessionId)) {
+      resume = true
+    } else if (!sessionId) {
       sessionId = crypto.randomUUID()
       saveWorkspace({ ...workspace, sessionId })
     }
-    // Put flags BEFORE --session-id so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
+    agentCmd = buildClaudeCommand({ sessionId, resume, claudeFlags, initialPrompt })
+  } else if (provider === 'codex' && !skipCommand) {
+    // Codex session management
+    let sessionId = workspace.sessionId
+    let resume = false
+    if (sessionId && codexSessionExists(sessionId)) {
+      resume = true
     }
-    claudeCmd += ` --session-id ${sessionId}`
+    agentCmd = buildCodexCommand({ directory: cwd, sessionId, resume, initialPrompt })
   }
-
-  // If an initial prompt is provided, append it to the command
-  // Claude will process this prompt automatically when it starts
-  if (initialPrompt) {
-    // Escape single quotes in the prompt and wrap in single quotes
-    const escapedPrompt = initialPrompt.replace(/'/g, "'\\''")
-    claudeCmd += ` '${escapedPrompt}'`
-  }
-  claudeCmd += '\n'
 
   // Benchmark: start PTY spawn timing
   startTimer(`agent:pty-spawn:${workspaceId}`, 'agent')
@@ -318,7 +319,12 @@ export function createTerminal(
       startTimer(`agent:claude-start:${workspaceId}`, 'agent')
       // Small additional delay to ensure shell is fully ready
       setTimeout(() => {
-        ptyProcess.write(claudeCmd)
+        if (skipCommand) {
+          // Codex binary not found — write styled error to terminal
+          ptyProcess.write("printf '\\n\\033[31m  codex not found\\033[0m\\n\\n  Install with: \\033[36mnpm install -g @openai/codex\\033[0m\\n  Or:           \\033[36mbrew install --cask codex\\033[0m\\n\\n'\n")
+        } else {
+          ptyProcess.write(agentCmd)
+        }
       }, 100)
     }
   }
@@ -330,7 +336,11 @@ export function createTerminal(
       promptDetected = true
       endTimer(`agent:shell-prompt:${workspaceId}`)
       startTimer(`agent:claude-start:${workspaceId}`, 'agent')
-      ptyProcess.write(claudeCmd)
+      if (skipCommand) {
+        ptyProcess.write("printf '\\n\\033[31m  codex not found\\033[0m\\n\\n  Install with: \\033[36mnpm install -g @openai/codex\\033[0m\\n  Or:           \\033[36mbrew install --cask codex\\033[0m\\n\\n'\n")
+      } else {
+        ptyProcess.write(agentCmd)
+      }
     }
   }, 3000)
 
