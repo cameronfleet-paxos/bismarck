@@ -38,6 +38,7 @@ export interface ContainerConfig {
   mode?: 'plan' // If 'plan', run in plan mode (stream-json output)
   inputMode?: 'prompt' | 'stream-json' // If 'stream-json', use --input-format stream-json and deliver prompt via stdin (keeps stdin open for nudges)
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
+  wrapperDir?: string // Host path to tool wrapper scripts (mounted at /bismarck-tools)
 }
 
 export interface ContainerResult {
@@ -201,6 +202,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
     // Explicitly set DOCKER_HOST for clarity
     args.push('-e', `DOCKER_HOST=unix://${socketPath}`)
+  }
+
+  // Mount custom tool wrappers if generated
+  if (config.wrapperDir) {
+    args.push('-v', `${config.wrapperDir}:/bismarck-tools:ro`)
+    args.push('-e', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/bismarck-tools')
   }
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription

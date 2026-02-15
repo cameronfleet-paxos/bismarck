@@ -211,6 +211,8 @@ export interface ElectronAPI {
   updateToolPaths: (paths: { bd?: string | null; bb?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) => Promise<ProxiedTool>
+  removeProxiedTool: (id: string) => Promise<boolean>
   getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
   checkToolAuth: () => Promise<ToolAuthStatus[]>
   runToolReauth: (toolId: string) => Promise<void>

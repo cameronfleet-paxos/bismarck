@@ -29,6 +29,7 @@ import {
   extractTextContent,
 } from '../stream-parser'
 import { isProxyRunning, getProxyConfig } from '../tool-proxy'
+import { generateToolWrappers, cleanupToolWrappers } from '../wrapper-generator'
 import { getGitHubToken } from '../settings-manager'
 import { writeCrashLog } from '../crash-logger'
 import { startTimer, endTimer, milestone } from '../startup-benchmark'
@@ -92,6 +93,7 @@ export class HeadlessAgent extends EventEmitter {
   private events: StreamEvent[] = []
   private startTime: number = 0
   private useStreamJsonInput: boolean = false
+  private wrapperContainerId: string | null = null
 
   constructor() {
     super()
@@ -148,6 +150,10 @@ export class HeadlessAgent extends EventEmitter {
       // Use stream-json input mode to enable nudges (multi-turn messaging)
       this.useStreamJsonInput = !options.useEntrypoint
 
+      // Generate tool wrapper scripts for custom proxied tools
+      this.wrapperContainerId = options.taskId || `agent-${Date.now()}`
+      const wrapperDir = await generateToolWrappers(this.wrapperContainerId)
+
       // Build container config
       const containerConfig: ContainerConfig = {
         image: options.image || getDefaultImage(),
@@ -166,6 +172,7 @@ export class HeadlessAgent extends EventEmitter {
         sharedCacheDir: options.sharedCacheDir,
         sharedModCacheDir: options.sharedModCacheDir,
         planOutputDir: options.planOutputDir,
+        wrapperDir: wrapperDir || undefined,
       }
 
       // Spawn container
@@ -397,6 +404,13 @@ export class HeadlessAgent extends EventEmitter {
 
   private handleContainerExit(exitCode: number): void {
     const duration = Date.now() - this.startTime
+
+    // Clean up tool wrapper scripts
+    if (this.wrapperContainerId) {
+      cleanupToolWrappers(this.wrapperContainerId).catch((err) => {
+        logger.debug('agent', 'Failed to clean up tool wrappers', this.getLogContext(), { error: String(err) })
+      })
+    }
 
     logger.info('agent', `Container exited with code ${exitCode} after ${duration}ms`, this.getLogContext(), {
       eventCount: this.events.length,

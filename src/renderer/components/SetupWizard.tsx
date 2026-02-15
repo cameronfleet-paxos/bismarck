@@ -3,7 +3,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Logo } from '@/renderer/components/Logo'
-import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles, Info, ShieldCheck, ExternalLink, Zap } from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronLeft, Loader2, CheckSquare, Square, Clock, Check, X, AlertTriangle, Copy, Circle, Sparkles, Info, ShieldCheck, ExternalLink, Zap, Plus, Trash2 } from 'lucide-react'
 import type { DiscoveredRepo, Agent, PlanModeDependencies, DescriptionProgressEvent, DescriptionGenerationStatus } from '@/shared/types'
 import { SetupTerminal } from './SetupTerminal'
 import { devLog } from '../utils/dev-log'
@@ -50,6 +50,40 @@ function isValidGitHubToken(value: string): boolean {
   const validPrefixes = ['ghp_', 'gho_', 'ghs_', 'ghu_', 'github_pat_']
   return validPrefixes.some(prefix => value.startsWith(prefix))
 }
+
+interface ProxiedTool {
+  id: string
+  name: string
+  hostPath: string
+  description?: string
+  enabled: boolean
+  promptHint?: string
+  builtIn?: boolean
+}
+
+const RECOMMENDED_TOOLS = [
+  {
+    name: 'bb',
+    displayName: 'BuildBuddy CLI (bb)',
+    description: 'Enables remote builds with BuildBuddy',
+    installHint: 'curl -fsSL https://install.buildbuddy.io | bash',
+    setupAdvice: [
+      'Export BUILDBUDDY_API_KEY in ~/.zshrc for agents to use bb.',
+      'Find your key in ~/.bazelrc or run bb login in any git repo.',
+    ],
+    defaultHostPath: '/usr/local/bin/bb',
+    promptHint: 'bb view, bb run, bb test, bb remote. Always use `bb remote --os=linux --arch=amd64` for remote commands.',
+  },
+  {
+    name: 'jira',
+    displayName: 'Jira CLI (jira)',
+    description: 'Query and manage Jira issues from headless agents',
+    installHint: 'brew install ankitpokhrel/jira-cli/jira-cli',
+    setupAdvice: ['Run jira init to authenticate after installation.'],
+    defaultHostPath: '/usr/local/bin/jira',
+    promptHint: 'jira issue list, jira issue view, jira issue create',
+  },
+]
 
 interface SetupWizardProps {
   onComplete: (agents: Agent[]) => void
@@ -113,6 +147,15 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     size?: number
     labels?: Record<string, string>
   } | null>(null)
+  // Custom tools wizard step state
+  const [wizardTools, setWizardTools] = useState<ProxiedTool[]>([])
+  const [showWizardAddToolForm, setShowWizardAddToolForm] = useState(false)
+  const [newToolName, setNewToolName] = useState('')
+  const [newToolPath, setNewToolPath] = useState('')
+  const [newToolDescription, setNewToolDescription] = useState('')
+  const [newToolPromptHint, setNewToolPromptHint] = useState('')
+  const [addToolError, setAddToolError] = useState<string | null>(null)
+  const [addingRecommendedTool, setAddingRecommendedTool] = useState<string | null>(null)
   // Ref to prevent double-clicks during async operations
   const isCreatingRef = useRef(false)
 
@@ -161,6 +204,13 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       })
     }
   }, [dependencies?.dockerImage.available, dependencies?.dockerImage.imageName, dependencies?.docker.installed])
+
+  // Load wizard tools when entering the tools step
+  useEffect(() => {
+    if (step === 'tools') {
+      loadWizardTools()
+    }
+  }, [step])
 
   // Cleanup fact interval on unmount
   useEffect(() => {
@@ -471,10 +521,20 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         }
       }
 
-      // Auto-enable bb proxied tool if detected during setup
+      // Auto-add bb as custom tool if detected during setup and not already added
       if (dependencies?.bb.installed) {
-        devLog('[SetupWizard] bb detected, enabling in settings...')
-        await window.electronAPI.toggleProxiedTool('bb', true)
+        const settings = await window.electronAPI.getSettings()
+        const hasBb = settings.docker.proxiedTools.some((t: ProxiedTool) => t.name === 'bb')
+        if (!hasBb) {
+          devLog('[SetupWizard] bb detected, adding as custom tool...')
+          await window.electronAPI.addProxiedTool({
+            name: 'bb',
+            hostPath: dependencies.bb.path || '/usr/local/bin/bb',
+            description: 'BuildBuddy CLI',
+            promptHint: 'bb view, bb run, bb test, bb remote. Always use `bb remote --os=linux --arch=amd64` for remote commands.',
+            enabled: true,
+          })
+        }
       }
 
       // Build repos with all details
@@ -509,6 +569,68 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
       setTimeout(() => setCopiedCommand(null), 2000)
     } catch (err) {
       console.error('Failed to copy to clipboard:', err)
+    }
+  }
+
+  // Load non-builtIn proxied tools for wizard step 2
+  const loadWizardTools = async () => {
+    try {
+      const settings = await window.electronAPI.getSettings()
+      setWizardTools(settings.docker.proxiedTools.filter((t: ProxiedTool) => !t.builtIn))
+    } catch (err) {
+      console.error('Failed to load wizard tools:', err)
+    }
+  }
+
+  // Add a recommended tool
+  const handleAddRecommendedTool = async (rec: typeof RECOMMENDED_TOOLS[number]) => {
+    setAddingRecommendedTool(rec.name)
+    try {
+      await window.electronAPI.addProxiedTool({
+        name: rec.name,
+        hostPath: rec.defaultHostPath,
+        description: rec.description,
+        promptHint: rec.promptHint,
+        enabled: true,
+      })
+      await loadWizardTools()
+    } catch (err) {
+      console.error('Failed to add recommended tool:', err)
+    } finally {
+      setAddingRecommendedTool(null)
+    }
+  }
+
+  // Add a custom tool from the wizard form
+  const handleWizardAddTool = async () => {
+    if (!newToolName.trim() || !newToolPath.trim()) return
+    setAddToolError(null)
+    try {
+      await window.electronAPI.addProxiedTool({
+        name: newToolName.trim(),
+        hostPath: newToolPath.trim(),
+        description: newToolDescription.trim() || undefined,
+        promptHint: newToolPromptHint.trim() || undefined,
+        enabled: true,
+      })
+      await loadWizardTools()
+      setNewToolName('')
+      setNewToolPath('')
+      setNewToolDescription('')
+      setNewToolPromptHint('')
+      setShowWizardAddToolForm(false)
+    } catch (err) {
+      setAddToolError(err instanceof Error ? err.message : 'Failed to add tool')
+    }
+  }
+
+  // Remove a custom tool from wizard
+  const handleWizardRemoveTool = async (id: string) => {
+    try {
+      await window.electronAPI.removeProxiedTool(id)
+      await loadWizardTools()
+    } catch (err) {
+      console.error('Failed to remove tool:', err)
     }
   }
 
@@ -856,70 +978,245 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Additional Tools */}
+          {/* Step 2: Custom Tools */}
           {step === 'tools' && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Additional Tools
+                  Custom Tools
                 </h2>
                 <p className="text-muted-foreground text-sm">
-                  Optional tools that enhance headless agent capabilities
+                  Agents running in Docker can use CLI tools from your machine through a proxy.
+                  Built-in tools (git, gh, bd) are always available. Add any extra tools your agents might need.
                 </p>
               </div>
 
-              {/* bb tool card */}
-              {dependencies && (
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5">
-                      {dependencies.bb.installed ? (
-                        <Check className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <X className="h-5 w-5 text-red-500" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">BuildBuddy CLI (bb)</span>
-                        <span className="text-xs text-muted-foreground">(optional)</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Enables remote builds with BuildBuddy
-                      </p>
-                      {dependencies.bb.installed ? (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {dependencies.bb.path}
-                          {dependencies.bb.version && ` (v${dependencies.bb.version})`}
-                        </p>
-                      ) : dependencies.bb.installCommand ? (
-                        <div className="flex items-center gap-2 mt-2">
-                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-                            {dependencies.bb.installCommand}
-                          </code>
-                          <button
-                            onClick={() => handleCopyCommand(dependencies.bb.installCommand!)}
-                            className="p-1 hover:bg-muted rounded transition-colors"
-                            title="Copy to clipboard"
-                          >
-                            {copiedCommand === dependencies.bb.installCommand ? (
-                              <Check className="h-3 w-3 text-green-500" />
-                            ) : (
-                              <Copy className="h-3 w-3 text-muted-foreground" />
-                            )}
-                          </button>
-                        </div>
-                      ) : null}
+              {/* Recommended Tools */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Recommended</h3>
+                {RECOMMENDED_TOOLS.map((rec) => {
+                  const isAdded = wizardTools.some(t => t.name === rec.name)
+                  const isAdding = addingRecommendedTool === rec.name
+                  // For bb, use dependency info if available
+                  const bbDep = rec.name === 'bb' ? dependencies?.bb : null
+                  return (
+                    <div key={rec.name} className="border border-border rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">{rec.displayName}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {rec.description}
+                          </p>
 
-                      {/* Setup advice info box */}
-                      <div className="flex items-start gap-2 mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <p>Export <code className="text-[10px] bg-muted px-1 py-0.5 rounded">BUILDBUDDY_API_KEY</code> in <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.zshrc</code> for agents to use bb.</p>
-                          <p>Find your key in <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.bazelrc</code> or run <code className="text-[10px] bg-muted px-1 py-0.5 rounded">bb login</code> in any git repo.</p>
+                          {/* Install status - bb uses dependency check, others show install hint */}
+                          {bbDep ? (
+                            bbDep.installed ? (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                Installed: {bbDep.path}
+                                {bbDep.version && ` (v${bbDep.version})`}
+                              </p>
+                            ) : (
+                              <div className="flex items-center gap-2 mt-2">
+                                <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                                  {rec.installHint}
+                                </code>
+                                <button
+                                  onClick={() => handleCopyCommand(rec.installHint)}
+                                  className="p-1 hover:bg-muted rounded transition-colors"
+                                  title="Copy to clipboard"
+                                >
+                                  {copiedCommand === rec.installHint ? (
+                                    <Check className="h-3 w-3 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 text-muted-foreground" />
+                                  )}
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            <div className="flex items-center gap-2 mt-2">
+                              <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                                {rec.installHint}
+                              </code>
+                              <button
+                                onClick={() => handleCopyCommand(rec.installHint)}
+                                className="p-1 hover:bg-muted rounded transition-colors"
+                                title="Copy to clipboard"
+                              >
+                                {copiedCommand === rec.installHint ? (
+                                  <Check className="h-3 w-3 text-green-500" />
+                                ) : (
+                                  <Copy className="h-3 w-3 text-muted-foreground" />
+                                )}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Setup advice */}
+                          <div className="flex items-start gap-2 mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                            <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                            <div className="text-xs text-muted-foreground space-y-1">
+                              {rec.setupAdvice.map((advice, i) => (
+                                <p key={i}>{advice}</p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Add/Added button */}
+                        <div className="shrink-0 mt-0.5">
+                          {isAdded ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                                <Check className="h-3 w-3" />
+                                Added
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                                onClick={() => {
+                                  const tool = wizardTools.find(t => t.name === rec.name)
+                                  if (tool) handleWizardRemoveTool(tool.id)
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isAdding}
+                              onClick={() => handleAddRecommendedTool(rec)}
+                            >
+                              {isAdding ? (
+                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              ) : (
+                                <Plus className="h-3 w-3 mr-1" />
+                              )}
+                              Add Tool
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
+
+              {/* Custom Tools (non-recommended) */}
+              {wizardTools.filter(t => !RECOMMENDED_TOOLS.some(r => r.name === t.name)).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-foreground">Custom Tools</h3>
+                  {wizardTools
+                    .filter(t => !RECOMMENDED_TOOLS.some(r => r.name === t.name))
+                    .map((tool) => (
+                      <div key={tool.id} className="border border-border rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium text-foreground">{tool.name}</span>
+                            <div className="font-mono text-xs text-muted-foreground mt-0.5">{tool.hostPath}</div>
+                            {tool.description && (
+                              <div className="text-xs text-muted-foreground mt-0.5">{tool.description}</div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                            onClick={() => handleWizardRemoveTool(tool.id)}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Add Custom Tool */}
+              {!showWizardAddToolForm ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowWizardAddToolForm(true)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Custom Tool
+                </Button>
+              ) : (
+                <div className="border border-border rounded-lg p-4 space-y-3">
+                  <h4 className="text-sm font-medium">Add Custom Tool</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs">Name</Label>
+                      <Input
+                        placeholder="e.g. npm"
+                        value={newToolName}
+                        onChange={(e) => setNewToolName(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Host Path</Label>
+                      <Input
+                        placeholder="e.g. /usr/local/bin/npm"
+                        value={newToolPath}
+                        onChange={(e) => setNewToolPath(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Description (optional)</Label>
+                      <Input
+                        placeholder="e.g. Node.js package manager"
+                        value={newToolDescription}
+                        onChange={(e) => setNewToolDescription(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Prompt Hint (optional)</Label>
+                      <Input
+                        placeholder="e.g. npm install, npm test, npm run build"
+                        value={newToolPromptHint}
+                        onChange={(e) => setNewToolPromptHint(e.target.value)}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Usage instructions included in agent prompts
+                      </p>
+                    </div>
+                  </div>
+                  {addToolError && (
+                    <p className="text-xs text-destructive">{addToolError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleWizardAddTool}
+                      disabled={!newToolName.trim() || !newToolPath.trim()}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowWizardAddToolForm(false)
+                        setAddToolError(null)
+                        setNewToolName('')
+                        setNewToolPath('')
+                        setNewToolDescription('')
+                        setNewToolPromptHint('')
+                      }}
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               )}

@@ -904,37 +904,35 @@ export async function getPromptTemplate(type: PromptType): Promise<string> {
 /**
  * Build the PROXIED COMMANDS section based on which tools are enabled
  */
-export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
+export function buildProxiedToolsSection(tools: Array<{ name: string; enabled: boolean; promptHint?: string; description?: string; builtIn?: boolean }>): string {
   const sections: string[] = []
   let num = 1
 
-  if (enabledTools.git) {
-    sections.push(`${num}. Git:
+  // Hardcoded descriptions for built-in tools (they have important caveats)
+  const builtInDescriptions: Record<string, string> = {
+    git: `Git:
    - git status, git add, git commit, git push
    - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.`)
-    num++
-  }
-
-  if (enabledTools.gh) {
-    sections.push(`${num}. GitHub CLI (gh):
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.`,
+    gh: `GitHub CLI (gh):
    - gh pr create, gh pr view, gh pr edit
-   - All standard gh commands work`)
-    num++
-  }
-
-  if (enabledTools.bd) {
-    sections.push(`${num}. Beads Task Management (bd):
+   - All standard gh commands work`,
+    bd: `Beads Task Management (bd):
    - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically`)
-    num++
+   - The --sandbox flag is added automatically`,
   }
 
-  if (enabledTools.bb) {
-    sections.push(`${num}. BuildBuddy CLI (bb):
-   - bb view, bb run, bb test, bb remote
-   - IMPORTANT: Always use \`bb remote --os=linux --arch=amd64\` for remote commands (e.g. \`bb remote --os=linux --arch=amd64 test //...\`). The host is macOS ARM but remote executors are Linux x86.
-   - All standard bb commands work`)
+  for (const tool of tools) {
+    if (!tool.enabled) continue
+
+    const builtInDesc = builtInDescriptions[tool.name]
+    if (builtInDesc) {
+      sections.push(`${num}. ${builtInDesc}`)
+    } else {
+      const hint = tool.promptHint || tool.description || tool.name
+      sections.push(`${num}. ${tool.name}:\n   - ${hint}`)
+    }
+    num++
   }
 
   if (sections.length === 0) {

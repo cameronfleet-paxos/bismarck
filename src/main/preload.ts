@@ -434,6 +434,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-tool-paths'),
   toggleProxiedTool: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) =>
+    ipcRenderer.invoke('add-proxied-tool', tool),
+  removeProxiedTool: (id: string) =>
+    ipcRenderer.invoke('remove-proxied-tool', id),
   getToolAuthStatuses: () =>
     ipcRenderer.invoke('get-tool-auth-statuses'),
   checkToolAuth: () =>

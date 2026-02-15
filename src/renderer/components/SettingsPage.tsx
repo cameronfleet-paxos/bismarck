@@ -128,6 +128,8 @@ interface ProxiedTool {
   hostPath: string
   description?: string
   enabled: boolean
+  promptHint?: string
+  builtIn?: boolean
   authCheck?: {
     command: string[]
     reauthHint: string
@@ -170,6 +172,14 @@ export function SettingsPage({ onBack, initialSection, onSectionChange, onNaviga
   const [toolAuthStatuses, setToolAuthStatuses] = useState<ToolAuthStatus[]>([])
   const [checkingAuth, setCheckingAuth] = useState(false)
   const [reauthingToolId, setReauthingToolId] = useState<string | null>(null)
+
+  // Add custom tool form
+  const [showAddToolForm, setShowAddToolForm] = useState(false)
+  const [newToolName, setNewToolName] = useState('')
+  const [newToolPath, setNewToolPath] = useState('')
+  const [newToolDescription, setNewToolDescription] = useState('')
+  const [newToolPromptHint, setNewToolPromptHint] = useState('')
+  const [addToolError, setAddToolError] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
@@ -254,6 +264,39 @@ export function SettingsPage({ onBack, initialSection, onSectionChange, onNaviga
       await loadSettings()
     } catch (error) {
       console.error('Failed to toggle proxied tool:', error)
+    }
+  }
+
+  const handleAddTool = async () => {
+    if (!newToolName.trim() || !newToolPath.trim()) return
+    setAddToolError(null)
+    try {
+      await window.electronAPI.addProxiedTool({
+        name: newToolName.trim(),
+        hostPath: newToolPath.trim(),
+        description: newToolDescription.trim() || undefined,
+        promptHint: newToolPromptHint.trim() || undefined,
+        enabled: true,
+      })
+      const updated = await window.electronAPI.getSettings()
+      setSettings(updated)
+      setNewToolName('')
+      setNewToolPath('')
+      setNewToolDescription('')
+      setNewToolPromptHint('')
+      setShowAddToolForm(false)
+    } catch (error) {
+      setAddToolError(error instanceof Error ? error.message : 'Failed to add tool')
+    }
+  }
+
+  const handleRemoveTool = async (id: string) => {
+    try {
+      await window.electronAPI.removeProxiedTool(id)
+      const updated = await window.electronAPI.getSettings()
+      setSettings(updated)
+    } catch (error) {
+      console.error('Failed to remove tool:', error)
     }
   }
 
@@ -519,10 +562,22 @@ export function SettingsPage({ onBack, initialSection, onSectionChange, onNaviga
                           </div>
                         )}
                       </div>
-                      <Switch
-                        checked={tool.enabled}
-                        onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
-                      />
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={tool.enabled}
+                          onCheckedChange={(checked) => handleToggleProxiedTool(tool.id, checked)}
+                        />
+                        {!tool.builtIn && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs text-destructive hover:text-destructive cursor-pointer h-7 px-2"
+                            onClick={() => handleRemoveTool(tool.id)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     {tool.authCheck && tool.enabled && authStatus?.state === 'needs-reauth' && authStatus.reauthHint && (
                       <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
@@ -560,23 +615,94 @@ export function SettingsPage({ onBack, initialSection, onSectionChange, onNaviga
                         </div>
                       </div>
                     )}
-                    {tool.id === 'bb' && tool.enabled && (
-                      <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md space-y-2">
-                        <p className="text-sm text-blue-600 dark:text-blue-400">
-                          <strong>Setup:</strong> Export <code className="bg-muted px-1 rounded">BUILDBUDDY_API_KEY</code> in
-                          your <code className="bg-muted px-1 rounded">~/.zshrc</code> for agents to use bb.
-                          Find your key in <code className="bg-muted px-1 rounded">~/.bazelrc</code> or
-                          run <code className="bg-muted px-1 rounded">bb login</code> in any git repo.
-                        </p>
-                        <p className="text-sm text-blue-600/70 dark:text-blue-400/70">
-                          Don&apos;t have bb installed? Run: <code className="bg-muted px-1 rounded">curl -fsSL https://install.buildbuddy.io | bash</code>
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )
               })}
             </div>
+
+              {!showAddToolForm ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 cursor-pointer"
+                  onClick={() => setShowAddToolForm(true)}
+                >
+                  Add Custom Tool
+                </Button>
+              ) : (
+                <div className="mt-4 p-4 border rounded-md space-y-3">
+                  <h4 className="text-sm font-medium">Add Custom Tool</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs">Name</Label>
+                      <Input
+                        placeholder="e.g. npm"
+                        value={newToolName}
+                        onChange={(e) => setNewToolName(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Host Path</Label>
+                      <Input
+                        placeholder="e.g. /usr/local/bin/npm"
+                        value={newToolPath}
+                        onChange={(e) => setNewToolPath(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Description (optional)</Label>
+                      <Input
+                        placeholder="e.g. Node.js package manager"
+                        value={newToolDescription}
+                        onChange={(e) => setNewToolDescription(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Prompt Hint (optional)</Label>
+                      <Input
+                        placeholder="e.g. npm install, npm test, npm run build"
+                        value={newToolPromptHint}
+                        onChange={(e) => setNewToolPromptHint(e.target.value)}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Usage instructions included in agent prompts
+                      </p>
+                    </div>
+                  </div>
+                  {addToolError && (
+                    <p className="text-xs text-destructive">{addToolError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="cursor-pointer"
+                      onClick={handleAddTool}
+                      disabled={!newToolName.trim() || !newToolPath.trim()}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setShowAddToolForm(false)
+                        setAddToolError(null)
+                        setNewToolName('')
+                        setNewToolPath('')
+                        setNewToolDescription('')
+                        setNewToolPromptHint('')
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )

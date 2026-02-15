@@ -225,9 +225,9 @@ function buildRalphLoopPrompt(
   iterationNumber: number,
   maxIterations: number,
   completionPhrase: string,
-  enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }
+  tools: Array<{ name: string; enabled: boolean; promptHint?: string; description?: string; builtIn?: boolean }>
 ): string {
-  const proxiedToolsSection = buildProxiedToolsSection(enabledTools)
+  const proxiedToolsSection = buildProxiedToolsSection(tools)
 
   return `[RALPH LOOP - ITERATION ${iterationNumber}/${maxIterations}]
 
@@ -522,13 +522,6 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
     // Build the prompt with enabled tools
     const selectedImage = await getSelectedDockerImage()
     const settings = await loadSettings()
-    const proxiedTools = settings.docker.proxiedTools
-    const enabledTools = {
-      git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-      gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-      bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-      bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-    }
     const enhancedPrompt = buildRalphLoopPrompt(
       state.config.prompt,
       state.worktreeInfo.path,
@@ -536,7 +529,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       iterationNumber,
       state.config.maxIterations,
       state.config.completionPhrase,
-      enabledTools
+      settings.docker.proxiedTools
     )
 
     // Derive shared cache dirs from repo path

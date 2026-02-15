@@ -162,13 +162,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,
@@ -224,13 +218,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,

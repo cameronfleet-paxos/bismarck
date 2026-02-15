@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
 import { devLog } from './dev-log'
+import { reloadToolConfig } from './tool-proxy'
 import {
   initBenchmark,
   startTimer,
@@ -149,6 +150,8 @@ import {
   setSelectedDockerImage,
   updateToolPaths,
   updateProxiedTool,
+  addProxiedTool,
+  removeProxiedTool,
   updateDockerSshSettings,
   updateDockerSocketSettings,
   getCustomPrompts,
@@ -1207,8 +1210,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('toggle-proxied-tool', async (_event, id: string, enabled: boolean) => {
     const result = updateProxiedTool(id, { enabled })
+    reloadToolConfig()
     // Re-check auth statuses when a tool is toggled (async, don't block)
     checkAllToolAuth().catch(() => {})
+    return result
+  })
+
+  ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) => {
+    const result = await addProxiedTool(tool)
+    reloadToolConfig()
+    return result
+  })
+
+  ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
+    const result = await removeProxiedTool(id)
+    reloadToolConfig()
     return result
   })
 

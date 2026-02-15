@@ -24,12 +24,7 @@ import { getGitUserConfig } from './git-utils'
 
 export interface ToolProxyConfig {
   port: number // Default: 9847
-  tools: {
-    gh: { enabled: boolean }
-    bd: { enabled: boolean }
-    git: { enabled: boolean }
-    bb: { enabled: boolean }
-  }
+  tools: Record<string, { enabled: boolean }>
 }
 
 const DEFAULT_CONFIG: ToolProxyConfig = {
@@ -182,7 +177,7 @@ async function handleGhRequest(
   res: http.ServerResponse,
   subpath: string
 ): Promise<void> {
-  if (!currentConfig.tools.gh.enabled) {
+  if (!(currentConfig.tools['gh']?.enabled ?? false)) {
     logger.warn('proxy', 'gh tool is disabled, rejecting request')
     sendJson(res, 403, { success: false, error: 'gh tool is disabled' })
     return
@@ -253,7 +248,7 @@ async function handleBdRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  if (!currentConfig.tools.bd.enabled) {
+  if (!(currentConfig.tools['bd']?.enabled ?? false)) {
     logger.warn('proxy', 'bd tool is disabled, rejecting request')
     sendJson(res, 403, { success: false, error: 'bd tool is disabled' })
     return
@@ -328,7 +323,7 @@ async function handleGitRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  if (!currentConfig.tools.git.enabled) {
+  if (!(currentConfig.tools['git']?.enabled ?? false)) {
     logger.warn('proxy', 'git tool is disabled, rejecting request')
     sendJson(res, 403, { success: false, error: 'git tool is disabled' })
     return
@@ -419,7 +414,7 @@ async function handleBbRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  if (!currentConfig.tools.bb.enabled) {
+  if (!(currentConfig.tools['bb']?.enabled ?? false)) {
     logger.warn('proxy', 'bb tool is disabled, rejecting request')
     sendJson(res, 403, { success: false, error: 'bb tool is disabled' })
     return
@@ -473,6 +468,57 @@ async function handleBbRequest(
 }
 
 /**
+ * Handle generic tool proxy requests
+ * Fallback handler for tools that don't have specialized handlers
+ */
+async function handleGenericToolRequest(
+  toolName: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (!(currentConfig.tools[toolName]?.enabled ?? false)) {
+    logger.warn('proxy', `${toolName} tool is disabled, rejecting request`)
+    sendJson(res, 403, { success: false, error: `${toolName} tool is disabled` })
+    return
+  }
+
+  try {
+    const body = (await parseBody(req)) as ProxyRequest & { cwd?: string }
+
+    const args = body.args || []
+    const cwd = body.cwd
+
+    logger.debug('proxy', `${toolName} request: ${args.join(' ')}`, cwd ? { worktreePath: cwd } : undefined)
+
+    proxyEvents.emit('tool', { toolName, args, cwd })
+
+    const result = await executeCommand(toolName, args, body.stdin, { cwd })
+
+    logger.info('proxy', `${toolName} request completed`, undefined, {
+      tool: toolName,
+      args: args.slice(0, 3).join(' '),
+      success: result.exitCode === 0,
+      exitCode: result.exitCode,
+      stderrPreview: result.stderr?.substring(0, 100),
+    })
+
+    sendJson(res, 200, {
+      success: result.exitCode === 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    })
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+    logger.error('proxy', `${toolName} request failed: ${errorMsg}`)
+    sendJson(res, 400, {
+      success: false,
+      error: errorMsg,
+    })
+  }
+}
+
+/**
  * Handle health check requests
  */
 function handleHealthCheck(res: http.ServerResponse): void {
@@ -515,6 +561,15 @@ async function handleRequest(
     await handleGitRequest(req, res)
   } else if (url.startsWith('/bb') && method === 'POST') {
     await handleBbRequest(req, res)
+  } else if (method === 'POST') {
+    // Generic fallback: extract tool name from URL path (e.g., /npm -> "npm")
+    const match = url.match(/^\/([a-zA-Z0-9_-]+)/)
+    if (match) {
+      const toolName = match[1]
+      await handleGenericToolRequest(toolName, req, res)
+    } else {
+      sendJson(res, 404, { success: false, error: 'Not found' })
+    }
   } else {
     sendJson(res, 404, { success: false, error: 'Not found' })
   }
@@ -529,15 +584,16 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     return
   }
 
-  // Read enabled state from settings for each tool
+  // Read enabled state from settings for all proxied tools
   const settings = await loadSettings()
   const proxiedTools = settings.docker.proxiedTools
-  const toolsConfig = {
-    gh: { enabled: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true },
-    bd: { enabled: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true },
-    git: { enabled: proxiedTools.find(t => t.name === 'git')?.enabled ?? true },
-    bb: { enabled: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false },
-  }
+  const toolsConfig: Record<string, { enabled: boolean }> = proxiedTools.reduce(
+    (acc, t) => {
+      acc[t.name] = { enabled: t.enabled }
+      return acc
+    },
+    {} as Record<string, { enabled: boolean }>
+  )
 
   // Generate per-session auth token
   proxyToken = crypto.randomBytes(32).toString('hex')
@@ -564,17 +620,36 @@ export async function startToolProxy(config: Partial<ToolProxyConfig> = {}): Pro
     })
 
     server.listen(currentConfig.port, '0.0.0.0', () => {
+      const enabledTools = Object.entries(currentConfig.tools)
+        .reduce((acc, [name, cfg]) => { acc[`${name}Enabled`] = cfg.enabled; return acc }, {} as Record<string, boolean>)
       logger.info('proxy', `Tool proxy server started`, undefined, {
         port: currentConfig.port,
         url: `http://host.docker.internal:${currentConfig.port}`,
-        ghEnabled: currentConfig.tools.gh.enabled,
-        bdEnabled: currentConfig.tools.bd.enabled,
-        gitEnabled: currentConfig.tools.git.enabled,
-        bbEnabled: currentConfig.tools.bb.enabled,
+        ...enabledTools,
       })
       proxyEvents.emit('started', { port: currentConfig.port })
       resolve()
     })
+  })
+}
+
+/**
+ * Hot-reload tool configuration from settings without restarting the server
+ */
+export async function reloadToolConfig(): Promise<void> {
+  const settings = await loadSettings()
+  const proxiedTools = settings.docker.proxiedTools
+  currentConfig.tools = proxiedTools.reduce(
+    (acc, t) => {
+      acc[t.name] = { enabled: t.enabled }
+      return acc
+    },
+    {} as Record<string, { enabled: boolean }>
+  )
+  logger.info('proxy', 'Tool config reloaded', undefined, {
+    tools: Object.entries(currentConfig.tools)
+      .map(([name, cfg]) => `${name}:${cfg.enabled ? 'on' : 'off'}`)
+      .join(', '),
   })
 }
 
