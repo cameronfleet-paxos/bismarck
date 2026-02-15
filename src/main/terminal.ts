@@ -552,9 +552,9 @@ export function createPlainTerminal(
 export async function createDockerTerminal(
   options: InteractiveDockerOptions,
   mainWindow: BrowserWindow | null,
-): Promise<string> {
+): Promise<{ terminalId: string; containerName: string }> {
   const terminalId = `docker-terminal-${Date.now()}`
-  const dockerArgs = await buildInteractiveDockerArgs(options)
+  const { args: dockerArgs, containerName } = await buildInteractiveDockerArgs(options)
 
   // Validate directory exists, fall back to home if not
   let cwd = options.workingDir
@@ -599,7 +599,7 @@ export async function createDockerTerminal(
     terminals.delete(terminalId)
   })
 
-  return terminalId
+  return { terminalId, containerName }
 }
 
 /**

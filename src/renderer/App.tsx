@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, Rea
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
 import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { devLog } from './utils/dev-log'
 import {
   Dialog,
@@ -1893,6 +1894,8 @@ function App() {
           tabId: result.tabId,
           name: `Docker — ${agent.name}`,
           directory: agent.directory,
+          isDocker: true,
+          containerName: result.containerName,
         }
         setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
 
@@ -4126,6 +4129,20 @@ function App() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
+                              {pt.isDocker && (
+                                <Tooltip content={pt.containerName || 'Open Docker Desktop'} side="bottom">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      window.electronAPI.openDockerDesktop()
+                                    }}
+                                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                  >
+                                    <Container className="h-3 w-3" />
+                                    <span>Docker</span>
+                                  </button>
+                                </Tooltip>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"

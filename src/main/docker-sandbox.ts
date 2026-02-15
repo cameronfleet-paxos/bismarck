@@ -28,6 +28,7 @@ export interface InteractiveDockerOptions {
   command: string[]           // Command to run (e.g., ['claude', '--dangerously-skip-permissions'])
   claudeConfigDir?: string    // Host ~/.claude to mount (for skills, hooks, etc.)
   env?: Record<string, string> // Additional env vars
+  containerName?: string      // Docker container name (auto-generated if not set)
 }
 
 export interface ContainerConfig {
@@ -106,14 +107,18 @@ const runningContainers: Map<
  * Build docker run arguments for an interactive Docker terminal session.
  * Generic and reusable for any interactive Docker use case.
  */
-export async function buildInteractiveDockerArgs(options: InteractiveDockerOptions): Promise<string[]> {
+export async function buildInteractiveDockerArgs(options: InteractiveDockerOptions): Promise<{ args: string[]; containerName: string }> {
   const settings = await loadSettings()
   const { getSelectedDockerImage, getGitHubToken } = await import('./settings-manager')
+
+  // Generate a container name if not provided
+  const containerName = options.containerName || `bismarck-terminal-${Date.now()}`
 
   const args: string[] = [
     'run',
     '--rm',
     '-it', // Interactive + TTY for full TUI support
+    '--name', containerName,
   ]
 
   // Mount working directory
@@ -246,7 +251,7 @@ export async function buildInteractiveDockerArgs(options: InteractiveDockerOptio
   // Command
   args.push(...options.command)
 
-  return args
+  return { args, containerName }
 }
 
 /**

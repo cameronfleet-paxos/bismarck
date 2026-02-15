@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     name?: string
     mountClaudeConfig?: boolean
     env?: Record<string, string>
-  }): Promise<{ terminalId: string; tabId: string }> =>
+  }): Promise<{ terminalId: string; tabId: string; containerName: string }> =>
     ipcRenderer.invoke('create-docker-terminal', options),
   closePlainTerminal: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('close-plain-terminal', terminalId),

@@ -45,7 +45,7 @@ export interface ElectronAPI {
     name?: string
     mountClaudeConfig?: boolean
     env?: Record<string, string>
-  }) => Promise<{ terminalId: string; tabId: string }>
+  }) => Promise<{ terminalId: string; tabId: string; containerName: string }>
   closePlainTerminal: (terminalId: string) => Promise<void>
   renamePlainTerminal: (terminalId: string, name: string) => Promise<void>
   restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => Promise<{ terminalId: string; plainId: string } | null>

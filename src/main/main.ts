@@ -554,8 +554,8 @@ function registerIpcHandlers() {
       }
     }
 
-    const terminalId = await createDockerTerminal(dockerOptions, mainWindow)
-    const plainId = `plain-${terminalId}`
+    const result = await createDockerTerminal(dockerOptions, mainWindow)
+    const plainId = `plain-${result.terminalId}`
 
     // Place in next available grid slot (same as create-plain-terminal)
     const state = getState()
@@ -564,9 +564,9 @@ function registerIpcHandlers() {
     setActiveTab(tab.id)
 
     // Persist as plain terminal for tab management
-    addPlainTerminal({ id: plainId, terminalId, tabId: tab.id, name: options.name || '', directory: options.directory })
+    addPlainTerminal({ id: plainId, terminalId: result.terminalId, tabId: tab.id, name: options.name || '', directory: options.directory, isDocker: true, containerName: result.containerName })
 
-    return { terminalId, tabId: tab.id }
+    return { terminalId: result.terminalId, tabId: tab.id, containerName: result.containerName }
   })
 
   ipcMain.handle('rename-plain-terminal', (_event, terminalId: string, name: string) => {

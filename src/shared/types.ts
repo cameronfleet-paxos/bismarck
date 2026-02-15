@@ -110,6 +110,8 @@ export interface PlainTerminal {
   tabId: string        // Tab this terminal is in
   name: string         // Display name (e.g., "Terminal 1")
   directory: string    // Working directory
+  isDocker?: boolean   // Whether this is a Docker container terminal
+  containerName?: string // Docker container name (for display/linking)
 }
 
 // Attention mode determines how waiting agents are displayed
