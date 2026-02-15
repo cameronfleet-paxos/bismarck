@@ -8,7 +8,7 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
-import type { CustomizablePromptType } from '../shared/types'
+import type { CustomizablePromptType, AgentProvider } from '../shared/types'
 
 const OFFICIAL_IMAGE_REPO = 'bismarckapp/bismarck-agent'
 
@@ -115,6 +115,8 @@ export interface AppSettings {
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
+  // Agent provider default (which CLI new manual agents use)
+  defaultProvider?: AgentProvider
 }
 
 /**
@@ -240,6 +242,7 @@ export function getDefaultSettings(): AppSettings {
     _internal: {
       lastLogPurgeVersion: null,
     },
+    defaultProvider: 'claude',
   }
 }
 
