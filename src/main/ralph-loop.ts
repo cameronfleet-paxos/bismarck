@@ -39,8 +39,6 @@ import {
   createWorktree,
   removeWorktree,
   deleteLocalBranch,
-  deleteRemoteBranch,
-  remoteBranchExists,
   getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
@@ -779,15 +777,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
     devLog(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
   }
 
-  // Delete the remote branch if it exists
-  try {
-    if (await remoteBranchExists(repoPath, branch)) {
-      await deleteRemoteBranch(repoPath, branch)
-      devLog(`[RalphLoop] Deleted remote branch ${branch}`)
-    }
-  } catch (error) {
-    console.error(`[RalphLoop] Failed to delete remote branch:`, error)
-  }
+  // Note: remote branch is intentionally NOT deleted to preserve PRs and pushed work
 
   // Remove state
   ralphLoops.delete(loopId)
