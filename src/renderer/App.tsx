@@ -2,9 +2,9 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
-import { Tooltip } from '@/renderer/components/ui/tooltip'
+import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent } from '@/renderer/components/ui/tooltip'
 import { devLog } from './utils/dev-log'
 import {
   Dialog,
@@ -131,6 +131,45 @@ function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; o
   }, [shouldStart, isActive, startTutorial, onTriggered])
 
   return null
+}
+
+function DockerBadge({ containerName }: { containerName?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <TooltipProvider delayDuration={100}>
+      <TooltipRoot disableHoverableContent={false}>
+        <TooltipTrigger asChild>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.electronAPI.openDockerDesktop()
+            }}
+            className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+          >
+            <Container className="h-3 w-3" />
+            <span>Docker</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <div className="flex items-center gap-2">
+            <span className="font-mono">{containerName}</span>
+            <button
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigator.clipboard.writeText(containerName || '')
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+              className="p-0.5 rounded hover:bg-muted transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </TooltipContent>
+      </TooltipRoot>
+    </TooltipProvider>
+  )
 }
 
 function App() {
@@ -4130,18 +4169,7 @@ function App() {
                             </div>
                             <div className="flex items-center gap-1">
                               {pt.isDocker && (
-                                <Tooltip content={pt.containerName || 'Open Docker Desktop'} side="bottom">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      window.electronAPI.openDockerDesktop()
-                                    }}
-                                    className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
-                                  >
-                                    <Container className="h-3 w-3" />
-                                    <span>Docker</span>
-                                  </button>
-                                </Tooltip>
+                                <DockerBadge containerName={pt.containerName} />
                               )}
                               <Button
                                 size="sm"
