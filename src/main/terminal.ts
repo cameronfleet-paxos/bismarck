@@ -255,7 +255,8 @@ export function createTerminal(
   // The codex-notify-hook.sh uses this to route attention events to the correct workspace
   if (provider === 'codex') {
     try {
-      const hash = crypto.createHash('sha256').update(cwd).digest('hex').slice(0, 16)
+      const configDirName = path.basename(getConfigDir())
+      const hash = crypto.createHash('sha256').update(`${configDirName}:${cwd}`).digest('hex').slice(0, 16)
       const sessionsDir = path.join(getConfigDir(), 'sessions')
       fs.mkdirSync(sessionsDir, { recursive: true })
       const mappingPath = path.join(sessionsDir, `codex-${hash}.json`)
