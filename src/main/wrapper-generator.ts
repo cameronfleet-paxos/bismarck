@@ -61,7 +61,7 @@ function generateWrapperScript(toolName: string): string {
 set -e
 PROXY_URL="\${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
 HOST_CWD="\${BISMARCK_HOST_WORKTREE_PATH:-}"
-ARGS_JSON=$(printf '%s\\n' "$@" | jq -R . | jq -s .)
+ARGS_JSON=$(printf '%s\\0' "$@" | jq -Rs 'rtrimstr("\\u0000") | split("\\u0000")')
 if [ -n "$HOST_CWD" ]; then
   BODY=$(jq -n --argjson args "$ARGS_JSON" --arg cwd "$HOST_CWD" '{args: $args, cwd: $cwd}')
 else
