@@ -1948,6 +1948,35 @@ function App() {
     }
   }
 
+  // Open Docker terminal in a headless agent's worktree directory
+  const handleOpenDockerTerminalInWorktree = async (directory: string, name: string) => {
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory,
+        command: ['bash'],
+        name: `Docker — ${name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${name}`,
+          directory,
+          isDocker: true,
+          containerName: result.containerName,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal in agent worktree:', err)
+    }
+  }
+
   // Open plain terminal handler (non-agent shell terminal)
   const handleOpenTerminal = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -4555,6 +4584,15 @@ function App() {
           setSettingsInitialSection('cron-jobs')
           setCurrentView('settings')
         }}
+        focusedHeadlessAgent={(() => {
+          if (!focusedAgentId) return null
+          const agent = agents.find(a => a.id === focusedAgentId)
+          if (agent && (agent.isStandaloneHeadless || agent.isHeadless)) {
+            return { name: agent.name, directory: agent.directory }
+          }
+          return null
+        })()}
+        onOpenDockerTerminalInWorktree={handleOpenDockerTerminalInWorktree}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 
