@@ -419,6 +419,11 @@ function registerIpcHandlers() {
       }
     }
 
+    // If saving a Codex agent, ensure the notify hook is configured
+    if (workspace.provider === 'codex') {
+      configureCodexHook()
+    }
+
     return savedWorkspace
   })
 
