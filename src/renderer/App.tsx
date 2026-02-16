@@ -3332,6 +3332,7 @@ function App() {
                     {getHeadlessAgentsForTab(tab).map((info) => {
                       devLog('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
                       const isDragging = draggedHeadlessId === info.id
                       const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
@@ -3358,10 +3359,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(info.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3446,6 +3451,7 @@ function App() {
                     {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
                     {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const isDragging = draggedHeadlessId === agent.id
                       const isDropTarget = dropTargetHeadlessId === agent.id && !isDragging
                       return (
@@ -3479,10 +3485,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3587,6 +3597,7 @@ function App() {
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
                       const isExpanded = expandedAgentId === uniqueId
+                      const isFocused = focusedAgentId === uniqueId
                       const isDragging = draggedHeadlessId === uniqueId
                       const isDropTarget = dropTargetHeadlessId === uniqueId && !isDragging
                       return (
@@ -3615,10 +3626,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(uniqueId)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3938,6 +3953,7 @@ function App() {
                       if (position === -1 || position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const prUrl = extractPRUrl(info.events)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === agent.id
@@ -3962,8 +3978,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
@@ -4070,6 +4090,7 @@ function App() {
                       if (position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === wsId
+                      const isFocused = focusedAgentId === wsId
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === wsId
 
@@ -4102,8 +4123,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(wsId)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
