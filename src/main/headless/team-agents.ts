@@ -20,6 +20,7 @@ import {
   saveTaskAssignment,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from '../config'
 import { proxyEvents } from '../tool-proxy'
 import { removeWorktree, deleteLocalBranch } from '../git-utils'
@@ -173,6 +174,10 @@ export async function startHeadlessTaskAgent(
   }
   headlessAgentInfo.set(task.id, agentInfo)
 
+  // Resolve pnpm store path for sharing
+  const teamSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(teamSettings)
+
   // Run plan phase for regular tasks (skip for critic and fixup tasks)
   let executionPrompt = taskPrompt
   if (!isCriticTask(task) && !isFixupTask(task)) {
@@ -188,6 +193,7 @@ export async function startHeadlessTaskAgent(
       guidance: repository.guidance,
       sharedCacheDir: getRepoCacheDir(repository.name),
       sharedModCacheDir: getRepoModCacheDir(repository.name),
+      pnpmStoreDir: pnpmStoreDir || undefined,
       enabled: true,
       onEvent: (event) => {
         emitHeadlessAgentEvent(planId, task.id, event)
@@ -362,6 +368,7 @@ export async function startHeadlessTaskAgent(
       claudeFlags: ['--model', agentModel],
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
     })
 
     onAddPlanActivity?.(planId, 'info', `Task ${task.id} started (headless container)`)

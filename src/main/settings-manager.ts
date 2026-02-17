@@ -70,6 +70,10 @@ export interface AppSettings {
     sharedBuildCache: {
       enabled: boolean     // Enable shared Go build cache across agents (per-repo)
     }
+    pnpmStore: {
+      enabled: boolean     // Enable pnpm store sharing to containers
+      path: string | null  // Override path (null = auto-detect via `pnpm store path`)
+    }
     imageDigests: Record<string, string>     // { "image:tag": "sha256:abc..." } - tracks pulled digests
     upstreamTemplateDigest: string | null    // last known digest of official image template
     upstreamTemplateVersion: string | null   // last known version label (e.g. "0.7.8")
@@ -197,6 +201,10 @@ export function getDefaultSettings(): AppSettings {
       sharedBuildCache: {
         enabled: true,   // Share Go build cache across agents per-repo
       },
+      pnpmStore: {
+        enabled: true,   // Share pnpm store across agents by default
+        path: null,      // Auto-detect via `pnpm store path`
+      },
       imageDigests: {},
       upstreamTemplateDigest: null,
       upstreamTemplateVersion: null,
@@ -288,6 +296,10 @@ export async function loadSettings(): Promise<AppSettings> {
         sharedBuildCache: {
           ...defaults.docker.sharedBuildCache,
           ...(loaded.docker?.sharedBuildCache || {}),
+        },
+        pnpmStore: {
+          ...defaults.docker.pnpmStore,
+          ...(loaded.docker?.pnpmStore || {}),
         },
         imageDigests: {
           ...defaults.docker.imageDigests,
@@ -484,6 +496,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
       sharedBuildCache: {
         ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
         ...(updates.docker?.sharedBuildCache || {}),
+      },
+      pnpmStore: {
+        ...(currentSettings.docker.pnpmStore || defaults.docker.pnpmStore),
+        ...(updates.docker?.pnpmStore || {}),
       },
       imageDigests: {
         ...(currentSettings.docker.imageDigests || defaults.docker.imageDigests),
@@ -732,6 +748,19 @@ export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enab
     ...cacheSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Update Docker pnpm store settings
+ */
+export async function updateDockerPnpmStoreSettings(settings: { enabled?: boolean; path?: string | null }): Promise<void> {
+  const current = await loadSettings()
+  const defaults = getDefaultSettings()
+  current.docker.pnpmStore = {
+    ...(current.docker.pnpmStore || defaults.docker.pnpmStore),
+    ...settings,
+  }
+  await saveSettings(current)
 }
 
 /**

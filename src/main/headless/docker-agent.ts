@@ -57,6 +57,7 @@ export interface HeadlessAgentOptions {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
+  pnpmStoreDir?: string // Host path to shared pnpm store
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
 }
 
@@ -171,6 +172,7 @@ export class HeadlessAgent extends EventEmitter {
         inputMode: this.useStreamJsonInput ? 'stream-json' : undefined,
         sharedCacheDir: options.sharedCacheDir,
         sharedModCacheDir: options.sharedModCacheDir,
+        pnpmStoreDir: options.pnpmStoreDir,
         planOutputDir: options.planOutputDir,
         wrapperDir: wrapperDir || undefined,
       }

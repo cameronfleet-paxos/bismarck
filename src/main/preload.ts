@@ -467,6 +467,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-socket-settings', settings),
   updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
+  updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) =>
+    ipcRenderer.invoke('update-docker-pnpm-store-settings', settings),
+  detectPnpmStorePath: () =>
+    ipcRenderer.invoke('detect-pnpm-store-path'),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 

@@ -28,6 +28,7 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
@@ -536,6 +537,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
     const iterRepoName = path.basename(state.worktreeInfo.repoPath)
     const sharedCacheDir = getRepoCacheDir(iterRepoName)
     const sharedModCacheDir = getRepoModCacheDir(iterRepoName)
+    const pnpmStoreDir = await resolvePnpmStorePath(settings)
 
     const options: HeadlessAgentOptions = {
       prompt: enhancedPrompt,
@@ -547,6 +549,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       claudeFlags: ['--model', state.config.model],
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
     }
 
     devLog(`[RalphLoop] Starting iteration ${iterationNumber} agent`)

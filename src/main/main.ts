@@ -171,6 +171,7 @@ import {
   getPreventSleepSettings,
   updatePreventSleepSettings,
   updateDockerSharedBuildCacheSettings,
+  updateDockerPnpmStoreSettings,
   updateSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
@@ -1352,6 +1353,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-shared-build-cache-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSharedBuildCacheSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-pnpm-store-settings', async (_event, settings: { enabled?: boolean; path?: string | null }) => {
+    return updateDockerPnpmStoreSettings(settings)
+  })
+
+  ipcMain.handle('detect-pnpm-store-path', async () => {
+    const { detectPnpmStorePath } = await import('./pnpm-detect')
+    return detectPnpmStorePath()
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {

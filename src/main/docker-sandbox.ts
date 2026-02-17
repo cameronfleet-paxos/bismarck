@@ -43,6 +43,7 @@ export interface ContainerConfig {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
+  pnpmStoreDir?: string // Host path to shared pnpm store
   mode?: 'plan' // If 'plan', run in plan mode (stream-json output)
   inputMode?: 'prompt' | 'stream-json' // If 'stream-json', use --input-format stream-json and deliver prompt via stdin (keeps stdin open for nudges)
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
@@ -319,6 +320,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     args.push('-e', 'GOMODCACHE=/shared-modcache')
   } else {
     args.push('-e', 'GOMODCACHE=/workspace/.tmp/go-mod')
+  }
+
+  // Mount pnpm store: share host store with container if enabled
+  if (settings.docker.pnpmStore?.enabled && config.pnpmStoreDir) {
+    args.push('-v', `${config.pnpmStoreDir}:/shared-pnpm-store`)
+    args.push('-e', 'PNPM_STORE_DIR=/shared-pnpm-store')
   }
 
   // Forward SSH agent for private repo access (Bazel, Go modules)

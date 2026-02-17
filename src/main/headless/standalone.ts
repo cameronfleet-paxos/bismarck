@@ -22,6 +22,7 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from '../config'
 import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from '../state-manager'
@@ -303,6 +304,10 @@ export async function startStandaloneHeadlessAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
+  // Resolve pnpm store path for sharing
+  const currentSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(currentSettings)
+
   // Store worktree info for cleanup
   const worktreeInfo: StandaloneWorktreeInfo = {
     path: worktreePath,
@@ -423,6 +428,7 @@ export async function startStandaloneHeadlessAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -464,6 +470,7 @@ export async function startStandaloneHeadlessAgent(
     claudeFlags: ['--model', model],
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   devLog(`[StandaloneHeadless] Starting agent with config:`, {
@@ -745,6 +752,10 @@ export async function startFollowUpAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
+  // Resolve pnpm store path for sharing
+  const followUpSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(followUpSettings)
+
   // Extract slug from branch (e.g., "bismarck-standalone/bismarck-fix-login-a3f7" -> "fix-login-a3f7")
   const branchSuffix = branch.replace('bismarck-standalone/', '').replace('standalone/', '') // handle both prefixes
   const phrase = branchSuffix.replace(`${repoName}-`, '')
@@ -882,6 +893,7 @@ export async function startFollowUpAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir: followUpPlanOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -921,6 +933,7 @@ export async function startFollowUpAgent(
     claudeFlags: model ? ['--model', model] : undefined,
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   // Store model in agent info
