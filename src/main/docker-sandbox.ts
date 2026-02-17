@@ -325,7 +325,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   // Mount pnpm store: share host store with container if enabled
   if (settings.docker.pnpmStore?.enabled && config.pnpmStoreDir) {
     args.push('-v', `${config.pnpmStoreDir}:/shared-pnpm-store`)
-    args.push('-e', 'PNPM_STORE_DIR=/shared-pnpm-store')
+    args.push('-e', 'npm_config_store_dir=/shared-pnpm-store')
   }
 
   // Forward SSH agent for private repo access (Bazel, Go modules)
