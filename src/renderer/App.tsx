@@ -3387,7 +3387,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3408,14 +3408,14 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
                             } ${!expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''}`}
                           >
-                            <div className="flex items-center gap-2">
-                              <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="truncate" title={`${info.agentType === 'critic' ? 'Critic' : 'Task'} ${info.taskId}`}>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3462,7 +3462,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="flex-1 min-h-0">
                             <HeadlessTerminal
                               events={info.events}
                               theme="teal"
@@ -3513,7 +3513,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3534,15 +3534,15 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
-                              <span>{agent.name}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />
+                              <span className="truncate" title={agent.name}>{agent.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3589,7 +3589,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="flex-1 min-h-0">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
@@ -3654,7 +3654,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3675,13 +3675,13 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
-                              <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              {agent && <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />}
+                              <span className="truncate" title={agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
                               {/* Git Summary */}
                               {loopState.gitSummary && (
                                 <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
@@ -3694,7 +3694,7 @@ function App() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3743,7 +3743,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="flex-1 min-h-0">
                             <HeadlessTerminal
                               events={iteration.events}
                               theme={agent?.theme || 'purple'}
@@ -4010,7 +4010,7 @@ function App() {
                           onClick={() => {
                             if (!isExpanded) handleFocusAgent(agent.id)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -4027,15 +4027,15 @@ function App() {
                               setDraggedWorkspaceId(null)
                               setDropTargetPosition(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
-                              <span>{agent.name}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />
+                              <span className="truncate" title={agent.name}>{agent.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -4087,7 +4087,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="flex-1 min-h-0">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
