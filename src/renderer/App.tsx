@@ -279,6 +279,7 @@ function App() {
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
+  const [isDestroyingAgent, setIsDestroyingAgent] = useState(false)
 
 
   // Prompt viewer modal state
@@ -1730,20 +1731,28 @@ function App() {
   const handleDestroyAgent = async () => {
     if (!destroyAgentTarget) return
     const { info, isStandalone } = destroyAgentTarget
-    // Close dialog immediately
-    setDestroyAgentTarget(null)
-    // Optimistically remove agent from UI
-    setHeadlessAgents((prev) => {
-      const newMap = new Map(prev)
-      newMap.delete(info.taskId!)
-      return newMap
-    })
-    // Fire-and-forget backend cleanup
-    window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
-      .then(() => loadAgents())
-      .then(() => window.electronAPI.getState())
-      .then((state) => setTabs(state.tabs || []))
-      .catch(() => loadAgents()) // Re-fetch correct state on error
+    setIsDestroyingAgent(true)
+    try {
+      // Await backend cleanup (releases slot before UI removal)
+      await window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
+      // Remove agent from UI after slot is released
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        newMap.delete(info.taskId!)
+        return newMap
+      })
+      // Reload agents to pick up workspace deletion
+      await loadAgents()
+      // Refresh tabs
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+    } catch {
+      // Re-fetch correct state on error
+      await loadAgents()
+    } finally {
+      setIsDestroyingAgent(false)
+      setDestroyAgentTarget(null)
+    }
   }
 
   // Open follow-up modal for a standalone headless agent
@@ -4479,7 +4488,7 @@ function App() {
 
       {/* Destroy Agent Confirmation Dialog */}
       {destroyAgentTarget && (
-        <Dialog open onOpenChange={(open) => !open && setDestroyAgentTarget(null)}>
+        <Dialog open onOpenChange={(open) => !open && !isDestroyingAgent && setDestroyAgentTarget(null)}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle className="text-red-400">Destroy Agent?</DialogTitle>
@@ -4494,11 +4503,11 @@ function App() {
             </ul>
             <p className="text-sm text-yellow-500">This action cannot be undone.</p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)}>
+              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)} disabled={isDestroyingAgent}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDestroyAgent}>
-                Destroy
+              <Button variant="destructive" onClick={handleDestroyAgent} disabled={isDestroyingAgent}>
+                {isDestroyingAgent ? 'Destroying…' : 'Destroy'}
               </Button>
             </DialogFooter>
           </DialogContent>
