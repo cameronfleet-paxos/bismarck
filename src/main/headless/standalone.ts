@@ -967,6 +967,7 @@ interface HeadlessDiscussionState {
   tabId: string
   outputPath: string
   terminalId?: string
+  model: 'opus' | 'sonnet'
 }
 
 const activeHeadlessDiscussions: Map<string, HeadlessDiscussionState> = new Map()
@@ -1004,7 +1005,8 @@ export function getActiveDiscussionTerminalIds(): Set<string> {
 export async function startHeadlessDiscussion(
   referenceAgentId: string,
   initialPrompt: string,
-  maxQuestions: number = 7
+  maxQuestions: number = 7,
+  model: 'opus' | 'sonnet' = 'sonnet'
 ): Promise<{ discussionId: string; workspaceId: string; tabId: string }> {
   if (!mainWindow) {
     throw new Error('Main window not available')
@@ -1069,6 +1071,7 @@ export async function startHeadlessDiscussion(
     referenceAgentId,
     tabId: discussionTab.id,
     outputPath: discussionOutputPath,
+    model,
   }
   activeHeadlessDiscussions.set(discussionId, discussionState)
 
@@ -1181,7 +1184,7 @@ async function completeHeadlessDiscussion(discussionId: string): Promise<void> {
     const result = await startStandaloneHeadlessAgent(
       discussionState.referenceAgentId,
       headlessPrompt,
-      'sonnet', // Default to sonnet model
+      discussionState.model, // Use model selected at discussion start
       discussionState.tabId, // Reuse the same tab
       { skipPlanPhase: true }
     )

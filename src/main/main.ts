@@ -910,8 +910,8 @@ function registerIpcHandlers() {
   })
 
   // Headless discussion (Discuss: Headless Agent)
-  ipcMain.handle('start-headless-discussion', async (_event, agentId: string, initialPrompt: string) => {
-    return startHeadlessDiscussion(agentId, initialPrompt)
+  ipcMain.handle('start-headless-discussion', async (_event, agentId: string, initialPrompt: string, model?: 'opus' | 'sonnet') => {
+    return startHeadlessDiscussion(agentId, initialPrompt, undefined, model)
   })
 
   ipcMain.handle('cancel-headless-discussion', async (_event, discussionId: string) => {

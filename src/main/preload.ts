@@ -160,8 +160,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('standalone-headless:restart', headlessId, model),
 
   // Headless discussion (Discuss: Headless Agent)
-  startHeadlessDiscussion: (agentId: string, initialPrompt: string): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
-    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt),
+  startHeadlessDiscussion: (agentId: string, initialPrompt: string, model?: 'opus' | 'sonnet'): Promise<{ discussionId: string; workspaceId: string; tabId: string }> =>
+    ipcRenderer.invoke('start-headless-discussion', agentId, initialPrompt, model),
   cancelHeadlessDiscussion: (discussionId: string): Promise<void> =>
     ipcRenderer.invoke('cancel-headless-discussion', discussionId),
 
