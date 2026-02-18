@@ -2306,13 +2306,15 @@ function App() {
 
   // Stable sidebar callbacks for memoized agent cards
   const sidebarHandleAgentClick = useCallback((agentId: string, agentTab: AgentTab | undefined) => {
-    if (activeTerminals.some((t) => t.workspaceId === agentId)) {
+    const isActive = activeTerminals.some((t) => t.workspaceId === agentId)
+    const isHeadless = agents.some(a => a.id === agentId && (a.isHeadless || a.isStandaloneHeadless))
+    if (isActive || isHeadless) {
       if (agentTab && agentTab.id !== activeTabId) {
         handleTabSelect(agentTab.id)
       }
       handleFocusAgent(agentId)
     }
-  }, [activeTerminals, activeTabId, handleTabSelect, handleFocusAgent])
+  }, [activeTerminals, agents, activeTabId, handleTabSelect, handleFocusAgent])
 
   const sidebarHandleDragStart = useCallback((agentId: string) => {
     setSidebarDraggedAgentId(agentId)
@@ -2957,6 +2959,7 @@ function App() {
                     {/* Standalone agents */}
                     {standaloneAgents.map((agent) => {
                       const isActive = activeTerminals.some((t) => t.workspaceId === agent.id)
+                      const isHeadless = agent.isHeadless || agent.isStandaloneHeadless
                       const isWaiting = isAgentWaiting(agent.id)
                       const isFocused = focusedAgentId === agent.id
                       const agentTab = tabs.find((t) => t.workspaceIds.includes(agent.id))
@@ -2965,7 +2968,7 @@ function App() {
                         <button
                           key={agent.id}
                           onClick={() => {
-                            if (isActive) {
+                            if (isActive || isHeadless) {
                               // Navigate to agent without expanding sidebar
                               if (agentTab && agentTab.id !== activeTabId) {
                                 handleTabSelect(agentTab.id)
