@@ -672,6 +672,23 @@ function App() {
     setDiffOpenForWorkspace(null)
   }, [expandedBeforeDiff])
 
+  // Close/stop the focused agent, handling all agent types correctly
+  const handleCloseAgent = useCallback((agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    if (agent.isStandaloneHeadless && agent.taskId) {
+      // Standalone headless agent - use dedicated stop function
+      window.electronAPI?.stopStandaloneHeadlessAgent?.(agent.taskId)
+    } else if (agent.isHeadless && agent.taskId) {
+      // Plan headless agent - use dedicated stop function
+      window.electronAPI?.stopHeadlessAgent?.(agent.taskId)
+    } else {
+      // Interactive agent - stop workspace (closes PTY, removes from tab)
+      window.electronAPI?.stopWorkspace?.(agentId)
+    }
+  }, [agents])
+
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
     const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
@@ -776,16 +793,11 @@ function App() {
         return
       }
 
-      // Close tab shortcut
+      // Close focused agent shortcut (Cmd+W)
       if (matchesShortcut(e, shortcuts.closeTab)) {
         e.preventDefault()
-        if (activeTabId && tabs.length > 1) {
-          // Don't close if it's the only tab
-          const activeTab = tabs.find(t => t.id === activeTabId)
-          if (activeTab) {
-            // Trigger deletion - this will show confirmation if there are agents
-            handleTabDeleteRequest(activeTabId)
-          }
+        if (focusedAgentIdRef.current) {
+          handleCloseAgent(focusedAgentIdRef.current)
         }
         return
       }
@@ -806,11 +818,11 @@ function App() {
         return
       }
 
-      // Close agent shortcut
+      // Close agent shortcut (Cmd+Shift+W)
       if (matchesShortcut(e, shortcuts.closeAgent)) {
         e.preventDefault()
         if (focusedAgentIdRef.current) {
-          window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
+          handleCloseAgent(focusedAgentIdRef.current)
         }
         return
       }
@@ -895,7 +907,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
+  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, handleCloseAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
