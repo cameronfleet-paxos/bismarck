@@ -3424,6 +3424,26 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {preferences.showDiffView !== false && info.worktreePath && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === info.id) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                      setDiffOpenForWorkspace(info.id)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3462,7 +3482,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme="teal"
@@ -3473,6 +3493,13 @@ function App() {
                               onSearchClose={() => setTerminalSearchAgentId(null)}
                               onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, false)}
                             />
+                            {/* Diff overlay for plan headless agent */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === info.id && info.worktreePath && (
+                              <DiffOverlay
+                                directory={info.worktreePath}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
@@ -3551,6 +3578,26 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {preferences.showDiffView !== false && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === agent.id) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                      setDiffOpenForWorkspace(agent.id)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3589,7 +3636,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
@@ -3607,6 +3654,13 @@ function App() {
                               isStartingFollowUp={startingFollowUpIds.has(info.taskId!)}
                               isRestarting={restartingIds.has(info.taskId!)}
                             />
+                            {/* Diff overlay for standalone headless agent in plan view */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === agent.id && (
+                              <DiffOverlay
+                                directory={agent.directory}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
@@ -3703,6 +3757,26 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {preferences.showDiffView !== false && loopState.worktreeInfo?.path && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === uniqueId) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: uniqueId }))
+                                      setDiffOpenForWorkspace(uniqueId)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {loopState.config.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   loopState.config.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3743,7 +3817,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <HeadlessTerminal
                               events={iteration.events}
                               theme={agent?.theme || 'purple'}
@@ -3753,6 +3827,13 @@ function App() {
                               searchOpen={terminalSearchAgentId === uniqueId}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
                             />
+                            {/* Diff overlay for Ralph Loop iteration */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === uniqueId && loopState.worktreeInfo?.path && (
+                              <DiffOverlay
+                                directory={loopState.worktreeInfo.path}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
@@ -4044,6 +4125,26 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
+                              {preferences.showDiffView !== false && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === agent.id) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                      setDiffOpenForWorkspace(agent.id)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -4087,7 +4188,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)]">
+                          <div className="h-[calc(100%-2rem)] relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
@@ -4105,6 +4206,13 @@ function App() {
                               isStartingFollowUp={startingFollowUpIds.has(info.taskId!)}
                               isRestarting={restartingIds.has(info.taskId!)}
                             />
+                            {/* Diff overlay for headless agent (absolute position over terminal) */}
+                            {preferences.showDiffView !== false && diffOpenForWorkspace === agent.id && (
+                              <DiffOverlay
+                                directory={agent.directory}
+                                onClose={() => closeDiffAndRestore(tab.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       )
