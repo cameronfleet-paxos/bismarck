@@ -1091,15 +1091,15 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
             </div>
             {isStandalone && onConfirmDone && (
               <div className="flex items-center gap-2">
-                {onStartFollowUp && (
+                {onRestart && (
                   <button
-                    onClick={onStartFollowUp}
-                    disabled={isStartingFollowUp || isConfirmingDone}
+                    onClick={onRestart}
+                    disabled={isRestarting || isConfirmingDone}
                     className="px-3 py-1 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isStartingFollowUp ? (
+                    {isRestarting ? (
                       <span className="flex items-center gap-1">
-                        <span className="animate-spin">⟳</span> Starting...
+                        <span className="animate-spin">⟳</span> Retrying...
                       </span>
                     ) : (
                       'Retry'
@@ -1108,7 +1108,7 @@ export const HeadlessTerminal = forwardRef<HeadlessTerminalRef, HeadlessTerminal
                 )}
                 <button
                   onClick={onConfirmDone}
-                  disabled={isConfirmingDone || isStartingFollowUp}
+                  disabled={isConfirmingDone || isRestarting}
                   className="px-3 py-1 text-xs font-medium rounded bg-red-600/80 hover:bg-red-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isConfirmingDone ? (
