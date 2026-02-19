@@ -21,6 +21,10 @@ interface AppSettings {
       enabled: boolean
       path: string
     }
+    buildbuddyMcp?: {
+      enabled: boolean
+      hostPath: string
+    }
   }
 }
 
@@ -68,6 +72,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null)
   const [pullingImage, setPullingImage] = useState<string | null>(null)
   const [baseImageUpdate, setBaseImageUpdate] = useState<{ newVersion: string | null; newDigest: string | null } | null>(null)
+  const [mcpHostPath, setMcpHostPath] = useState(settings.docker.buildbuddyMcp?.hostPath ?? '')
 
   const checkImageStatuses = useCallback(async () => {
     const images = settings.docker.images
@@ -251,6 +256,42 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update Docker socket settings:', error)
+    }
+  }
+
+  const handleBuildBuddyMcpToggle = async (enabled: boolean) => {
+    try {
+      await window.electronAPI.updateSettings({
+        docker: {
+          buildbuddyMcp: {
+            enabled,
+            hostPath: settings.docker.buildbuddyMcp?.hostPath ?? '',
+          },
+        },
+      })
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update BuildBuddy MCP settings:', error)
+    }
+  }
+
+  const handleSaveMcpHostPath = async () => {
+    try {
+      await window.electronAPI.updateSettings({
+        docker: {
+          buildbuddyMcp: {
+            enabled: settings.docker.buildbuddyMcp?.enabled ?? false,
+            hostPath: mcpHostPath.trim(),
+          },
+        },
+      })
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to save MCP host path:', error)
     }
   }
 
@@ -582,6 +623,59 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
               On macOS, the <code className="bg-muted px-1 rounded">TESTCONTAINERS_HOST_OVERRIDE</code> environment
               variable is automatically set to enable proper networking with spawned containers.
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* BuildBuddy MCP Server */}
+      <div className="bg-card border rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-2">BuildBuddy MCP Server</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Mount the BuildBuddy MCP server into Docker containers for headless agents
+        </p>
+
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <Label htmlFor="buildbuddy-mcp-enabled">Enable BuildBuddy MCP in Containers</Label>
+            <p className="text-xs text-muted-foreground">
+              Mounts the MCP server directory and generates Claude Code config inside containers
+            </p>
+          </div>
+          <Switch
+            id="buildbuddy-mcp-enabled"
+            checked={settings.docker.buildbuddyMcp?.enabled ?? false}
+            onCheckedChange={handleBuildBuddyMcpToggle}
+          />
+        </div>
+
+        {settings.docker.buildbuddyMcp?.enabled && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="mcp-host-path">MCP Server Host Path</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="mcp-host-path"
+                  placeholder="/path/to/buildbuddy-mcp-server"
+                  value={mcpHostPath}
+                  onChange={(e) => setMcpHostPath(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveMcpHostPath()
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleSaveMcpHostPath}
+                  disabled={!mcpHostPath.trim()}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Path to the directory containing the BuildBuddy MCP server (<code className="bg-muted px-1 rounded">index.js</code>). This directory will be mounted read-only at <code className="bg-muted px-1 rounded">/mcp/buildbuddy</code> inside containers.
+              </p>
+            </div>
           </div>
         )}
       </div>
