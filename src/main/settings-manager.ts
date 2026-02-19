@@ -7,7 +7,7 @@
 
 import * as path from 'path'
 import * as fs from 'fs/promises'
-import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
+import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken, getConfiguredBuildBuddyApiKey, setConfiguredBuildBuddyApiKey, clearConfiguredBuildBuddyApiKey } from './config'
 import type { CustomizablePromptType, AgentProvider } from '../shared/types'
 import { DEFAULT_FOLLOWUP_PRESETS } from '../shared/followup-presets'
 
@@ -74,6 +74,10 @@ export interface AppSettings {
     }
     sharedBuildCache: {
       enabled: boolean     // Enable shared Go build cache across agents (per-repo)
+    }
+    buildbuddyMcp: {
+      enabled: boolean       // Mount MCP server in Docker containers
+      hostPath: string       // Host path to MCP server directory (contains index.js)
     }
     pnpmStore: {
       enabled: boolean     // Enable pnpm store sharing to containers
@@ -239,6 +243,10 @@ export function getDefaultSettings(): AppSettings {
       sharedBuildCache: {
         enabled: true,   // Share Go build cache across agents per-repo
       },
+      buildbuddyMcp: {
+        enabled: false,
+        hostPath: '',
+      },
       pnpmStore: {
         enabled: true,   // Share pnpm store across agents by default
         path: null,      // Auto-detect via `pnpm store path`
@@ -341,6 +349,10 @@ export async function loadSettings(): Promise<AppSettings> {
         sharedBuildCache: {
           ...defaults.docker.sharedBuildCache,
           ...(loaded.docker?.sharedBuildCache || {}),
+        },
+        buildbuddyMcp: {
+          ...defaults.docker.buildbuddyMcp,
+          ...(loaded.docker?.buildbuddyMcp || {}),
         },
         pnpmStore: {
           ...defaults.docker.pnpmStore,
@@ -555,6 +567,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
       sharedBuildCache: {
         ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
         ...(updates.docker?.sharedBuildCache || {}),
+      },
+      buildbuddyMcp: {
+        ...(currentSettings.docker.buildbuddyMcp || defaults.docker.buildbuddyMcp),
+        ...(updates.docker?.buildbuddyMcp || {}),
       },
       pnpmStore: {
         ...(currentSettings.docker.pnpmStore || defaults.docker.pnpmStore),
@@ -938,6 +954,38 @@ export async function setGitHubToken(token: string | null): Promise<void> {
 export async function hasGitHubToken(): Promise<boolean> {
   const token = await getGitHubToken()
   return token !== null && token.length > 0
+}
+
+/**
+ * Get the BuildBuddy API key to use
+ * Priority:
+ * 1. Environment variable (BUILDBUDDY_API_KEY) - always takes precedence
+ * 2. Configured key in settings
+ */
+export async function getBuildBuddyApiKey(): Promise<string | null> {
+  if (process.env.BUILDBUDDY_API_KEY) {
+    return process.env.BUILDBUDDY_API_KEY
+  }
+  return getConfiguredBuildBuddyApiKey()
+}
+
+/**
+ * Set the BuildBuddy API key (null to clear)
+ */
+export async function setBuildBuddyApiKey(token: string | null): Promise<void> {
+  if (token && token.length > 0) {
+    setConfiguredBuildBuddyApiKey(token)
+  } else {
+    clearConfiguredBuildBuddyApiKey()
+  }
+}
+
+/**
+ * Check if a BuildBuddy API key is available from any source (env var or settings)
+ */
+export async function hasBuildBuddyApiKey(): Promise<boolean> {
+  const key = await getBuildBuddyApiKey()
+  return key !== null && key.length > 0
 }
 
 /**

@@ -438,6 +438,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkGitHubTokenScopes: (): Promise<{ valid: boolean; scopes: string[]; missingScopes: string[]; ssoConfigured: boolean | null; error?: string }> =>
     ipcRenderer.invoke('check-github-token-scopes'),
 
+  // BuildBuddy API key management
+  hasBuildBuddyApiKey: (): Promise<boolean> =>
+    ipcRenderer.invoke('has-buildbuddy-api-key'),
+  setBuildBuddyApiKey: (key: string): Promise<boolean> =>
+    ipcRenderer.invoke('set-buildbuddy-api-key', key),
+  clearBuildBuddyApiKey: (): Promise<boolean> =>
+    ipcRenderer.invoke('clear-buildbuddy-api-key'),
+
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (updates: Record<string, unknown>): Promise<void> =>

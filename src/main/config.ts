@@ -595,6 +595,56 @@ export function clearConfiguredGitHubToken(): void {
   }
 }
 
+// BuildBuddy API key storage
+const BUILDBUDDY_TOKEN_FILE = 'buildbuddy-token.json'
+
+interface BuildBuddyTokenData {
+  token: string
+  createdAt: string
+}
+
+function getBuildBuddyTokenPath(): string {
+  return path.join(getConfigDir(), BUILDBUDDY_TOKEN_FILE)
+}
+
+/**
+ * Get the configured BuildBuddy API key from file storage
+ */
+export function getConfiguredBuildBuddyApiKey(): string | null {
+  const tokenPath = getBuildBuddyTokenPath()
+  try {
+    const content = fs.readFileSync(tokenPath, 'utf-8')
+    const data = JSON.parse(content) as BuildBuddyTokenData
+    return data.token || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Store the BuildBuddy API key
+ */
+export function setConfiguredBuildBuddyApiKey(token: string): void {
+  const tokenPath = getBuildBuddyTokenPath()
+  const data: BuildBuddyTokenData = {
+    token,
+    createdAt: new Date().toISOString(),
+  }
+  writeConfigAtomic(tokenPath, data, 0o600)
+}
+
+/**
+ * Clear the stored BuildBuddy API key
+ */
+export function clearConfiguredBuildBuddyApiKey(): void {
+  const tokenPath = getBuildBuddyTokenPath()
+  try {
+    fs.unlinkSync(tokenPath)
+  } catch {
+    // File doesn't exist, that's fine
+  }
+}
+
 // Plan activities persistence (per-plan)
 export function loadPlanActivities(planId: string): PlanActivity[] {
   const activitiesPath = getPlanActivitiesPath(planId)

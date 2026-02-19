@@ -182,6 +182,8 @@ import {
   updateDockerPnpmStoreSettings,
   updateDockerNetworkIsolationSettings,
   updateSettings,
+  hasBuildBuddyApiKey,
+  setBuildBuddyApiKey,
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -1300,6 +1302,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('check-github-token-scopes', async () => {
     return checkGitHubTokenScopes()
+  })
+
+  // BuildBuddy API key management
+  ipcMain.handle('has-buildbuddy-api-key', async () => {
+    return hasBuildBuddyApiKey()
+  })
+
+  ipcMain.handle('set-buildbuddy-api-key', async (_event, key: string) => {
+    await setBuildBuddyApiKey(key)
+    return true
+  })
+
+  ipcMain.handle('clear-buildbuddy-api-key', async () => {
+    await setBuildBuddyApiKey(null)
+    return true
   })
 
   // Settings management

@@ -15,12 +15,14 @@ import { ChildProcess } from 'child_process'
 import { Readable, Writable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
+import * as os from 'os'
+import * as fs from 'fs/promises'
 import * as https from 'https'
 import { getProxyUrl, getProxyToken } from './tool-proxy'
 import { getClaudeOAuthToken } from './config'
 import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
-import { loadSettings, saveSettings } from './settings-manager'
+import { loadSettings, saveSettings, getBuildBuddyApiKey } from './settings-manager'
 import { devLog } from './dev-log'
 
 export interface InteractiveDockerOptions {
@@ -389,6 +391,40 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
       console.warn('[DockerSandbox] WARNING: OAuth token appears truncated (length:', oauthToken.length, '), expected ~108 chars')
     }
     args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
+  }
+
+  // Pass BuildBuddy API key to container
+  const buildBuddyKey = await getBuildBuddyApiKey()
+  if (buildBuddyKey) {
+    args.push('-e', `BUILDBUDDY_API_KEY=${buildBuddyKey}`)
+  }
+
+  // Mount BuildBuddy MCP server if configured
+  if (settings.docker.buildbuddyMcp?.enabled && settings.docker.buildbuddyMcp?.hostPath) {
+    const mcpHostPath = settings.docker.buildbuddyMcp.hostPath
+    try {
+      await fs.access(mcpHostPath)
+      args.push('-v', `${mcpHostPath}:/mcp/buildbuddy:ro`)
+      args.push('-e', 'BAZEL_BINDIR=/workspace/bazel-bin')
+
+      // Generate Claude Code MCP config and mount it
+      const claudeConfig = JSON.stringify({
+        mcpServers: {
+          buildbuddy: {
+            command: 'node',
+            args: ['/mcp/buildbuddy/index.js']
+          }
+        }
+      }, null, 2)
+      const tmpConfigPath = path.join(os.tmpdir(), `bismarck-claude-config-${Date.now()}.json`)
+      await fs.writeFile(tmpConfigPath, claudeConfig)
+      args.push('-v', `${tmpConfigPath}:/home/agent/.claude.json:ro`)
+    } catch {
+      // MCP path doesn't exist, skip mounting
+      logger.warn('docker', 'BuildBuddy MCP hostPath not found, skipping', undefined, {
+        path: mcpHostPath,
+      })
+    }
   }
 
   // Add any custom environment variables
