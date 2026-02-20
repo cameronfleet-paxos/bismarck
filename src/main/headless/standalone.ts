@@ -22,6 +22,7 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from '../config'
 import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from '../state-manager'
@@ -162,13 +163,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,
@@ -224,13 +219,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,
@@ -314,6 +303,10 @@ export async function startStandaloneHeadlessAgent(
   const sharedModCacheDir = getRepoModCacheDir(repoName)
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
+
+  // Resolve pnpm store path for sharing
+  const currentSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(currentSettings)
 
   // Store worktree info for cleanup
   const worktreeInfo: StandaloneWorktreeInfo = {
@@ -435,6 +428,7 @@ export async function startStandaloneHeadlessAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -476,6 +470,7 @@ export async function startStandaloneHeadlessAgent(
     claudeFlags: ['--model', model],
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   devLog(`[StandaloneHeadless] Starting agent with config:`, {
@@ -757,6 +752,10 @@ export async function startFollowUpAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
+  // Resolve pnpm store path for sharing
+  const followUpSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(followUpSettings)
+
   // Extract slug from branch (e.g., "bismarck-standalone/bismarck-fix-login-a3f7" -> "fix-login-a3f7")
   const branchSuffix = branch.replace('bismarck-standalone/', '').replace('standalone/', '') // handle both prefixes
   const phrase = branchSuffix.replace(`${repoName}-`, '')
@@ -894,6 +893,7 @@ export async function startFollowUpAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir: followUpPlanOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -933,6 +933,7 @@ export async function startFollowUpAgent(
     claudeFlags: model ? ['--model', model] : undefined,
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   // Store model in agent info

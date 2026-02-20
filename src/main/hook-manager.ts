@@ -1,7 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import { getConfigDir } from './config'
+import { parse, stringify } from 'smol-toml'
+import { getConfigDir, getWorkspaces } from './config'
+import { hasBinary } from './exec-utils'
 import { PERSONA_PROMPTS } from './persona-prompts'
 import { devLog } from './dev-log'
 
@@ -9,6 +11,8 @@ const HOOK_SCRIPT_NAME = 'stop-hook.sh'
 const NOTIFICATION_HOOK_SCRIPT_NAME = 'notification-hook.sh'
 const SESSION_START_HOOK_SCRIPT_NAME = 'session-start-hook.sh'
 const PERSONA_MODE_HOOK_SCRIPT_NAME = 'persona-mode-hook.sh'
+const CODEX_NOTIFY_HOOK_SCRIPT_NAME = 'codex-notify-hook.sh'
+const CODEX_SHARED_HOOK_SCRIPT_NAME = 'bismarck-notify-hook.sh'
 
 interface HookCommand {
   type: 'command'
@@ -50,6 +54,16 @@ function getSessionStartHookScriptPath(): string {
 
 function getPersonaModeHookScriptPath(): string {
   return path.join(getConfigDir(), 'hooks', PERSONA_MODE_HOOK_SCRIPT_NAME)
+}
+
+function getCodexNotifyHookScriptPath(): string {
+  return path.join(getConfigDir(), 'hooks', CODEX_NOTIFY_HOOK_SCRIPT_NAME)
+}
+
+/** Shared hook script path that lives in ~/.codex/ so dev and prod don't fight */
+function getCodexSharedHookScriptPath(): string {
+  const homeDir = app?.getPath('home') || process.env.HOME || ''
+  return path.join(homeDir, '.codex', CODEX_SHARED_HOOK_SCRIPT_NAME)
 }
 
 // Get the config directory name (e.g., '.bismarck' or '.bismarck-dev')
@@ -219,6 +233,102 @@ exit 0
   const hookPath = getPersonaModeHookScriptPath()
   fs.writeFileSync(hookPath, hookScript)
   fs.chmodSync(hookPath, '755')
+}
+
+export function createCodexNotifyHookScript(): void {
+  const hookScript = `#!/bin/bash
+# Bismarck Codex notify hook - signals when Codex agent needs input
+# Receives JSON payload as argv[1] from Codex notify callback
+# Shared script: checks both .bismarck (prod) and .bismarck-dev (dev) mapping dirs
+
+JSON="$1"
+[ -z "$JSON" ] && exit 0
+
+# Extract cwd from JSON payload using grep (no jq dependency)
+CWD=$(printf '%s' "$JSON" | grep -o '"cwd":"[^"]*"' | head -1 | cut -d'"' -f4)
+[ -z "$CWD" ] && exit 0
+
+# Try both prod and dev config dirs so both instances work concurrently
+for CONFIG_DIR in .bismarck .bismarck-dev; do
+  # Hash includes config dir name so dev/prod get distinct mapping files
+  HASH=$(printf '%s' "\$CONFIG_DIR:\$CWD" | shasum -a 256 | cut -c1-16)
+  MAPPING="$HOME/\$CONFIG_DIR/sessions/codex-\${HASH}.json"
+  [ ! -f "$MAPPING" ] && continue
+
+  WORKSPACE_ID=$(grep -o '"workspaceId":"[^"]*"' "$MAPPING" | cut -d'"' -f4)
+  INSTANCE_ID=$(grep -o '"instanceId":"[^"]*"' "$MAPPING" | cut -d'"' -f4)
+  [ -z "$WORKSPACE_ID" ] || [ -z "$INSTANCE_ID" ] && continue
+
+  SOCKET_PATH="/tmp/bm/\${INSTANCE_ID:0:8}/\${WORKSPACE_ID:0:8}.sock"
+  [ -S "$SOCKET_PATH" ] && printf '{"event":"stop","reason":"input_required","workspaceId":"%s"}\\n' "$WORKSPACE_ID" | nc -U "$SOCKET_PATH" 2>/dev/null
+done
+exit 0
+`
+
+  const hookPath = getCodexSharedHookScriptPath()
+  // Ensure ~/.codex/ directory exists
+  const hookDir = path.dirname(hookPath)
+  if (!fs.existsSync(hookDir)) {
+    fs.mkdirSync(hookDir, { recursive: true })
+  }
+  fs.writeFileSync(hookPath, hookScript)
+  fs.chmodSync(hookPath, '755')
+}
+
+export function configureCodexHook(): void {
+  // Only configure if codex binary is installed AND at least one agent uses codex
+  if (!hasBinary('codex')) {
+    return
+  }
+
+  const workspaces = getWorkspaces()
+  const hasCodexAgent = workspaces.some(w => w.provider === 'codex')
+  if (!hasCodexAgent) {
+    return
+  }
+
+  // Create the shared hook script (in ~/.codex/, checks both dev and prod)
+  createCodexNotifyHookScript()
+
+  const homeDir = app?.getPath('home') || process.env.HOME || ''
+  const configPath = path.join(homeDir, '.codex', 'config.toml')
+  const hookScriptPath = getCodexSharedHookScriptPath()
+
+  // Read existing config or start with empty
+  let config: Record<string, unknown> = {}
+  if (fs.existsSync(configPath)) {
+    try {
+      const content = fs.readFileSync(configPath, 'utf-8')
+      config = parse(content)
+    } catch (e) {
+      console.error('Failed to parse Codex config.toml:', e)
+      return
+    }
+  }
+
+  // Check if notify is already configured
+  const currentNotify = config.notify as string[] | undefined
+  if (currentNotify && Array.isArray(currentNotify)) {
+    if (currentNotify[0] === hookScriptPath) {
+      // Already configured with our shared script -- idempotent, nothing to do
+      return
+    }
+    // Check if it's an old Bismarck hook (in .bismarck or .bismarck-dev) — safe to overwrite
+    const isBismarckHook = currentNotify[0]?.includes('.bismarck')
+    if (!isBismarckHook) {
+      // User has a different notify command -- do NOT overwrite
+      devLog(`[HookManager] Codex config.toml already has notify configured: ${currentNotify[0]}. Skipping Bismarck hook installation.`)
+      return
+    }
+    devLog(`[HookManager] Migrating Codex notify hook from ${currentNotify[0]} to shared script ${hookScriptPath}`)
+  }
+
+  // Set our shared hook script as the notify command
+  config.notify = [hookScriptPath]
+
+  // Write updated config
+  fs.writeFileSync(configPath, stringify(config))
+  devLog('Configured Codex notify hook for Bismarck')
 }
 
 export function configureClaudeHook(): void {

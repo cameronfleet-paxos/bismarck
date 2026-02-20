@@ -4,15 +4,17 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import type { ThemeName } from '@/shared/types'
+import type { ThemeName, AgentProvider } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { TerminalSearch, SearchOptions, SearchResult } from './TerminalSearch'
+import { OpenAIIcon } from './OpenAIIcon'
 import { attachMacKeyHandler } from '@/renderer/utils/terminal-keys'
 
 interface TerminalProps {
   terminalId: string
   theme: ThemeName
   isBooting: boolean
+  provider?: AgentProvider
   isVisible?: boolean
   searchOpen?: boolean
   onSearchClose?: () => void
@@ -30,6 +32,7 @@ export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal
   terminalId,
   theme,
   isBooting,
+  provider,
   isVisible = true,
   searchOpen: externalSearchOpen,
   onSearchClose,
@@ -257,15 +260,19 @@ export const Terminal = forwardRef<TerminalRef, TerminalProps>(function Terminal
           style={{ backgroundColor: themes[theme].bg }}
         >
           <div className="flex flex-col items-center gap-3">
-            <pre
-              className="animate-claude-bounce font-mono text-xl leading-tight select-none"
-              style={{ color: '#D97757' }}
-            >
-              {` ▐▛███▜▌\n▝▜█████▛▘\n  ▘▘ ▝▝`}
-            </pre>
+            {provider === 'codex' ? (
+              <OpenAIIcon className="w-16 h-16 animate-openai-spin" style={{ color: '#10a37f' }} />
+            ) : (
+              <pre
+                className="animate-claude-bounce font-mono text-xl leading-tight select-none"
+                style={{ color: '#D97757' }}
+              >
+                {` ▐▛███▜▌\n▝▜█████▛▘\n  ▘▘ ▝▝`}
+              </pre>
+            )}
             <span
               className="animate-pulse text-sm"
-              style={{ color: '#D97757' }}
+              style={{ color: provider === 'codex' ? '#10a37f' : '#D97757' }}
             >
               booting...
             </span>

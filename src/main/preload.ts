@@ -31,11 +31,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Plain terminal management (non-agent shell terminals)
   createPlainTerminal: (directory: string, name?: string): Promise<{ terminalId: string; tabId: string }> =>
     ipcRenderer.invoke('create-plain-terminal', directory, name),
+  createDockerTerminal: (options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }): Promise<{ terminalId: string; tabId: string; containerName: string }> =>
+    ipcRenderer.invoke('create-docker-terminal', options),
   closePlainTerminal: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('close-plain-terminal', terminalId),
   renamePlainTerminal: (terminalId: string, name: string): Promise<void> =>
     ipcRenderer.invoke('rename-plain-terminal', terminalId, name),
-  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }): Promise<{ terminalId: string; plainId: string } | null> =>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }): Promise<{ terminalId: string; plainId: string } | null> =>
     ipcRenderer.invoke('restore-plain-terminal', pt),
 
   // State management
@@ -420,6 +428,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (updates: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('update-settings', updates),
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) =>
     ipcRenderer.invoke('update-docker-resource-limits', limits),
   addDockerImage: (image: string) =>
@@ -434,6 +444,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-tool-paths'),
   toggleProxiedTool: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) =>
+    ipcRenderer.invoke('add-proxied-tool', tool),
+  removeProxiedTool: (id: string) =>
+    ipcRenderer.invoke('remove-proxied-tool', id),
   getToolAuthStatuses: () =>
     ipcRenderer.invoke('get-tool-auth-statuses'),
   checkToolAuth: () =>
@@ -453,6 +467,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-socket-settings', settings),
   updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
+  updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) =>
+    ipcRenderer.invoke('update-docker-pnpm-store-settings', settings),
+  detectPnpmStorePath: () =>
+    ipcRenderer.invoke('detect-pnpm-store-path'),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 

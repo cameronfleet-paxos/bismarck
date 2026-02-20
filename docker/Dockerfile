@@ -67,6 +67,10 @@ RUN GOPATH=/tmp/gotools /usr/local/go/bin/go install golang.org/x/tools/cmd/goim
     && mv /tmp/gotools/bin/goimports /usr/local/bin/goimports \
     && rm -rf /tmp/gotools
 
+# Enable corepack so agents can work on projects using any pnpm/yarn version.
+# corepack will download the correct version at runtime based on the project's packageManager field.
+RUN corepack enable
+
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
@@ -90,9 +94,10 @@ COPY bb-proxy-wrapper.sh /usr/local/bin/bb
 RUN chmod +x /usr/local/bin/bb
 
 # Create non-root user (Claude refuses --dangerously-skip-permissions as root)
+# Also set up corepack cache so the agent user can download pnpm/yarn at runtime
 RUN useradd -m -s /bin/bash agent && \
-    mkdir -p /workspace /plan && \
-    chown -R agent:agent /workspace /plan
+    mkdir -p /workspace /plan /home/agent/.cache/node/corepack && \
+    chown -R agent:agent /workspace /plan /home/agent/.cache
 
 # Create workspace directory
 WORKDIR /workspace

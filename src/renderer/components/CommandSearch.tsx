@@ -21,7 +21,7 @@ interface ActiveTerminal {
 type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config' | 'cron-schedule'
 
 // Track which command triggered agent selection
-type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | 'cron-headless' | null
+type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | 'cron-headless' | 'docker-terminal' | 'docker-terminal-headless' | null
 
 interface Command {
   id: string
@@ -33,6 +33,8 @@ const commands: Command[] = [
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'open-terminal', label: 'Open: Terminal', icon: TerminalSquare },
+  { id: 'start-docker-terminal', label: 'Start: Docker Terminal', icon: Container },
+  { id: 'start-docker-terminal-headless', label: 'Open: Headless Agent in Docker', icon: Container },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
   { id: 'start-ralph-loop-discussion', label: 'Discuss: Ralph Loop', icon: MessageSquare },
   { id: 'start-plan', label: 'Start: Plan', icon: FileText },
@@ -54,8 +56,11 @@ interface CommandSearchProps {
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
   onOpenTerminal?: (agentId: string) => void
+  onStartDockerTerminal?: (agentId: string) => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
   onOpenCronAutomation?: () => void
+  focusedHeadlessAgent?: { name: string; directory: string } | null
+  onOpenDockerTerminalInWorktree?: (directory: string, name: string) => void
   prefillRalphLoopConfig?: {
     referenceAgentId: string
     prompt: string
@@ -78,8 +83,11 @@ export function CommandSearch({
   onStartRalphLoopDiscussion,
   onStartPlan,
   onOpenTerminal,
+  onStartDockerTerminal,
   onStartRalphLoop,
   onOpenCronAutomation,
+  focusedHeadlessAgent,
+  onOpenDockerTerminalInWorktree,
   prefillRalphLoopConfig,
 }: CommandSearchProps) {
   const { isActive: tutorialActive } = useTutorial()
@@ -120,9 +128,16 @@ export function CommandSearch({
     )
   }, [agents])
 
+  // Headless agents only (for Docker terminal in headless worktree)
+  const headlessAgents = useMemo(() => {
+    return agents.filter(agent => agent.isHeadless || agent.isStandaloneHeadless)
+  }, [agents])
+
   // Filter agents based on query
   const filteredAgents = useMemo(() => {
-    const baseAgents = mode === 'agent-select' ? selectableAgents : agents
+    const baseAgents = mode === 'agent-select'
+      ? (pendingCommand === 'docker-terminal-headless' ? headlessAgents : selectableAgents)
+      : agents
     if (!query.trim()) {
       return baseAgents
     }
@@ -146,18 +161,32 @@ export function CommandSearch({
       if (bStarts && !aStarts) return 1
       return 0
     })
-  }, [agents, selectableAgents, query, mode])
+  }, [agents, selectableAgents, headlessAgents, query, mode, pendingCommand])
+
+  // Build dynamic commands list (includes contextual commands based on focused agent)
+  const dynamicCommands = useMemo(() => {
+    const cmds = [...commands]
+    if (focusedHeadlessAgent) {
+      const dockerIdx = cmds.findIndex(c => c.id === 'start-docker-terminal')
+      cmds.splice(dockerIdx + 1, 0, {
+        id: 'docker-terminal-focused-agent',
+        label: `Docker: ${focusedHeadlessAgent.name}`,
+        icon: Container,
+      })
+    }
+    return cmds
+  }, [focusedHeadlessAgent])
 
   // Filter commands based on query
   const filteredCommands = useMemo(() => {
     if (!query.trim()) {
-      return commands
+      return dynamicCommands
     }
     const lowerQuery = query.toLowerCase()
-    return commands.filter(cmd =>
+    return dynamicCommands.filter(cmd =>
       cmd.label.toLowerCase().includes(lowerQuery)
     )
-  }, [query])
+  }, [query, dynamicCommands])
 
   // Get the current list length based on mode
   const currentListLength = mode === 'commands'
@@ -359,6 +388,11 @@ export function CommandSearch({
           setMode('agent-select')
           setQuery('')
           setSelectedIndex(0)
+        } else if (command.id === 'start-docker-terminal') {
+          setPendingCommand('docker-terminal')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
         } else if (command.id === 'start-headless') {
           setPendingCommand('headless')
           setMode('agent-select')
@@ -390,6 +424,16 @@ export function CommandSearch({
         } else if (command.id === 'cron-automation') {
           onOpenCronAutomation?.()
           onOpenChange(false)
+        } else if (command.id === 'docker-terminal-focused-agent') {
+          if (focusedHeadlessAgent) {
+            onOpenDockerTerminalInWorktree?.(focusedHeadlessAgent.directory, focusedHeadlessAgent.name)
+            onOpenChange(false)
+          }
+        } else if (command.id === 'start-docker-terminal-headless') {
+          setPendingCommand('docker-terminal-headless')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
         }
       } else {
         // Selected an agent directly
@@ -406,6 +450,16 @@ export function CommandSearch({
         if (pendingCommand === 'open-terminal') {
           // Immediately open terminal for the selected agent's directory
           onOpenTerminal?.(agent.id)
+          onOpenChange(false)
+          return
+        }
+        if (pendingCommand === 'docker-terminal') {
+          onStartDockerTerminal?.(agent.id)
+          onOpenChange(false)
+          return
+        }
+        if (pendingCommand === 'docker-terminal-headless') {
+          onOpenDockerTerminalInWorktree?.(agent.directory, agent.name)
           onOpenChange(false)
           return
         }
@@ -539,6 +593,8 @@ export function CommandSearch({
     switch (mode) {
       case 'agent-select':
         if (pendingCommand === 'open-terminal') return 'Open: Terminal'
+        if (pendingCommand === 'docker-terminal') return 'Start: Docker Terminal'
+        if (pendingCommand === 'docker-terminal-headless') return 'Open: Headless Agent in Docker'
         if (pendingCommand === 'ralph-loop') return 'Start: Ralph Loop'
         if (pendingCommand === 'ralph-loop-discussion') return 'Discuss: Ralph Loop'
         if (pendingCommand === 'headless-discussion') return 'Discuss: Headless Agent'
