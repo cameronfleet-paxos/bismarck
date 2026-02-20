@@ -155,6 +155,8 @@ export interface KeyboardShortcuts {
   closeTab?: KeyboardShortcut            // Default: Cmd/Ctrl+W
   toggleMaximizeAgent?: KeyboardShortcut // Default: Cmd/Ctrl+Shift+M
   closeAgent?: KeyboardShortcut          // Default: Cmd/Ctrl+Shift+W
+  startHeadlessSonnet?: KeyboardShortcut // Default: Cmd/Ctrl+J
+  startHeadlessOpus?: KeyboardShortcut   // Default: Cmd/Ctrl+Shift+J
 }
 
 // App preferences (stored in ~/.bismarck/state.json)
