@@ -559,23 +559,19 @@ export function AuthenticationSettings() {
           <div className="space-y-0.5">
             <Label className="text-base font-medium">BuildBuddy API Key</Label>
             <p className="text-sm text-muted-foreground">
-              Used for <code className="bg-muted px-1 rounded text-xs">bb</code> CLI and BuildBuddy MCP server authentication
+              Used for <code className="bg-muted px-1 rounded text-xs">bb</code> CLI authentication in headless agents
             </p>
           </div>
           <div className="flex items-center gap-2">
             {hasBuildBuddyKey ? (
               <>
                 <Check className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 dark:text-green-400 font-medium">
-                  Configured
-                </span>
+                <span className="text-sm text-green-600 dark:text-green-400 font-medium">Configured</span>
               </>
             ) : (
               <>
                 <X className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  Not configured
-                </span>
+                <span className="text-sm text-muted-foreground">Not configured</span>
               </>
             )}
           </div>
@@ -583,10 +579,10 @@ export function AuthenticationSettings() {
 
         {/* Manual entry */}
         <div className="space-y-2">
-          <Label htmlFor="buildbuddy-key">API Key</Label>
+          <Label htmlFor="buildbuddy-api-key">API Key</Label>
           <div className="flex gap-2">
             <Input
-              id="buildbuddy-key"
+              id="buildbuddy-api-key"
               type="password"
               placeholder={hasBuildBuddyKey ? '••••••••' : 'Enter BuildBuddy API key'}
               value={newBuildBuddyKey}
@@ -620,7 +616,10 @@ export function AuthenticationSettings() {
           <div className="flex gap-2">
             <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-blue-600 dark:text-blue-400">
-              <strong>What is this?</strong> The BuildBuddy API key is used to authenticate the <code className="bg-muted px-1 rounded">bb</code> CLI tool and the BuildBuddy MCP server in Docker containers. It is passed via the <code className="bg-muted px-1 rounded">BUILDBUDDY_API_KEY</code> environment variable. If the key is set in your shell environment, it will take precedence over the stored value.
+              <strong>What is this?</strong> The BuildBuddy API key authenticates <code className="bg-muted px-1 rounded">bb</code> CLI commands
+              (remote builds, test execution) in headless agents and Docker containers. The key is passed via
+              the <code className="bg-muted px-1 rounded">BUILDBUDDY_API_KEY</code> environment variable. If set in your shell environment,
+              it will be used automatically.
             </p>
           </div>
         </div>
