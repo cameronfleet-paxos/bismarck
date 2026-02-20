@@ -279,6 +279,9 @@ function App() {
   // Track file change counts per workspace for diff badge
   const [fileChangeCounts, setFileChangeCounts] = useState<Map<string, number>>(new Map())
 
+  // Track file change counts for headless agents (keyed by agent id)
+  const [headlessFileChangeCounts, setHeadlessFileChangeCounts] = useState<Map<string, number>>(new Map())
+
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
 
@@ -403,6 +406,81 @@ function App() {
     const interval = setInterval(pollChangeCounts, 5000)
     return () => clearInterval(interval)
   }, [activeTabId, activeTerminals, agents, gitRepoStatus, tabs, preferences.showDiffView])
+
+  // Poll file change counts for headless agents (using ref-based diffing)
+  useEffect(() => {
+    const pollHeadlessChangeCounts = async () => {
+      if (preferences.showDiffView === false) return
+      const activeTab = tabs.find(t => t.id === activeTabId)
+      if (!activeTab) return
+
+      // Collect headless agents with worktree paths in the active tab
+      const headlessToCheck: Array<{ id: string; worktreePath: string; defaultBranch: string }> = []
+
+      for (const workspaceId of activeTab.workspaceIds) {
+        const agent = agents.find(a => a.id === workspaceId)
+        if (agent?.isStandaloneHeadless && agent.taskId) {
+          const info = headlessAgents.get(agent.taskId)
+          if (info?.worktreePath) {
+            headlessToCheck.push({
+              id: info.id,
+              worktreePath: info.worktreePath,
+              defaultBranch: info.defaultBranch || 'main',
+            })
+          }
+        }
+        // Also check plan headless agents
+        if (agent?.isHeadless && !agent.isStandaloneHeadless && agent.taskId) {
+          const info = headlessAgents.get(agent.taskId)
+          if (info?.worktreePath) {
+            headlessToCheck.push({
+              id: info.id,
+              worktreePath: info.worktreePath,
+              defaultBranch: info.defaultBranch || 'main',
+            })
+          }
+        }
+      }
+
+      // Also check plan headless agents shown via getHeadlessAgentsForTab
+      const tabPlan = plans.find(p => p.orchestratorTabId === activeTab.id)
+      if (tabPlan) {
+        const planAgents = Array.from(headlessAgents.values()).filter(info => info.planId === tabPlan.id)
+        for (const info of planAgents) {
+          if (info.worktreePath && !headlessToCheck.some(h => h.id === info.id)) {
+            headlessToCheck.push({
+              id: info.id,
+              worktreePath: info.worktreePath,
+              defaultBranch: info.defaultBranch || 'main',
+            })
+          }
+        }
+      }
+
+      if (headlessToCheck.length === 0) return
+
+      const results = await Promise.allSettled(
+        headlessToCheck.map(async ({ id, worktreePath, defaultBranch }) => {
+          const result = await window.electronAPI.getChangedFilesFromRef(worktreePath, `origin/${defaultBranch}`)
+          return [id, result.files.length] as const
+        })
+      )
+
+      setHeadlessFileChangeCounts(prev => {
+        const next = new Map(prev)
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            next.set(r.value[0], r.value[1])
+          }
+        }
+        return next
+      })
+    }
+
+    pollHeadlessChangeCounts()
+    const interval = setInterval(pollHeadlessChangeCounts, 5000)
+    return () => clearInterval(interval)
+  }, [activeTabId, agents, headlessAgents, tabs, plans, preferences.showDiffView])
 
   // Clear expandPlanId after it's been consumed by the sidebar
   useEffect(() => {
@@ -3446,26 +3524,6 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
-                              {preferences.showDiffView !== false && info.worktreePath && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (diffOpenForWorkspace === info.id) {
-                                      closeDiffAndRestore(tab.id)
-                                    } else {
-                                      setExpandedBeforeDiff(isExpanded)
-                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
-                                      setDiffOpenForWorkspace(info.id)
-                                    }
-                                  }}
-                                  title="View Changes (Cmd+D)"
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <GitCompareArrows className="h-3 w-3" />
-                                </Button>
-                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3483,6 +3541,39 @@ function App() {
                               }`}>{info.status}</span>
                               {preferences.showAgentTimer !== false && (
                                 <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
+                              {preferences.showDiffView !== false && info.worktreePath && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === info.id) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                        setDiffOpenForWorkspace(info.id)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {headlessFileChangeCounts.has(info.id) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      headlessFileChangeCounts.get(info.id) === 0
+                                        ? 'bg-green-500'
+                                        : headlessFileChangeCounts.get(info.id)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {headlessFileChangeCounts.get(info.id)! > 99 ? '99+' : headlessFileChangeCounts.get(info.id)}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
@@ -3519,6 +3610,9 @@ function App() {
                             {preferences.showDiffView !== false && diffOpenForWorkspace === info.id && info.worktreePath && (
                               <DiffOverlay
                                 directory={info.worktreePath}
+                                baseRef={`origin/${info.defaultBranch || 'main'}`}
+                                readOnly={true}
+                                autoRefreshMs={5000}
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
@@ -3600,26 +3694,6 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
-                              {preferences.showDiffView !== false && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (diffOpenForWorkspace === agent.id) {
-                                      closeDiffAndRestore(tab.id)
-                                    } else {
-                                      setExpandedBeforeDiff(isExpanded)
-                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
-                                      setDiffOpenForWorkspace(agent.id)
-                                    }
-                                  }}
-                                  title="View Changes (Cmd+D)"
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <GitCompareArrows className="h-3 w-3" />
-                                </Button>
-                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3637,6 +3711,39 @@ function App() {
                               }`}>{info.status}</span>
                               {preferences.showAgentTimer !== false && (
                                 <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
+                              {preferences.showDiffView !== false && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === agent.id) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                        setDiffOpenForWorkspace(agent.id)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {headlessFileChangeCounts.has(info.id) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      headlessFileChangeCounts.get(info.id) === 0
+                                        ? 'bg-green-500'
+                                        : headlessFileChangeCounts.get(info.id)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {headlessFileChangeCounts.get(info.id)! > 99 ? '99+' : headlessFileChangeCounts.get(info.id)}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
@@ -3680,6 +3787,9 @@ function App() {
                             {preferences.showDiffView !== false && diffOpenForWorkspace === agent.id && (
                               <DiffOverlay
                                 directory={agent.directory}
+                                baseRef={`origin/${info.defaultBranch || 'main'}`}
+                                readOnly={true}
+                                autoRefreshMs={5000}
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
@@ -3779,26 +3889,6 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
-                              {preferences.showDiffView !== false && loopState.worktreeInfo?.path && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (diffOpenForWorkspace === uniqueId) {
-                                      closeDiffAndRestore(tab.id)
-                                    } else {
-                                      setExpandedBeforeDiff(isExpanded)
-                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: uniqueId }))
-                                      setDiffOpenForWorkspace(uniqueId)
-                                    }
-                                  }}
-                                  title="View Changes (Cmd+D)"
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <GitCompareArrows className="h-3 w-3" />
-                                </Button>
-                              )}
                               {loopState.config.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   loopState.config.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -3829,6 +3919,26 @@ function App() {
                                 <ElapsedTime startedAt={iteration.startedAt} completedAt={iteration.completedAt} />
                               )}
                               <span className="text-xs text-muted-foreground">iter {iteration.iterationNumber}/{loopState.config.maxIterations}</span>
+                              {preferences.showDiffView !== false && loopState.worktreeInfo?.path && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (diffOpenForWorkspace === uniqueId) {
+                                      closeDiffAndRestore(tab.id)
+                                    } else {
+                                      setExpandedBeforeDiff(isExpanded)
+                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: uniqueId }))
+                                      setDiffOpenForWorkspace(uniqueId)
+                                    }
+                                  }}
+                                  title="View Changes (Cmd+D)"
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <GitCompareArrows className="h-3 w-3" />
+                                </Button>
+                              )}
                               {loopState.config.prompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo({ id: uniqueId, planId: loopState.id, status: iteration.status === 'pending' ? 'starting' : iteration.status, events: iteration.events, originalPrompt: loopState.config.prompt, worktreePath: loopState.worktreeInfo.path, startedAt: iteration.startedAt })} className="h-6 w-6 p-0" title="View prompt">
                                   <Eye className="h-3 w-3" />
@@ -3853,6 +3963,9 @@ function App() {
                             {preferences.showDiffView !== false && diffOpenForWorkspace === uniqueId && loopState.worktreeInfo?.path && (
                               <DiffOverlay
                                 directory={loopState.worktreeInfo.path}
+                                baseRef={`origin/${loopState.gitSummary?.branch ? 'main' : 'main'}`}
+                                readOnly={true}
+                                autoRefreshMs={5000}
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}
@@ -4147,26 +4260,6 @@ function App() {
                                 <Container className="h-3 w-3" />
                                 <span>Docker</span>
                               </button>
-                              {preferences.showDiffView !== false && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (diffOpenForWorkspace === agent.id) {
-                                      closeDiffAndRestore(tab.id)
-                                    } else {
-                                      setExpandedBeforeDiff(isExpanded)
-                                      setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
-                                      setDiffOpenForWorkspace(agent.id)
-                                    }
-                                  }}
-                                  title="View Changes (Cmd+D)"
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <GitCompareArrows className="h-3 w-3" />
-                                </Button>
-                              )}
                               {info.model && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   info.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
@@ -4184,6 +4277,39 @@ function App() {
                               }`}>{info.status}</span>
                               {preferences.showAgentTimer !== false && (
                                 <ElapsedTime startedAt={info.startedAt} completedAt={info.completedAt} />
+                              )}
+                              {preferences.showDiffView !== false && (
+                                <div className="relative">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (diffOpenForWorkspace === agent.id) {
+                                        closeDiffAndRestore(tab.id)
+                                      } else {
+                                        setExpandedBeforeDiff(isExpanded)
+                                        setMaximizedAgentIdByTab(prev => ({ ...prev, [tab.id]: info.id }))
+                                        setDiffOpenForWorkspace(agent.id)
+                                      }
+                                    }}
+                                    title="View Changes (Cmd+D)"
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <GitCompareArrows className="h-3 w-3" />
+                                  </Button>
+                                  {headlessFileChangeCounts.has(info.id) && (
+                                    <span className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center text-white px-0.5 pointer-events-none ${
+                                      headlessFileChangeCounts.get(info.id) === 0
+                                        ? 'bg-green-500'
+                                        : headlessFileChangeCounts.get(info.id)! >= 10
+                                          ? 'bg-red-500'
+                                          : 'bg-orange-500'
+                                    }`}>
+                                      {headlessFileChangeCounts.get(info.id)! > 99 ? '99+' : headlessFileChangeCounts.get(info.id)}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {info.originalPrompt && (
                                 <Button size="sm" variant="ghost" onClick={() => setPromptViewerInfo(info)} className="h-6 w-6 p-0" title="View prompt">
@@ -4228,10 +4354,13 @@ function App() {
                               isStartingFollowUp={startingFollowUpIds.has(info.taskId!)}
                               isRestarting={restartingIds.has(info.taskId!)}
                             />
-                            {/* Diff overlay for headless agent (absolute position over terminal) */}
+                            {/* Diff overlay for standalone headless agent */}
                             {preferences.showDiffView !== false && diffOpenForWorkspace === agent.id && (
                               <DiffOverlay
                                 directory={agent.directory}
+                                baseRef={`origin/${info.defaultBranch || 'main'}`}
+                                readOnly={true}
+                                autoRefreshMs={5000}
                                 onClose={() => closeDiffAndRestore(tab.id)}
                               />
                             )}

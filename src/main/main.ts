@@ -231,7 +231,7 @@ import {
   getMockFlowOptions,
   type MockFlowOptions,
 } from './dev-test-harness'
-import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles } from './git-diff'
+import { getChangedFiles, getFileDiff, revertFile, writeFileContent, revertAllFiles, getChangedFilesFromRef, getFileDiffFromRef, getChangedFilesForCommit, getFileDiffForCommit } from './git-diff'
 import {
   setAuthCheckerWindow,
   startToolAuthChecks,
@@ -239,7 +239,7 @@ import {
   getToolAuthStatuses,
   checkAllToolAuth,
 } from './tool-auth-checker'
-import { isGitRepo } from './git-utils'
+import { isGitRepo, getCommitsBetween } from './git-utils'
 import type { Workspace, AppPreferences, Repository, DiscoveredRepo, RalphLoopConfig, CustomizablePromptType, TeamMode } from '../shared/types'
 import type { AppSettings } from './settings-manager'
 import {
@@ -1097,6 +1097,27 @@ function registerIpcHandlers() {
 
   ipcMain.handle('revert-all-files', async (_event, directory: string) => {
     return revertAllFiles(directory)
+  })
+
+  // Ref-based git diff operations (for headless agents)
+  ipcMain.handle('get-changed-files-from-ref', async (_event, directory: string, baseRef: string) => {
+    return getChangedFilesFromRef(directory, baseRef)
+  })
+
+  ipcMain.handle('get-file-diff-from-ref', async (_event, directory: string, filepath: string, baseRef: string, force?: boolean) => {
+    return getFileDiffFromRef(directory, filepath, baseRef, force)
+  })
+
+  ipcMain.handle('get-commits-between', async (_event, repoPath: string, baseRef: string, headRef: string) => {
+    return getCommitsBetween(repoPath, baseRef, headRef)
+  })
+
+  ipcMain.handle('get-changed-files-for-commit', async (_event, directory: string, commitSha: string) => {
+    return getChangedFilesForCommit(directory, commitSha)
+  })
+
+  ipcMain.handle('get-file-diff-for-commit', async (_event, directory: string, filepath: string, commitSha: string, force?: boolean) => {
+    return getFileDiffForCommit(directory, filepath, commitSha, force)
   })
 
   // Setup wizard

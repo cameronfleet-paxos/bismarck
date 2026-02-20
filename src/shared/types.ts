@@ -525,6 +525,7 @@ export interface HeadlessAgentInfo {
   planText?: string  // Plan generated during planning phase (for Eye modal display)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
   agentType?: 'task' | 'critic' | 'merge' | 'manager' | 'architect'  // Type of headless agent (default: task)
+  defaultBranch?: string  // Base branch this agent was forked from (for ref-based diffing)
 }
 
 // Extended Agent type to support both execution modes
@@ -757,7 +758,7 @@ export interface RalphLoopState {
 // Individual file in a diff result
 export interface DiffFile {
   path: string
-  status: 'modified' | 'added' | 'deleted' | 'renamed'
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
   additions: number
   deletions: number
   isBinary: boolean

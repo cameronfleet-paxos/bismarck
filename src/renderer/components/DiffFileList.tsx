@@ -46,6 +46,7 @@ const statusConfig = {
   added: { icon: Plus, color: 'text-green-500', letter: 'A', letterColor: 'text-green-500' },
   deleted: { icon: Trash2, color: 'text-red-500', letter: 'D', letterColor: 'text-red-500' },
   renamed: { icon: ArrowRightLeft, color: 'text-blue-500', letter: 'R', letterColor: 'text-blue-500' },
+  untracked: { icon: Plus, color: 'text-gray-400', letter: 'U', letterColor: 'text-gray-400' },
 }
 
 // Group files by status
@@ -55,6 +56,7 @@ function groupFilesByStatus(files: DiffFile[]) {
     added: files.filter((f) => f.status === 'added'),
     deleted: files.filter((f) => f.status === 'deleted'),
     renamed: files.filter((f) => f.status === 'renamed'),
+    untracked: files.filter((f) => f.status === 'untracked'),
   }
 }
 
@@ -499,6 +501,13 @@ export function DiffFileList({
             <FileGroup
               title="Deleted"
               files={grouped.deleted}
+              selectedFile={selectedFile}
+              onSelectFile={onSelectFile}
+              onRevertFile={onRevertFile}
+            />
+            <FileGroup
+              title="Untracked"
+              files={grouped.untracked}
               selectedFile={selectedFile}
               onSelectFile={onSelectFile}
               onRevertFile={onRevertFile}

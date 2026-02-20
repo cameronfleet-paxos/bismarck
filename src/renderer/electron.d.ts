@@ -168,6 +168,13 @@ export interface ElectronAPI {
   writeFileContent: (directory: string, filepath: string, content: string) => Promise<void>
   revertAllFiles: (directory: string) => Promise<void>
 
+  // Ref-based git diff operations (for headless agents)
+  getChangedFilesFromRef: (directory: string, baseRef: string) => Promise<DiffResult>
+  getFileDiffFromRef: (directory: string, filepath: string, baseRef: string, force?: boolean) => Promise<FileDiffContent>
+  getCommitsBetween: (repoPath: string, baseRef: string, headRef: string) => Promise<Array<{ sha: string; shortSha: string; message: string; timestamp: string }>>
+  getChangedFilesForCommit: (directory: string, commitSha: string) => Promise<DiffResult>
+  getFileDiffForCommit: (directory: string, filepath: string, commitSha: string, force?: boolean) => Promise<FileDiffContent>
+
   // Setup wizard
   setupWizardShowFolderPicker: () => Promise<string | null>
   setupWizardGetCommonRepoPaths: () => Promise<string[]>
