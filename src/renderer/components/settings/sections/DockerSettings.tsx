@@ -34,7 +34,7 @@ interface AppSettings {
 
 type ImageStatusState =
   | { status: 'checking' }
-  | { status: 'exists'; imageId?: string; created?: string; size?: number; version?: string; digest?: string; verified?: boolean }
+  | { status: 'exists'; imageId?: string; created?: string; size?: number }
   | { status: 'not-found' }
   | { status: 'pulling'; progress?: string }
   | { status: 'pull-success'; alreadyUpToDate: boolean }
@@ -79,7 +79,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [networkIsolationEnabled, setNetworkIsolationEnabled] = useState(settings.docker.networkIsolation?.enabled ?? false)
   const [allowedHosts, setAllowedHosts] = useState<string[]>(settings.docker.networkIsolation?.allowedHosts ?? [])
   const [newHost, setNewHost] = useState('')
-  const [mcpHostPath, setMcpHostPath] = useState(settings.docker.buildbuddyMcp?.hostPath ?? '')
+  const [mcpHostPath, setMcpHostPath] = useState(settings.docker.buildbuddyMcp?.hostPath || '')
 
   const checkImageStatuses = useCallback(async () => {
     const images = settings.docker.images
@@ -99,11 +99,10 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
           if (!result.dockerAvailable) {
             return { image, state: { status: 'not-found' as const } }
           }
-          const version = result.labels?.['org.opencontainers.image.version']
           return {
             image,
             state: result.exists
-              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size, version, digest: result.digest, verified: result.verified }
+              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size }
               : { status: 'not-found' as const },
           }
         } catch {
@@ -175,11 +174,10 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         setTimeout(async () => {
           try {
             const info = await window.electronAPI.checkDockerImageStatus(imageName)
-            const ver = info.labels?.['org.opencontainers.image.version']
             setImageStatuses((prev) => ({
               ...prev,
               [imageName]: info.exists
-                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size, version: ver, digest: info.digest, verified: info.verified }
+                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size }
                 : { status: 'not-found' },
             }))
           } catch {
@@ -323,11 +321,14 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
 
   const handleBuildBuddyMcpToggle = async (enabled: boolean) => {
     try {
-      await window.electronAPI.updateSettings({
+      const currentSettings = await window.electronAPI.getSettings()
+      await window.electronAPI.setRawSettings({
+        ...currentSettings,
         docker: {
+          ...currentSettings.docker,
           buildbuddyMcp: {
+            ...(currentSettings.docker as AppSettings['docker']).buildbuddyMcp,
             enabled,
-            hostPath: settings.docker.buildbuddyMcp?.hostPath ?? '',
           },
         },
       })
@@ -341,11 +342,14 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
 
   const handleSaveMcpHostPath = async () => {
     try {
-      await window.electronAPI.updateSettings({
+      const currentSettings = await window.electronAPI.getSettings()
+      await window.electronAPI.setRawSettings({
+        ...currentSettings,
         docker: {
+          ...currentSettings.docker,
           buildbuddyMcp: {
-            enabled: settings.docker.buildbuddyMcp?.enabled ?? false,
-            hostPath: mcpHostPath.trim(),
+            ...(currentSettings.docker as AppSettings['docker']).buildbuddyMcp,
+            hostPath: mcpHostPath,
           },
         },
       })
@@ -369,32 +373,11 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             <span>Checking...</span>
           </div>
         )
-      case 'exists': {
+      case 'exists':
         return (
-          <div className="flex items-center gap-1.5 text-xs flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
             <span className="text-green-600 dark:text-green-400">Installed</span>
-            {imageStatus.version && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground">v{imageStatus.version}</span>
-              </>
-            )}
-            {imageStatus.verified === true && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400" title="Image digest verified against Docker Hub registry">
-                  <ShieldCheck className="h-3 w-3" />
-                  Verified
-                </span>
-              </>
-            )}
-            {imageStatus.digest && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground font-mono">{imageStatus.digest.substring(7, 19)}</span>
-              </>
-            )}
             {imageStatus.size != null && (
               <>
                 <span className="text-muted-foreground">·</span>
@@ -409,7 +392,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             )}
           </div>
         )
-      }
       case 'not-found':
         return (
           <div className="flex items-center gap-1.5 text-xs">
@@ -478,26 +460,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         <p className="text-sm text-muted-foreground mb-4">
           Docker images used for headless task agents. Select which image to use.
         </p>
-
-        {baseImageUpdate && (
-          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md flex items-start gap-3">
-            <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                Base image updated{baseImageUpdate.newVersion ? ` to v${baseImageUpdate.newVersion}` : ''}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                The official Bismarck agent image has been updated. You may want to rebuild your custom image.
-              </p>
-            </div>
-            <button
-              onClick={() => setBaseImageUpdate(null)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
 
         <div className="space-y-3">
           {settings.docker.images.map((image) => {
@@ -779,14 +741,14 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       <div className="bg-card border rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-2">BuildBuddy MCP Server</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Mount the BuildBuddy MCP server into Docker containers for headless agents
+          Mount the BuildBuddy MCP server into Docker containers for Claude Code agents
         </p>
 
         <div className="flex items-center justify-between mb-4">
           <div>
             <Label htmlFor="buildbuddy-mcp-enabled">Enable BuildBuddy MCP in Containers</Label>
             <p className="text-xs text-muted-foreground">
-              Mounts the MCP server directory and generates Claude Code config inside containers
+              Mounts the MCP server directory into containers at <code className="bg-muted px-1 rounded">/mcp/buildbuddy</code>
             </p>
           </div>
           <Switch
@@ -799,7 +761,7 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         {settings.docker.buildbuddyMcp?.enabled && (
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="mcp-host-path">MCP Server Host Path</Label>
+              <Label htmlFor="mcp-host-path">MCP Server Directory (Host Path)</Label>
               <div className="flex gap-2">
                 <Input
                   id="mcp-host-path"
@@ -821,7 +783,15 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Path to the directory containing the BuildBuddy MCP server (<code className="bg-muted px-1 rounded">index.js</code>). This directory will be mounted read-only at <code className="bg-muted px-1 rounded">/mcp/buildbuddy</code> inside containers.
+                Path to the directory containing the MCP server's <code className="bg-muted px-1 rounded">index.js</code> on your host machine
+              </p>
+            </div>
+
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                <strong>How it works:</strong> The MCP server directory is mounted read-only into containers.
+                A <code className="bg-muted px-1 rounded">.claude.json</code> config is generated and mounted to configure
+                Claude Code to use the BuildBuddy MCP server for build and test operations.
               </p>
             </div>
           </div>
