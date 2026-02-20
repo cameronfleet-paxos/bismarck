@@ -68,6 +68,7 @@ interface CommandSearchProps {
     maxIterations: number
     model: 'opus' | 'sonnet'
   } | null
+  prefillHeadlessMode?: 'opus' | 'sonnet' | null
 }
 
 export function CommandSearch({
@@ -89,6 +90,7 @@ export function CommandSearch({
   focusedHeadlessAgent,
   onOpenDockerTerminalInWorktree,
   prefillRalphLoopConfig,
+  prefillHeadlessMode,
 }: CommandSearchProps) {
   const { isActive: tutorialActive } = useTutorial()
   const [query, setQuery] = useState('')
@@ -98,6 +100,7 @@ export function CommandSearch({
   const [prompt, setPrompt] = useState('')
   const [planPhase, setPlanPhase] = useState(true)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null)
+  const [headlessModelOverride, setHeadlessModelOverride] = useState<'opus' | 'sonnet' | null>(null)
 
   // Cron schedule state
   const [cronSchedule, setCronSchedule] = useState('0 9 * * *')
@@ -220,8 +223,30 @@ export function CommandSearch({
       setSavePresetLabel('')
       setSavePresetDescription('')
 
+      // Check if we're opening in headless agent mode (via Cmd+J / Cmd+Shift+J)
+      if (prefillHeadlessMode) {
+        setHeadlessModelOverride(prefillHeadlessMode)
+        setPendingCommand('headless')
+        setPlanPhase(true)
+        setPrompt('')
+        // If there's only one selectable agent, skip to prompt-input
+        const available = agents.filter(agent =>
+          !agent.isOrchestrator &&
+          !agent.isPlanAgent &&
+          !agent.parentPlanId &&
+          !agent.isHeadless &&
+          !agent.isStandaloneHeadless
+        )
+        if (available.length === 1) {
+          setSelectedAgent(available[0])
+          setMode('prompt-input')
+          setTimeout(() => textareaRef.current?.focus(), 0)
+        } else {
+          setMode('agent-select')
+          setTimeout(() => inputRef.current?.focus(), 0)
+        }
       // Check if we have prefill config from Ralph Loop discussion
-      if (prefillRalphLoopConfig) {
+      } else if (prefillRalphLoopConfig) {
         // Find the reference agent and jump directly to ralph-loop-config mode
         const agent = agents.find(a => a.id === prefillRalphLoopConfig.referenceAgentId)
         if (agent) {
@@ -255,6 +280,7 @@ export function CommandSearch({
         setPrompt('')
         setPlanPhase(true)
         setPendingCommand(null)
+        setHeadlessModelOverride(null)
         setCompletionPhrase('<promise>COMPLETE</promise>')
         setMaxIterations(50)
         setRalphModel('sonnet')
@@ -265,7 +291,7 @@ export function CommandSearch({
       // Reload custom presets
       window.electronAPI.getRalphLoopPresets().then(setCustomPresets).catch(console.error)
     }
-  }, [open, prefillRalphLoopConfig, agents])
+  }, [open, prefillRalphLoopConfig, prefillHeadlessMode, agents])
 
   // Reset selection when query changes
   useEffect(() => {
@@ -322,8 +348,8 @@ export function CommandSearch({
     if (mode === 'prompt-input') {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        // Cmd+Shift+Enter -> Opus, Cmd+Enter -> Sonnet
-        const model = e.shiftKey ? 'opus' : 'sonnet'
+        // Cmd+Shift+Enter -> Opus, Cmd+Enter -> Sonnet (or override from hotkey)
+        const model = e.shiftKey ? 'opus' : (headlessModelOverride || 'sonnet')
         handleSubmitPrompt(model)
       }
       return
@@ -638,7 +664,7 @@ export function CommandSearch({
 
         {/* Prompt input mode */}
         {mode === 'prompt-input' ? (
-          <div className="p-4">
+          <div className="p-4" onKeyDown={handleKeyDown}>
             <textarea
               ref={textareaRef}
               value={prompt}
@@ -1143,7 +1169,7 @@ export function CommandSearch({
             <>
               <span className="flex items-center gap-1">
                 <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵</kbd>
-                Sonnet
+                {headlessModelOverride === 'opus' ? 'Opus' : 'Sonnet'}
               </span>
               <span className="flex items-center gap-1">
                 <kbd className="bg-muted px-1 py-0.5 rounded">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+⇧+↵</kbd>
