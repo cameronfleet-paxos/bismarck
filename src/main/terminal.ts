@@ -5,10 +5,14 @@ import * as path from 'path'
 import * as crypto from 'crypto'
 import { EventEmitter } from 'events'
 import { BrowserWindow } from 'electron'
-import { getWorkspaceById, saveWorkspace } from './config'
+import { getWorkspaceById, saveWorkspace, getConfigDir } from './config'
 import { getInstanceId } from './socket-server'
 import { startTimer, endTimer, milestone } from './startup-benchmark'
 import { devLog } from './dev-log'
+import { buildInteractiveDockerArgs, type InteractiveDockerOptions } from './docker-sandbox'
+import { getAgentProvider } from '../shared/types'
+import type { AgentProvider } from '../shared/types'
+import { findBinary } from './exec-utils'
 
 /**
  * Strip ANSI escape codes from terminal output
@@ -58,6 +62,130 @@ function claudeSessionExists(sessionId: string): boolean {
   return false
 }
 
+/**
+ * Recursively find all .jsonl files under a directory.
+ * Used for scanning Codex session storage.
+ */
+function findJsonlFilesRecursive(dir: string): string[] {
+  const results: string[] = []
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        results.push(...findJsonlFilesRecursive(fullPath))
+      } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        results.push(fullPath)
+      }
+    }
+  } catch {
+    // Directory may not exist or be inaccessible
+  }
+  return results
+}
+
+/**
+ * Check if a Codex session exists by its UUID.
+ * Codex stores sessions in ~/.codex/sessions/ as JSONL files.
+ * The first line is SessionMeta JSON containing the session UUID in the `id` field.
+ */
+function codexSessionExists(sessionId: string): boolean {
+  const sessionsDir = path.join(os.homedir(), '.codex', 'sessions')
+  if (!fs.existsSync(sessionsDir)) return false
+
+  const jsonlFiles = findJsonlFilesRecursive(sessionsDir)
+  for (const file of jsonlFiles) {
+    try {
+      const firstLine = fs.readFileSync(file, 'utf-8').split('\n')[0]
+      const meta = JSON.parse(firstLine)
+      // Handle both bare SessionMeta and RolloutLine envelope format
+      const id = meta.id || meta.payload?.id
+      if (id === sessionId) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+/**
+ * Find the most recent Codex session for a given working directory.
+ * Scans ~/.codex/sessions/ recursively, reads SessionMeta from first line of each JSONL file,
+ * and matches by cwd field. Returns the session UUID or null if not found.
+ */
+function findCodexSessionForDirectory(directory: string): string | null {
+  const sessionsDir = path.join(os.homedir(), '.codex', 'sessions')
+  if (!fs.existsSync(sessionsDir)) return null
+
+  // Find all session files, sorted newest first
+  const jsonlFiles = findJsonlFilesRecursive(sessionsDir)
+    .map(file => ({ file, mtime: fs.statSync(file).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map(entry => entry.file)
+
+  for (const file of jsonlFiles) {
+    try {
+      const firstLine = fs.readFileSync(file, 'utf-8').split('\n')[0]
+      const meta = JSON.parse(firstLine)
+      // Handle both bare SessionMeta and RolloutLine envelope format
+      const cwd = meta.cwd || meta.payload?.cwd
+      if (cwd === directory) {
+        return meta.id || meta.payload?.id || null
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Build the Claude CLI command string.
+ * Extracted from existing inline code — flag ordering preserved (flags before --resume/--session-id).
+ */
+function buildClaudeCommand(options: {
+  sessionId?: string
+  resume: boolean
+  claudeFlags?: string
+  initialPrompt?: string
+}): string {
+  let cmd = 'claude'
+  if (options.claudeFlags) cmd += ` ${options.claudeFlags}`
+  if (options.resume && options.sessionId) {
+    cmd += ` --resume ${options.sessionId}`
+  } else if (options.sessionId) {
+    cmd += ` --session-id ${options.sessionId}`
+  }
+  if (options.initialPrompt) {
+    const escaped = options.initialPrompt.replace(/'/g, "'\\''")
+    cmd += ` '${escaped}'`
+  }
+  return cmd + '\n'
+}
+
+/**
+ * Build the Codex CLI command string.
+ * New session: codex --cd <dir> [prompt]
+ * Resume: codex resume <UUID> --cd <dir>
+ * Directory paths are single-quoted to handle spaces.
+ */
+function buildCodexCommand(options: {
+  directory: string
+  sessionId?: string
+  resume: boolean
+  initialPrompt?: string
+}): string {
+  if (options.resume && options.sessionId) {
+    return `codex resume ${options.sessionId} --cd '${options.directory}'\n`
+  }
+  let cmd = `codex --cd '${options.directory}'`
+  if (options.initialPrompt) {
+    const escaped = options.initialPrompt.replace(/'/g, "'\\''")
+    cmd += ` '${escaped}'`
+  }
+  return cmd + '\n'
+}
+
 interface TerminalProcess {
   pty: pty.IPty
   workspaceId: string
@@ -71,7 +199,6 @@ export function createTerminal(
   mainWindow: BrowserWindow | null,
   initialPrompt?: string,
   claudeFlags?: string,
-  autoAcceptMode?: boolean
 ): string {
   const workspace = getWorkspaceById(workspaceId)
   if (!workspace) {
@@ -88,40 +215,59 @@ export function createTerminal(
     cwd = os.homedir()
   }
 
-  // Get or generate session ID for Claude session persistence
-  let sessionId = workspace.sessionId
-  let claudeCmd: string
+  // Determine agent provider
+  const provider = getAgentProvider(workspace)
 
-  if (sessionId && claudeSessionExists(sessionId)) {
-    // Session exists with content - resume it
-    // Put flags BEFORE --resume so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
+  // Check if codex binary is available
+  let skipCommand = false
+  if (provider === 'codex') {
+    const codexPath = findBinary('codex')
+    if (!codexPath) {
+      skipCommand = true
     }
-    claudeCmd += ` --resume ${sessionId}`
-  } else {
-    // No session or empty session - generate ID and start new session
-    if (!sessionId) {
+  }
+
+  // Build provider-specific agent command
+  let agentCmd = ''
+
+  if (provider === 'claude') {
+    // Claude session management (unchanged behavior)
+    let sessionId = workspace.sessionId
+    let resume = false
+    if (sessionId && claudeSessionExists(sessionId)) {
+      resume = true
+    } else if (!sessionId) {
       sessionId = crypto.randomUUID()
       saveWorkspace({ ...workspace, sessionId })
     }
-    // Put flags BEFORE --session-id so prompt isn't confused with flag arguments
-    claudeCmd = `claude`
-    if (claudeFlags) {
-      claudeCmd += ` ${claudeFlags}`
+    agentCmd = buildClaudeCommand({ sessionId, resume, claudeFlags, initialPrompt })
+  } else if (provider === 'codex' && !skipCommand) {
+    // Codex session management
+    let sessionId = workspace.sessionId
+    let resume = false
+    if (sessionId && codexSessionExists(sessionId)) {
+      resume = true
     }
-    claudeCmd += ` --session-id ${sessionId}`
+    agentCmd = buildCodexCommand({ directory: cwd, sessionId, resume, initialPrompt })
   }
 
-  // If an initial prompt is provided, append it to the command
-  // Claude will process this prompt automatically when it starts
-  if (initialPrompt) {
-    // Escape single quotes in the prompt and wrap in single quotes
-    const escapedPrompt = initialPrompt.replace(/'/g, "'\\''")
-    claudeCmd += ` '${escapedPrompt}'`
+  // Write CWD-based mapping file for Codex agents
+  // The codex-notify-hook.sh uses this to route attention events to the correct workspace
+  if (provider === 'codex') {
+    try {
+      const configDirName = path.basename(getConfigDir())
+      const hash = crypto.createHash('sha256').update(`${configDirName}:${cwd}`).digest('hex').slice(0, 16)
+      const sessionsDir = path.join(getConfigDir(), 'sessions')
+      fs.mkdirSync(sessionsDir, { recursive: true })
+      const mappingPath = path.join(sessionsDir, `codex-${hash}.json`)
+      fs.writeFileSync(mappingPath, JSON.stringify({
+        workspaceId,
+        instanceId: getInstanceId(),
+      }))
+    } catch (err) {
+      devLog(`[Terminal] Failed to write Codex mapping file for workspace ${workspaceId}:`, err)
+    }
   }
-  claudeCmd += '\n'
 
   // Benchmark: start PTY spawn timing
   startTimer(`agent:pty-spawn:${workspaceId}`, 'agent')
@@ -166,84 +312,15 @@ export function createTerminal(
 
   // Detect /clear command and clear session ID so next open starts fresh
   // Claude outputs "(no content)" after /clear completes
-  ptyProcess.onData((data) => {
-    if (data.includes('(no content)')) {
-      const currentWorkspace = getWorkspaceById(workspaceId)
-      if (currentWorkspace?.sessionId) {
-        saveWorkspace({ ...currentWorkspace, sessionId: undefined })
-        devLog(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
-      }
-    }
-  })
-
-  // Auto-accept workspace trust prompts for .bismarck directories
-  // This handles both the main terminal and subagents spawned by Claude's Task tool
-  // The prompt shows "Yes, I trust this folder" as option 1
-  // Buffer data to handle prompts that arrive across multiple chunks
-  let trustPromptBuffer = ''
-  let trustPromptDebounce = false
-  let trustBufferClearTimeout: NodeJS.Timeout | null = null
-
-  ptyProcess.onData((data) => {
-    // Accumulate data for trust prompt detection
-    trustPromptBuffer += data
-
-    // Clear buffer after 2 seconds of inactivity to avoid stale matches
-    if (trustBufferClearTimeout) clearTimeout(trustBufferClearTimeout)
-    trustBufferClearTimeout = setTimeout(() => {
-      trustPromptBuffer = ''
-    }, 2000)
-
-    // Check for the trust prompt in accumulated buffer (matches both .bismarck and .bismarck-dev)
-    if (trustPromptBuffer.includes('Yes, I trust this folder') && (trustPromptBuffer.includes('.bismarck') || trustPromptBuffer.includes('.bismarck-dev'))) {
-      if (trustPromptDebounce) return
-      trustPromptDebounce = true
-      trustPromptBuffer = '' // Clear buffer once matched
-      devLog(`[Terminal] Auto-accepting workspace trust prompt for bismarck directory`)
-      // Send '1' to select "Yes, I trust this folder" after a short delay
-      setTimeout(() => {
-        ptyProcess.write('1\r')
-        trustPromptDebounce = false
-      }, 200)
-    }
-  })
-
-  // Auto-cycle to "accept edits on" mode for task agents
-  // Shift+Tab cycles through accept modes until we see the desired state
-  if (autoAcceptMode) {
-    let acceptModeAttempts = 0
-    const MAX_ACCEPT_MODE_ATTEMPTS = 5
-    let acceptModeDebounce = false
-    let acceptModeDone = false
-
+  // Codex has no /clear equivalent (/new instead, which doesn't need session clearing)
+  if (provider === 'claude') {
     ptyProcess.onData((data) => {
-      if (acceptModeDone) return
-
-      // Already in accept mode - stop listening
-      if (data.includes('accept edits on')) {
-        devLog(`[Terminal] Task agent in auto-accept mode`)
-        acceptModeDone = true
-        return
-      }
-
-      // Claude is ready (showing status line) but not in accept mode yet
-      // Look for the mode indicator without "accept edits on"
-      if (data.includes('⏵') && !data.includes('accept edits on')) {
-        if (acceptModeDebounce) return
-        if (acceptModeAttempts >= MAX_ACCEPT_MODE_ATTEMPTS) {
-          devLog(`[Terminal] Max accept mode attempts reached`)
-          acceptModeDone = true
-          return
+      if (data.includes('(no content)')) {
+        const currentWorkspace = getWorkspaceById(workspaceId)
+        if (currentWorkspace?.sessionId) {
+          saveWorkspace({ ...currentWorkspace, sessionId: undefined })
+          devLog(`[Terminal] Cleared session ID for workspace ${workspaceId} after /clear`)
         }
-
-        acceptModeDebounce = true
-        acceptModeAttempts++
-        devLog(`[Terminal] Cycling accept mode (attempt ${acceptModeAttempts})`)
-
-        setTimeout(() => {
-          ptyProcess.write('\x1b[Z') // Shift+Tab
-          acceptModeDebounce = false
-        }, 300)
       }
     })
   }
@@ -263,7 +340,21 @@ export function createTerminal(
       startTimer(`agent:claude-start:${workspaceId}`, 'agent')
       // Small additional delay to ensure shell is fully ready
       setTimeout(() => {
-        ptyProcess.write(claudeCmd)
+        if (skipCommand) {
+          // Codex binary not found — write styled error to terminal
+          ptyProcess.write("printf '\\n\\033[31m  codex not found\\033[0m\\n\\n  Install with: \\033[36mnpm install -g @openai/codex\\033[0m\\n  Or:           \\033[36mbrew install --cask codex\\033[0m\\n\\n'\n")
+        } else {
+          ptyProcess.write(agentCmd)
+          // For non-Claude providers, report ready immediately after command write
+          // (no TUI ready signal to detect — Codex's Ratatui TUI has no simple indicator)
+          if (provider !== 'claude') {
+            endTimer(`agent:claude-start:${workspaceId}`)
+            if (!firstAgentReadyReported) {
+              firstAgentReadyReported = true
+              milestone('first-agent-ready')
+            }
+          }
+        }
       }, 100)
     }
   }
@@ -275,26 +366,48 @@ export function createTerminal(
       promptDetected = true
       endTimer(`agent:shell-prompt:${workspaceId}`)
       startTimer(`agent:claude-start:${workspaceId}`, 'agent')
-      ptyProcess.write(claudeCmd)
+      if (skipCommand) {
+        ptyProcess.write("printf '\\n\\033[31m  codex not found\\033[0m\\n\\n  Install with: \\033[36mnpm install -g @openai/codex\\033[0m\\n  Or:           \\033[36mbrew install --cask codex\\033[0m\\n\\n'\n")
+      } else {
+        ptyProcess.write(agentCmd)
+      }
     }
   }, 3000)
 
-  // Detect when Claude is ready (shows the status line with ⏵)
-  let claudeReadyDetected = false
-  ptyProcess.onData((data) => {
-    if (!claudeReadyDetected && data.includes('⏵')) {
-      claudeReadyDetected = true
-      endTimer(`agent:claude-start:${workspaceId}`)
-      // Report first-agent-ready milestone only once
-      if (!firstAgentReadyReported) {
-        firstAgentReadyReported = true
-        milestone('first-agent-ready')
+  // Detect when agent is ready
+  if (provider === 'claude') {
+    // Claude shows the status line with ⏵ when ready
+    let claudeReadyDetected = false
+    ptyProcess.onData((data) => {
+      if (!claudeReadyDetected && data.includes('⏵')) {
+        claudeReadyDetected = true
+        endTimer(`agent:claude-start:${workspaceId}`)
+        if (!firstAgentReadyReported) {
+          firstAgentReadyReported = true
+          milestone('first-agent-ready')
+        }
       }
-    }
-  })
+    })
+  }
 
   // Handle process exit
   ptyProcess.onExit(({ exitCode }) => {
+    // For Codex agents, discover and save the session ID on exit
+    if (provider === 'codex') {
+      try {
+        const currentWorkspace = getWorkspaceById(workspaceId)
+        if (currentWorkspace) {
+          const sessionId = findCodexSessionForDirectory(currentWorkspace.directory)
+          if (sessionId) {
+            saveWorkspace({ ...currentWorkspace, sessionId })
+            devLog(`[Terminal] Captured Codex session ${sessionId} for workspace ${workspaceId}`)
+          }
+        }
+      } catch (err) {
+        devLog(`[Terminal] Failed to capture Codex session for workspace ${workspaceId}:`, err)
+      }
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
     }
@@ -542,6 +655,63 @@ export function createPlainTerminal(
   })
 
   return terminalId
+}
+
+/**
+ * Create a Docker terminal (interactive Docker container via PTY).
+ * Used for interactive Docker terminal sessions.
+ */
+export async function createDockerTerminal(
+  options: InteractiveDockerOptions,
+  mainWindow: BrowserWindow | null,
+): Promise<{ terminalId: string; containerName: string }> {
+  const terminalId = `docker-terminal-${Date.now()}`
+  const { args: dockerArgs, containerName } = await buildInteractiveDockerArgs(options)
+
+  // Validate directory exists, fall back to home if not
+  let cwd = options.workingDir
+  if (!fs.existsSync(cwd)) {
+    console.warn(`Directory ${cwd} does not exist, using home directory`)
+    cwd = os.homedir()
+  }
+
+  // Spawn docker run -it via PTY
+  const ptyProcess = pty.spawn('docker', dockerArgs, {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd,
+    env: {
+      ...process.env,
+    },
+  })
+
+  // Create emitter for terminal output listening
+  const emitter = new EventEmitter()
+
+  terminals.set(terminalId, {
+    pty: ptyProcess,
+    workspaceId: `plain-${terminalId}`, // Reuse plain- prefix for zero rendering changes
+    emitter,
+  })
+
+  // Forward data to renderer
+  ptyProcess.onData((data) => {
+    emitter.emit('data', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', terminalId, data)
+    }
+  })
+
+  // Handle process exit
+  ptyProcess.onExit(({ exitCode }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-exit', terminalId, exitCode)
+    }
+    terminals.delete(terminalId)
+  })
+
+  return { terminalId, containerName }
 }
 
 /**

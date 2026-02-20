@@ -75,7 +75,7 @@ for i in "$@"; do
 done
 
 # Build JSON payload with translated arguments
-ARGS_JSON=$(printf '%s\n' "${TRANSLATED_ARGS[@]}" | jq -R . | jq -s .)
+ARGS_JSON=$(printf '%s\0' "${TRANSLATED_ARGS[@]}" | jq -Rs 'rtrimstr("\u0000") | split("\u0000")')
 
 # Determine the endpoint based on first argument
 ENDPOINT="/gh"

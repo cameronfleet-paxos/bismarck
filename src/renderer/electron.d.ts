@@ -39,9 +39,16 @@ export interface ElectronAPI {
 
   // Plain terminal management (non-agent shell terminals)
   createPlainTerminal: (directory: string, name?: string) => Promise<{ terminalId: string; tabId: string }>
+  createDockerTerminal: (options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }) => Promise<{ terminalId: string; tabId: string; containerName: string }>
   closePlainTerminal: (terminalId: string) => Promise<void>
   renamePlainTerminal: (terminalId: string, name: string) => Promise<void>
-  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => Promise<{ terminalId: string; plainId: string } | null>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }) => Promise<{ terminalId: string; plainId: string } | null>
 
   // State management
   getState: () => Promise<AppState>
@@ -204,6 +211,7 @@ export interface ElectronAPI {
 
   // Settings management
   getSettings: () => Promise<AppSettings>
+  updateSettings: (updates: Partial<AppSettings>) => Promise<AppSettings>
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string; gomaxprocs?: string }) => Promise<void>
   addDockerImage: (image: string) => Promise<void>
   removeDockerImage: (image: string) => Promise<boolean>
@@ -211,6 +219,8 @@ export interface ElectronAPI {
   updateToolPaths: (paths: { bd?: string | null; bb?: string | null; gh?: string | null; git?: string | null }) => Promise<void>
   detectToolPaths: () => Promise<{ bd: string | null; bb: string | null; gh: string | null; git: string | null }>
   toggleProxiedTool: (id: string, enabled: boolean) => Promise<ProxiedTool | undefined>
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) => Promise<ProxiedTool>
+  removeProxiedTool: (id: string) => Promise<boolean>
   getToolAuthStatuses: () => Promise<ToolAuthStatus[]>
   checkToolAuth: () => Promise<ToolAuthStatus[]>
   runToolReauth: (toolId: string) => Promise<void>
@@ -219,6 +229,8 @@ export interface ElectronAPI {
   updateDockerSshSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
+  updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) => Promise<void>
+  detectPnpmStorePath: () => Promise<string | null>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management

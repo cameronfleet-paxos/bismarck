@@ -2,8 +2,9 @@ import './index.css'
 import './electron.d.ts'
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent } from '@/renderer/components/ui/tooltip'
 import { devLog } from './utils/dev-log'
 import {
   Dialog,
@@ -130,6 +131,45 @@ function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; o
   }, [shouldStart, isActive, startTutorial, onTriggered])
 
   return null
+}
+
+function DockerBadge({ containerName }: { containerName?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <TooltipProvider delayDuration={100}>
+      <TooltipRoot disableHoverableContent={false}>
+        <TooltipTrigger asChild>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.electronAPI.openDockerDesktop()
+            }}
+            className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+          >
+            <Container className="h-3 w-3" />
+            <span>Docker</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <div className="flex items-center gap-2">
+            <span className="font-mono">{containerName}</span>
+            <button
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigator.clipboard.writeText(containerName || '')
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+              className="p-0.5 rounded hover:bg-muted transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </TooltipContent>
+      </TooltipRoot>
+    </TooltipProvider>
+  )
 }
 
 function App() {
@@ -1874,6 +1914,69 @@ function App() {
     }
   }
 
+  // Open Docker terminal handler (interactive bash shell inside the Docker sandbox)
+  const handleStartDockerTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory: agent.directory,
+        command: ['bash'],
+        name: `Docker — ${agent.name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${agent.name}`,
+          directory: agent.directory,
+          isDocker: true,
+          containerName: result.containerName,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+
+        // Refresh state to pick up the new workspace slot and active tab
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal:', err)
+    }
+  }
+
+  // Open Docker terminal in a headless agent's worktree directory
+  const handleOpenDockerTerminalInWorktree = async (directory: string, name: string) => {
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory,
+        command: ['bash'],
+        name: `Docker — ${name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${name}`,
+          directory,
+          isDocker: true,
+          containerName: result.containerName,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal in agent worktree:', err)
+    }
+  }
+
   // Open plain terminal handler (non-agent shell terminal)
   const handleOpenTerminal = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -3242,6 +3345,7 @@ function App() {
                                 terminalId={terminal.terminalId}
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
+                                provider={agent.provider}
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 searchOpen={terminalSearchAgentId === agent.id}
                                 onSearchClose={() => setTerminalSearchAgentId(null)}
@@ -3257,6 +3361,7 @@ function App() {
                     {getHeadlessAgentsForTab(tab).map((info) => {
                       devLog('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
                       const isDragging = draggedHeadlessId === info.id
                       const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
@@ -3283,10 +3388,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(info.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3371,6 +3480,7 @@ function App() {
                     {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
                     {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const isDragging = draggedHeadlessId === agent.id
                       const isDropTarget = dropTargetHeadlessId === agent.id && !isDragging
                       return (
@@ -3404,10 +3514,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3512,6 +3626,7 @@ function App() {
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
                       const isExpanded = expandedAgentId === uniqueId
+                      const isFocused = focusedAgentId === uniqueId
                       const isDragging = draggedHeadlessId === uniqueId
                       const isDropTarget = dropTargetHeadlessId === uniqueId && !isDragging
                       return (
@@ -3540,10 +3655,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(uniqueId)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3830,6 +3949,7 @@ function App() {
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
+                              provider={agent.provider}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               searchOpen={terminalSearchAgentId === agent.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
@@ -3862,6 +3982,7 @@ function App() {
                       if (position === -1 || position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const prUrl = extractPRUrl(info.events)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === agent.id
@@ -3886,8 +4007,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
@@ -3994,6 +4119,7 @@ function App() {
                       if (position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === wsId
+                      const isFocused = focusedAgentId === wsId
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === wsId
 
@@ -4026,8 +4152,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(wsId)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
@@ -4094,6 +4224,9 @@ function App() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
+                              {pt.isDocker && (
+                                <DockerBadge containerName={pt.containerName} />
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -4445,11 +4578,21 @@ function App() {
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onOpenTerminal={handleOpenTerminal}
+        onStartDockerTerminal={handleStartDockerTerminal}
         onStartRalphLoop={handleStartRalphLoop}
         onOpenCronAutomation={() => {
           setSettingsInitialSection('cron-jobs')
           setCurrentView('settings')
         }}
+        focusedHeadlessAgent={(() => {
+          if (!focusedAgentId) return null
+          const agent = agents.find(a => a.id === focusedAgentId)
+          if (agent && (agent.isStandaloneHeadless || agent.isHeadless)) {
+            return { name: agent.name, directory: agent.directory }
+          }
+          return null
+        })()}
+        onOpenDockerTerminalInWorktree={handleOpenDockerTerminalInWorktree}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 

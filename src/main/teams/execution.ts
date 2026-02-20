@@ -28,7 +28,6 @@ import {
 import {
   removeWorktree,
   pruneWorktrees,
-  deleteRemoteBranch,
   deleteLocalBranch,
 } from '../git-utils'
 import type { Plan, Workspace, PlanStatus, TeamMode } from '../../shared/types'
@@ -410,8 +409,7 @@ export async function restartPlan(planId: string): Promise<Plan | null> {
   // 2. Cleanup any remaining worktrees
   await cleanupAllWorktreesOnly(planId)
 
-  // 3. Delete remote branches (task branches and feature branch)
-  await deleteRemoteBranchesForPlan(plan)
+  // Note: remote branches are intentionally NOT deleted to preserve PRs and pushed work
 
   // Target status: 'discussed' if had approved discussion, else 'draft'
   const hadApprovedDiscussion = plan.discussion?.status === 'approved'
@@ -519,44 +517,6 @@ async function killAllPlanAgents(plan: Plan): Promise<void> {
   logger.info('plan', 'All plan agents killed', logCtx)
 }
 
-/**
- * Delete remote branches created during plan execution
- */
-async function deleteRemoteBranchesForPlan(plan: Plan): Promise<void> {
-  const branchesToDelete: { repoPath: string; branch: string }[] = []
-
-  // Collect task branches from worktrees
-  if (plan.worktrees) {
-    for (const worktree of plan.worktrees) {
-      if (worktree.branch && worktree.repositoryId) {
-        const repo = await getRepositoryById(worktree.repositoryId)
-        if (repo) {
-          branchesToDelete.push({ repoPath: repo.rootPath, branch: worktree.branch })
-        }
-      }
-    }
-  }
-
-  // Add feature branch if it exists
-  if (plan.featureBranch) {
-    // Find any repository to delete the feature branch from
-    const repos = await getAllRepositories()
-    if (repos.length > 0) {
-      branchesToDelete.push({ repoPath: repos[0].rootPath, branch: plan.featureBranch })
-    }
-  }
-
-  // Delete each branch, ignoring errors (branch may not exist on remote)
-  for (const { repoPath, branch } of branchesToDelete) {
-    try {
-      await deleteRemoteBranch(repoPath, branch)
-      devLog(`[PlanManager] Deleted remote branch: ${branch}`)
-    } catch (error) {
-      // Branch may not exist on remote, or already deleted
-      devLog(`[PlanManager] Could not delete remote branch ${branch}: ${error}`)
-    }
-  }
-}
 
 /**
  * Cleanup worktrees only (without killing agents - they should already be killed)

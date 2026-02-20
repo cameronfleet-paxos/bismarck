@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
 import { devLog } from './dev-log'
+import { reloadToolConfig, startToolProxy } from './tool-proxy'
 import {
   initBenchmark,
   startTimer,
@@ -37,6 +38,7 @@ import {
   closeAllTerminals,
   getTerminalForWorkspace,
   createPlainTerminal,
+  createDockerTerminal,
   createSetupTerminal,
   writeSetupTerminal,
   resizeSetupTerminal,
@@ -57,7 +59,7 @@ import {
   removeFromWaitingQueue,
   setInstanceId,
 } from './socket-server'
-import { configureClaudeHook, createHookScript } from './hook-manager'
+import { configureClaudeHook, configureCodexHook, createHookScript } from './hook-manager'
 import { createTray, updateTray, destroyTray } from './tray'
 import {
   initializeState,
@@ -149,6 +151,8 @@ import {
   setSelectedDockerImage,
   updateToolPaths,
   updateProxiedTool,
+  addProxiedTool,
+  removeProxiedTool,
   updateDockerSshSettings,
   updateDockerSocketSettings,
   getCustomPrompts,
@@ -167,6 +171,8 @@ import {
   getPreventSleepSettings,
   updatePreventSleepSettings,
   updateDockerSharedBuildCacheSettings,
+  updateDockerPnpmStoreSettings,
+  updateSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
 import { writeCrashLog } from './crash-logger'
@@ -204,7 +210,7 @@ import {
   getRalphLoopByTabId,
   onRalphLoopStatusChange,
 } from './ralph-loop'
-import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
+import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, checkImageExists, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -414,6 +420,11 @@ function registerIpcHandlers() {
       }
     }
 
+    // If saving a Codex agent, ensure the notify hook is configured
+    if (workspace.provider === 'codex') {
+      configureCodexHook()
+    }
+
     return savedWorkspace
   })
 
@@ -518,6 +529,53 @@ function registerIpcHandlers() {
     return { terminalId, tabId: tab.id }
   })
 
+  // Docker terminal management (interactive Docker container via PTY)
+  ipcMain.handle('create-docker-terminal', async (_event, options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }) => {
+    // Pre-flight checks
+    const dockerAvailable = await checkDockerAvailable()
+    if (!dockerAvailable) {
+      throw new Error('Docker is not available. Please start Docker Desktop.')
+    }
+
+    // Ensure tool proxy is running
+    await startToolProxy()
+
+    // Build InteractiveDockerOptions
+    const dockerOptions: import('./docker-sandbox').InteractiveDockerOptions = {
+      workingDir: options.directory,
+      command: options.command,
+      env: options.env,
+    }
+
+    // Mount ~/.claude read-only if requested
+    if (options.mountClaudeConfig) {
+      const claudeDir = path.join(app.getPath('home'), '.claude')
+      if (fs.existsSync(claudeDir)) {
+        dockerOptions.claudeConfigDir = claudeDir
+      }
+    }
+
+    const result = await createDockerTerminal(dockerOptions, mainWindow)
+    const plainId = `plain-${result.terminalId}`
+
+    // Place in next available grid slot (same as create-plain-terminal)
+    const state = getState()
+    const tab = getOrCreateTabForWorkspaceWithPreference(plainId, state.activeTabId || undefined)
+    addWorkspaceToTab(plainId, tab.id)
+    setActiveTab(tab.id)
+
+    // Persist as plain terminal for tab management
+    addPlainTerminal({ id: plainId, terminalId: result.terminalId, tabId: tab.id, name: options.name || '', directory: options.directory, isDocker: true, containerName: result.containerName, dockerCommand: options.command })
+
+    return { terminalId: result.terminalId, tabId: tab.id, containerName: result.containerName }
+  })
+
   ipcMain.handle('rename-plain-terminal', (_event, terminalId: string, name: string) => {
     renamePlainTerminal(terminalId, name)
   })
@@ -530,18 +588,46 @@ function registerIpcHandlers() {
   })
 
   // Restore a plain terminal from a previous session (called by renderer after it's loaded)
-  ipcMain.handle('restore-plain-terminal', (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }) => {
+  ipcMain.handle('restore-plain-terminal', async (_event, pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }) => {
     try {
-      const newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      let newTerminalId: string
+      let newContainerName: string | undefined
+
+      if (pt.isDocker) {
+        // Restore as Docker terminal — re-launch the container
+        const dockerAvailable = await checkDockerAvailable()
+        if (!dockerAvailable) {
+          throw new Error('Docker is not available. Please start Docker Desktop.')
+        }
+        await startToolProxy()
+
+        const dockerOptions: import('./docker-sandbox').InteractiveDockerOptions = {
+          workingDir: pt.directory,
+          command: pt.dockerCommand || ['bash'],
+        }
+
+        // Mount ~/.claude config if available
+        const claudeDir = path.join(app.getPath('home'), '.claude')
+        if (fs.existsSync(claudeDir)) {
+          dockerOptions.claudeConfigDir = claudeDir
+        }
+
+        const result = await createDockerTerminal(dockerOptions, mainWindow)
+        newTerminalId = result.terminalId
+        newContainerName = result.containerName
+      } else {
+        newTerminalId = createPlainTerminal(pt.directory, mainWindow)
+      }
+
       const newPlainId = `plain-${newTerminalId}`
       // Swap workspace ID in tabs
       swapWorkspaceInTab(pt.id, newPlainId)
       // Update persisted plain terminal entry
       removePlainTerminal(pt.terminalId)
-      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId })
+      addPlainTerminal({ ...pt, id: newPlainId, terminalId: newTerminalId, containerName: newContainerName })
       return { terminalId: newTerminalId, plainId: newPlainId }
     } catch (err) {
-      console.error(`Failed to restore plain terminal in ${pt.directory}:`, err)
+      console.error(`Failed to restore ${pt.isDocker ? 'Docker' : 'plain'} terminal in ${pt.directory}:`, err)
       removePlainTerminal(pt.terminalId)
       removeWorkspaceFromTab(pt.id)
       return null
@@ -1189,6 +1275,10 @@ function registerIpcHandlers() {
     return getSettings()
   })
 
+  ipcMain.handle('update-settings', async (_event, updates) => {
+    return await updateSettings(updates)
+  })
+
   ipcMain.handle('update-docker-resource-limits', async (_event, limits: { cpu?: string; memory?: string }) => {
     return updateDockerResourceLimits(limits)
   })
@@ -1207,8 +1297,21 @@ function registerIpcHandlers() {
 
   ipcMain.handle('toggle-proxied-tool', async (_event, id: string, enabled: boolean) => {
     const result = updateProxiedTool(id, { enabled })
+    reloadToolConfig()
     // Re-check auth statuses when a tool is toggled (async, don't block)
     checkAllToolAuth().catch(() => {})
+    return result
+  })
+
+  ipcMain.handle('add-proxied-tool', async (_event, tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) => {
+    const result = await addProxiedTool(tool)
+    reloadToolConfig()
+    return result
+  })
+
+  ipcMain.handle('remove-proxied-tool', async (_event, id: string) => {
+    const result = await removeProxiedTool(id)
+    reloadToolConfig()
     return result
   })
 
@@ -1250,6 +1353,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('update-docker-shared-build-cache-settings', async (_event, settings: { enabled?: boolean }) => {
     return updateDockerSharedBuildCacheSettings(settings)
+  })
+
+  ipcMain.handle('update-docker-pnpm-store-settings', async (_event, settings: { enabled?: boolean; path?: string | null }) => {
+    return updateDockerPnpmStoreSettings(settings)
+  })
+
+  ipcMain.handle('detect-pnpm-store-path', async () => {
+    const { detectPnpmStorePath } = await import('./pnpm-detect')
+    return detectPnpmStorePath()
   })
 
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {
@@ -1550,6 +1662,7 @@ app.whenReady().then(async () => {
   // Create hook script and configure Claude settings
   timeSync('main:createHookScript', 'main', () => createHookScript())
   timeSync('main:configureClaudeHook', 'main', () => configureClaudeHook())
+  timeSync('main:configureCodexHook', 'main', () => configureCodexHook())
 
   // Register IPC handlers before creating window
   timeSync('main:registerIpcHandlers', 'main', () => registerIpcHandlers())

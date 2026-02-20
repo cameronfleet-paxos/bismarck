@@ -9,6 +9,9 @@ export type PromptType = CustomizablePromptType | 'ralph_loop_discussion' | 'pla
 // Persona mode for interactive Claude sessions (injected via hooks)
 export type PersonaMode = 'none' | 'bismarck' | 'otto' | 'custom'
 
+// Agent provider (which coding agent CLI to use)
+export type AgentProvider = 'claude' | 'codex'
+
 // Custom prompt configuration
 export interface CustomPrompt {
   type: PromptType
@@ -69,10 +72,11 @@ export interface Agent {
   id: string
   name: string
   directory: string
+  provider?: AgentProvider  // Which CLI provider this agent uses (default: 'claude')
   purpose: string
   theme: ThemeName
   icon: AgentIconName
-  sessionId?: string // Claude session ID for resuming sessions across app restarts
+  sessionId?: string // Session ID for resuming sessions across app restarts (Claude: --resume, Codex: resume subcommand)
   isOrchestrator?: boolean // Marks orchestrator workspaces (hidden from UI)
   isPlanAgent?: boolean // Marks plan agent workspaces (temporary, for task creation)
 
@@ -110,6 +114,9 @@ export interface PlainTerminal {
   tabId: string        // Tab this terminal is in
   name: string         // Display name (e.g., "Terminal 1")
   directory: string    // Working directory
+  isDocker?: boolean   // Whether this is a Docker container terminal
+  containerName?: string // Docker container name (for display/linking)
+  dockerCommand?: string[] // Command to run inside Docker container (for restoration)
 }
 
 // Attention mode determines how waiting agents are displayed
@@ -772,4 +779,12 @@ export interface FileDiffContent {
   isBinary: boolean
   isTooLarge: boolean
   error?: string
+}
+
+/**
+ * Resolve an agent's provider, defaulting to 'claude' for agents
+ * created before provider support was added.
+ */
+export function getAgentProvider(agent: Pick<Agent, 'provider'>): AgentProvider {
+  return agent.provider ?? 'claude'
 }

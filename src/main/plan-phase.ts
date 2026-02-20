@@ -25,6 +25,7 @@ export interface PlanPhaseConfig {
   guidance?: string
   sharedCacheDir?: string
   sharedModCacheDir?: string
+  pnpmStoreDir?: string
   planOutputDir?: string           // Host path to store plan file (mounted as /plan-output in container)
   onChunk?: (text: string) => void // Stream plan text chunks to UI as they arrive
   onEvent?: (event: StreamEvent) => void // Forward raw stream events to UI
@@ -91,6 +92,7 @@ export async function runPlanPhase(config: PlanPhaseConfig): Promise<PlanPhaseRe
       mode: 'plan',
       sharedCacheDir: config.sharedCacheDir,
       sharedModCacheDir: config.sharedModCacheDir,
+      pnpmStoreDir: config.pnpmStoreDir,
       planOutputDir: config.planOutputDir,
     })
 

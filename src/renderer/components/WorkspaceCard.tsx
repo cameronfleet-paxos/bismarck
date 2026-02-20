@@ -11,6 +11,7 @@ import {
 } from '@/renderer/components/ui/dropdown-menu'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, AgentTab } from '@/shared/types'
+import { getAgentProvider } from '@/shared/types'
 import { themes } from '@/shared/constants'
 
 interface AgentCardProps {
@@ -130,6 +131,11 @@ export const AgentCard = memo(function AgentCard({
         {isWaiting && (
           <span className="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded flex-shrink-0">
             Waiting
+          </span>
+        )}
+        {getAgentProvider(agent) === 'codex' && (
+          <span className="text-xs bg-emerald-600 text-white px-1.5 py-0.5 rounded flex-shrink-0">
+            Codex
           </span>
         )}
       </div>

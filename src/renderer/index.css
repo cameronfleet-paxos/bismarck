@@ -68,6 +68,19 @@ body {
   animation: claude-bounce 0.8s ease-in-out infinite;
 }
 
+@keyframes openai-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-openai-spin {
+  animation: openai-spin 2s linear infinite;
+}
+
 /* Hide scrollbar while maintaining scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
