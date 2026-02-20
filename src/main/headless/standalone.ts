@@ -353,6 +353,7 @@ export async function startStandaloneHeadlessAgent(
     worktreeInfo: worktreeInfo,
     userPrompt: prompt, // Store raw user prompt for Eye modal default view
     model: model, // Store model for UI display
+    defaultBranch: baseBranch, // Store base branch for ref-based diffing
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
 
@@ -599,6 +600,36 @@ export function initStandaloneHeadless(): void {
     saveStandaloneHeadlessAgentInfo()
   }
   devLog(`[StandaloneHeadless] Loaded ${agents.length} standalone headless agent records`)
+
+  // Backfill defaultBranch for agents created before this field was added
+  backfillDefaultBranches()
+}
+
+/**
+ * Backfill defaultBranch for agents that don't have it set.
+ * Uses Repository config (from settings) first, falls back to git detection.
+ */
+async function backfillDefaultBranches(): Promise<void> {
+  let modified = false
+  for (const agent of standaloneHeadlessAgentInfo.values()) {
+    if (!agent.defaultBranch && agent.worktreeInfo?.repoPath) {
+      try {
+        // Try repository config first (set in settings > repositories)
+        const repo = await getRepositoryByPath(agent.worktreeInfo.repoPath)
+        const branch = repo?.defaultBranch || await getDefaultBranch(agent.worktreeInfo.repoPath)
+        agent.defaultBranch = branch
+        modified = true
+        devLog(`[StandaloneHeadless] Backfilled defaultBranch=${branch} for ${agent.id}`)
+        // Emit update so renderer gets the corrected branch
+        emitHeadlessAgentUpdate(agent)
+      } catch {
+        // Repo may no longer exist, skip
+      }
+    }
+  }
+  if (modified) {
+    saveStandaloneHeadlessAgentInfo()
+  }
 }
 
 /**
@@ -811,6 +842,7 @@ export async function startFollowUpAgent(
     startedAt: new Date().toISOString(),
     worktreeInfo: worktreeInfo,
     userPrompt: prompt, // Store raw user prompt for Eye modal default view
+    defaultBranch: existingInfo.defaultBranch, // Preserve base branch from original agent
   }
   standaloneHeadlessAgentInfo.set(newHeadlessId, agentInfo)
 

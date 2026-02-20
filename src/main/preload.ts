@@ -340,6 +340,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   revertAllFiles: (directory: string): Promise<void> =>
     ipcRenderer.invoke('revert-all-files', directory),
 
+  // Ref-based git diff operations (for headless agents)
+  getChangedFilesFromRef: (directory: string, baseRef: string): Promise<DiffResult> =>
+    ipcRenderer.invoke('get-changed-files-from-ref', directory, baseRef),
+  getFileDiffFromRef: (directory: string, filepath: string, baseRef: string, force?: boolean): Promise<FileDiffContent> =>
+    ipcRenderer.invoke('get-file-diff-from-ref', directory, filepath, baseRef, force),
+  getCommitsBetween: (repoPath: string, baseRef: string, headRef: string): Promise<Array<{ sha: string; shortSha: string; message: string; timestamp: string }>> =>
+    ipcRenderer.invoke('get-commits-between', repoPath, baseRef, headRef),
+  getChangedFilesForCommit: (directory: string, commitSha: string): Promise<DiffResult> =>
+    ipcRenderer.invoke('get-changed-files-for-commit', directory, commitSha),
+  getFileDiffForCommit: (directory: string, filepath: string, commitSha: string, force?: boolean): Promise<FileDiffContent> =>
+    ipcRenderer.invoke('get-file-diff-for-commit', directory, filepath, commitSha, force),
+
   // Setup wizard
   setupWizardShowFolderPicker: (): Promise<string | null> =>
     ipcRenderer.invoke('setup-wizard:show-folder-picker'),
