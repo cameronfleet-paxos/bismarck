@@ -1,64 +1,57 @@
 import * as React from 'react'
+import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { cn } from '@/lib/utils'
 
+const TooltipProvider = TooltipPrimitive.Provider
+const TooltipRoot = TooltipPrimitive.Root
+const TooltipTrigger = TooltipPrimitive.Trigger
+
+const TooltipContent = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        'z-50 overflow-hidden rounded-md bg-popover px-3 py-1.5 text-xs text-popover-foreground border shadow-md animate-in fade-in-0 zoom-in-95',
+        className
+      )}
+      {...props}
+    />
+  </TooltipPrimitive.Portal>
+))
+TooltipContent.displayName = TooltipPrimitive.Content.displayName
+
+// Simple wrapper for common use case
 interface TooltipProps {
   content: string
   children: React.ReactNode
   className?: string
-  side?: 'top' | 'bottom'
+  side?: 'top' | 'bottom' | 'left' | 'right'
   delayMs?: number
 }
 
-export function Tooltip({
+function Tooltip({
   content,
   children,
   className,
   side = 'top',
   delayMs = 100,
 }: TooltipProps) {
-  const [show, setShow] = React.useState(false)
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const handleMouseEnter = () => {
-    timeoutRef.current = setTimeout(() => setShow(true), delayMs)
-  }
-
-  const handleMouseLeave = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
-    }
-    setShow(false)
-  }
-
-  React.useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
-
   return (
-    <div
-      className="relative inline-flex"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {children}
-      {show && (
-        <div
-          role="tooltip"
-          className={cn(
-            'absolute z-50 px-2 py-1 text-xs font-medium text-popover-foreground bg-popover border rounded shadow-md whitespace-nowrap pointer-events-none',
-            side === 'top' && 'bottom-full left-1/2 -translate-x-1/2 mb-1',
-            side === 'bottom' && 'top-full left-1/2 -translate-x-1/2 mt-1',
-            className
-          )}
-        >
+    <TooltipProvider delayDuration={delayMs}>
+      <TooltipRoot>
+        <TooltipTrigger asChild>
+          {children}
+        </TooltipTrigger>
+        <TooltipContent side={side} className={className}>
           {content}
-        </div>
-      )}
-    </div>
+        </TooltipContent>
+      </TooltipRoot>
+    </TooltipProvider>
   )
 }
+
+export { Tooltip, TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent }

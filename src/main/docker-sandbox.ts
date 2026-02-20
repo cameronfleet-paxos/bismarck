@@ -12,7 +12,7 @@
  */
 
 import { ChildProcess } from 'child_process'
-import { Readable, PassThrough } from 'stream'
+import { Readable, Writable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
 import * as https from 'https'
@@ -22,6 +22,14 @@ import { logger, LogContext } from './logger'
 import { spawnWithPath } from './exec-utils'
 import { loadSettings, saveSettings } from './settings-manager'
 import { devLog } from './dev-log'
+
+export interface InteractiveDockerOptions {
+  workingDir: string          // Host directory to mount at /workspace
+  command: string[]           // Command to run (e.g., ['claude', '--dangerously-skip-permissions'])
+  claudeConfigDir?: string    // Host ~/.claude to mount (for skills, hooks, etc.)
+  env?: Record<string, string> // Additional env vars
+  containerName?: string      // Docker container name (auto-generated if not set)
+}
 
 export interface ContainerConfig {
   image: string // Docker image name (e.g., "bismarck-agent:latest")
@@ -35,12 +43,16 @@ export interface ContainerConfig {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
+  pnpmStoreDir?: string // Host path to shared pnpm store
   mode?: 'plan' // If 'plan', run in plan mode (stream-json output)
+  inputMode?: 'prompt' | 'stream-json' // If 'stream-json', use --input-format stream-json and deliver prompt via stdin (keeps stdin open for nudges)
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
+  wrapperDir?: string // Host path to tool wrapper scripts (mounted at /bismarck-tools)
 }
 
 export interface ContainerResult {
   containerId: string
+  stdin: Writable | null
   stdout: PassThrough
   stderr: PassThrough
   stop: () => Promise<void>
@@ -91,6 +103,157 @@ const runningContainers: Map<
     containerId: string | null
   }
 > = new Map()
+
+/**
+ * Build docker run arguments for an interactive Docker terminal session.
+ * Generic and reusable for any interactive Docker use case.
+ */
+export async function buildInteractiveDockerArgs(options: InteractiveDockerOptions): Promise<{ args: string[]; containerName: string }> {
+  const settings = await loadSettings()
+  const { getSelectedDockerImage, getGitHubToken } = await import('./settings-manager')
+
+  // Generate a container name if not provided
+  const containerName = options.containerName || `bismarck-terminal-${Date.now()}`
+
+  const args: string[] = [
+    'run',
+    '--rm',
+    '-it', // Interactive + TTY for full TUI support
+    '--name', containerName,
+  ]
+
+  // Mount working directory
+  args.push('-v', `${options.workingDir}:/workspace`)
+  args.push('-w', '/workspace')
+
+  // Mount host ~/.claude read-write so Claude Code can persist settings,
+  // theme preferences, and session state across interactive runs.
+  if (options.claudeConfigDir) {
+    args.push('-v', `${options.claudeConfigDir}:/home/agent/.claude`)
+
+    // Mount a patched settings.json with hooks removed — host hook commands
+    // reference absolute host paths that don't exist inside the container.
+    const fs = await import('fs')
+    const os = await import('os')
+    const settingsPath = path.join(options.claudeConfigDir, 'settings.json')
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      delete settings.hooks
+      const tmpDir = path.join(os.tmpdir(), 'bismarck-docker')
+      fs.mkdirSync(tmpDir, { recursive: true })
+      const patchedSettingsPath = path.join(tmpDir, 'settings.json')
+      fs.writeFileSync(patchedSettingsPath, JSON.stringify(settings, null, 2))
+      args.push('-v', `${patchedSettingsPath}:/home/agent/.claude/settings.json`)
+    } catch { /* settings.json missing or invalid — skip */ }
+  }
+
+  // Tool proxy URL + token
+  const proxyUrl = getProxyUrl()
+  args.push('-e', `TOOL_PROXY_URL=${proxyUrl}`)
+  const token = getProxyToken()
+  if (token) {
+    args.push('-e', `TOOL_PROXY_TOKEN=${token}`)
+  }
+
+  // Host worktree path for git proxy commands
+  args.push('-e', `BISMARCK_HOST_WORKTREE_PATH=${options.workingDir}`)
+
+  // SSH agent forwarding
+  if (settings.docker.sshAgent?.enabled !== false) {
+    if (process.platform === 'darwin') {
+      args.push('--mount', 'type=bind,src=/run/host-services/ssh-auth.sock,target=/ssh-agent')
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+      args.push('--group-add', '0')
+    } else if (process.env.SSH_AUTH_SOCK) {
+      args.push('-v', `${process.env.SSH_AUTH_SOCK}:/ssh-agent`)
+      args.push('-e', 'SSH_AUTH_SOCK=/ssh-agent')
+    }
+  }
+
+  // Docker socket forwarding if enabled
+  if (settings.docker.dockerSocket?.enabled) {
+    const socketPath = settings.docker.dockerSocket.path || '/var/run/docker.sock'
+    args.push('-v', `${socketPath}:${socketPath}`)
+    if (process.platform !== 'darwin' || settings.docker.sshAgent?.enabled === false) {
+      args.push('--group-add', '0')
+    }
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      args.push('-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal')
+    }
+    args.push('-e', `DOCKER_HOST=unix://${socketPath}`)
+  }
+
+  // Tool wrapper mounts (generate wrappers for custom proxied tools)
+  const { generateToolWrappers } = await import('./wrapper-generator')
+  const wrapperDir = await generateToolWrappers(`interactive-${Date.now()}`)
+  if (wrapperDir) {
+    args.push('-v', `${wrapperDir}:/bismarck-tools:ro`)
+    args.push('-e', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/bismarck-tools')
+  }
+
+  // OAuth token
+  const oauthToken = getClaudeOAuthToken()
+  if (oauthToken) {
+    args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
+  }
+
+  // Claude Code interactive mode requires hasCompletedOnboarding in ~/.claude.json
+  // to skip the auth/onboarding flow when CLAUDE_CODE_OAUTH_TOKEN is set.
+  // Read the host's file, inject the flag, and mount a patched copy.
+  if (options.claudeConfigDir) {
+    const fs = await import('fs')
+    const os = await import('os')
+    const claudeJsonPath = path.join(path.dirname(options.claudeConfigDir), '.claude.json')
+    let claudeJson: Record<string, unknown> = {}
+    try {
+      claudeJson = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf-8'))
+    } catch { /* file missing or invalid — start fresh */ }
+    claudeJson.hasCompletedOnboarding = true
+    const tmpDir = path.join(os.tmpdir(), 'bismarck-docker')
+    fs.mkdirSync(tmpDir, { recursive: true })
+    const patchedPath = path.join(tmpDir, 'claude.json')
+    fs.writeFileSync(patchedPath, JSON.stringify(claudeJson))
+    args.push('-v', `${patchedPath}:/home/agent/.claude.json`)
+  }
+
+  // GitHub token
+  const githubToken = await getGitHubToken()
+  if (githubToken) {
+    args.push('-e', `GITHUB_TOKEN=${githubToken}`)
+  }
+
+  // Additional env vars
+  if (options.env) {
+    for (const [key, value] of Object.entries(options.env)) {
+      args.push('-e', `${key}=${value}`)
+    }
+  }
+
+  // host.docker.internal
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    args.push('--add-host', 'host.docker.internal:host-gateway')
+  }
+
+  // Resource limits
+  if (settings.docker.resourceLimits?.memory) {
+    args.push('--memory', settings.docker.resourceLimits.memory)
+  }
+  if (settings.docker.resourceLimits?.cpu) {
+    args.push('--cpus', settings.docker.resourceLimits.cpu)
+  }
+  if (settings.docker.resourceLimits?.gomaxprocs) {
+    args.push('-e', `GOMAXPROCS=${settings.docker.resourceLimits.gomaxprocs}`)
+  }
+
+  // Image
+  const selectedImage = await getSelectedDockerImage()
+  args.push(selectedImage)
+
+  // Command
+  args.push(...options.command)
+
+  return { args, containerName }
+}
 
 /**
  * Build the docker run command arguments
@@ -159,6 +322,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     args.push('-e', 'GOMODCACHE=/workspace/.tmp/go-mod')
   }
 
+  // Mount pnpm store: share host store with container if enabled
+  if (settings.docker.pnpmStore?.enabled && config.pnpmStoreDir) {
+    args.push('-v', `${config.pnpmStoreDir}:/shared-pnpm-store`)
+    args.push('-e', 'npm_config_store_dir=/shared-pnpm-store')
+  }
+
   // Forward SSH agent for private repo access (Bazel, Go modules)
   // This allows real git (used outside /workspace) to authenticate with GitHub
   // On macOS, Docker Desktop provides a special socket path for SSH agent forwarding
@@ -199,6 +368,12 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
     // Explicitly set DOCKER_HOST for clarity
     args.push('-e', `DOCKER_HOST=unix://${socketPath}`)
+  }
+
+  // Mount custom tool wrappers if generated
+  if (config.wrapperDir) {
+    args.push('-v', `${config.wrapperDir}:/bismarck-tools:ro`)
+    args.push('-e', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/bismarck-tools')
   }
 
   // Pass Claude OAuth token to container for headless agents using Claude subscription
@@ -257,7 +432,13 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
       // Execution mode: full permissions, stream-json output
       args.push('claude')
       args.push('--dangerously-skip-permissions')
-      args.push('-p', config.prompt)
+      if (config.inputMode === 'stream-json') {
+        // stream-json input: prompt is delivered via stdin, enables multi-turn nudges
+        args.push('--input-format', 'stream-json')
+      } else {
+        // Default: prompt passed as CLI argument
+        args.push('-p', config.prompt)
+      }
       args.push('--output-format', 'stream-json')
       args.push('--verbose')
 
@@ -315,9 +496,12 @@ export async function spawnContainerAgent(
     stdio: ['pipe', 'pipe', 'pipe'],
   })
 
-  // Close stdin immediately - Claude Code with -p flag doesn't need stdin
-  // and leaving it open may prevent the process from starting properly
-  dockerProcess.stdin?.end()
+  // For stream-json input mode, keep stdin open so we can send nudge messages later.
+  // For prompt mode (-p flag), close stdin immediately.
+  const stdinStream: Writable | null = config.inputMode === 'stream-json' ? dockerProcess.stdin ?? null : null
+  if (config.inputMode !== 'stream-json') {
+    dockerProcess.stdin?.end()
+  }
 
   // Create pass-through streams for stdout/stderr
   const stdout = new PassThrough()
@@ -398,6 +582,7 @@ export async function spawnContainerAgent(
 
   return {
     containerId: containerId || trackingId,
+    stdin: stdinStream,
     stdout,
     stderr,
     stop,

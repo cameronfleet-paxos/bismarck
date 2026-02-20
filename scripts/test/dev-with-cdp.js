@@ -389,6 +389,10 @@ function shutdown() {
  * Main entry point
  */
 async function main() {
+  // Remove CLAUDECODE so child processes (Electron, Vite) don't think
+  // they're running inside a Claude Code session
+  delete process.env.CLAUDECODE;
+
   const args = process.argv.slice(2);
   const clean = args.includes('--clean');
   const check = args.includes('--check');

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Pencil, Trash2, Play, Square, MoreVertical, Container, GripVertical, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/renderer/components/ui/dropdown-menu'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import type { Agent, AgentTab } from '@/shared/types'
+import { getAgentProvider } from '@/shared/types'
 import { themes } from '@/shared/constants'
 
 interface AgentCardProps {
@@ -41,7 +43,7 @@ interface AgentCardProps {
   dataTutorial?: string
 }
 
-export function AgentCard({
+export const AgentCard = memo(function AgentCard({
   agent,
   isActive,
   isWaiting,
@@ -77,7 +79,7 @@ export function AgentCard({
       data-tutorial={dataTutorial}
       draggable={canDrag}
       className={`
-        relative rounded-lg p-4 cursor-pointer transition-all
+        relative rounded-lg p-4 cursor-pointer transition-[box-shadow,opacity,border-color] duration-150
         ${isActive && isFocused ? 'ring-2 ring-primary' : ''}
         ${isActive && !isFocused ? 'hover:ring-1 hover:ring-primary/50' : ''}
         ${!isActive ? 'hover:border-primary/50' : ''}
@@ -129,6 +131,11 @@ export function AgentCard({
         {isWaiting && (
           <span className="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded flex-shrink-0">
             Waiting
+          </span>
+        )}
+        {getAgentProvider(agent) === 'codex' && (
+          <span className="text-xs bg-emerald-600 text-white px-1.5 py-0.5 rounded flex-shrink-0">
+            Codex
           </span>
         )}
       </div>
@@ -244,7 +251,7 @@ export function AgentCard({
       </div>
     </div>
   )
-}
+})
 
 // Backwards compatibility export
 export { AgentCard as WorkspaceCard }

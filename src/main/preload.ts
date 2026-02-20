@@ -31,11 +31,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Plain terminal management (non-agent shell terminals)
   createPlainTerminal: (directory: string, name?: string): Promise<{ terminalId: string; tabId: string }> =>
     ipcRenderer.invoke('create-plain-terminal', directory, name),
+  createDockerTerminal: (options: {
+    directory: string
+    command: string[]
+    name?: string
+    mountClaudeConfig?: boolean
+    env?: Record<string, string>
+  }): Promise<{ terminalId: string; tabId: string; containerName: string }> =>
+    ipcRenderer.invoke('create-docker-terminal', options),
   closePlainTerminal: (terminalId: string): Promise<void> =>
     ipcRenderer.invoke('close-plain-terminal', terminalId),
   renamePlainTerminal: (terminalId: string, name: string): Promise<void> =>
     ipcRenderer.invoke('rename-plain-terminal', terminalId, name),
-  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string }): Promise<{ terminalId: string; plainId: string } | null> =>
+  restorePlainTerminal: (pt: { id: string; terminalId: string; tabId: string; name: string; directory: string; isDocker?: boolean; containerName?: string; dockerCommand?: string[] }): Promise<{ terminalId: string; plainId: string } | null> =>
     ipcRenderer.invoke('restore-plain-terminal', pt),
 
   // State management
@@ -142,6 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-standalone-headless-agents'),
   stopStandaloneHeadlessAgent: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('stop-standalone-headless-agent', headlessId),
+  nudgeHeadlessAgent: (taskId: string, message: string, isStandalone: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('nudge-headless-agent', taskId, message, isStandalone),
   standaloneHeadlessConfirmDone: (headlessId: string): Promise<void> =>
     ipcRenderer.invoke('standalone-headless:confirm-done', headlessId),
   standaloneHeadlessStartFollowup: (headlessId: string, prompt: string, model?: 'opus' | 'sonnet', options?: { planPhase?: boolean }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
@@ -418,6 +428,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Settings management
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (updates: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('update-settings', updates),
   updateDockerResourceLimits: (limits: { cpu?: string; memory?: string }) =>
     ipcRenderer.invoke('update-docker-resource-limits', limits),
   addDockerImage: (image: string) =>
@@ -432,6 +444,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('detect-tool-paths'),
   toggleProxiedTool: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('toggle-proxied-tool', id, enabled),
+  addProxiedTool: (tool: { name: string; hostPath: string; description?: string; enabled: boolean; promptHint?: string }) =>
+    ipcRenderer.invoke('add-proxied-tool', tool),
+  removeProxiedTool: (id: string) =>
+    ipcRenderer.invoke('remove-proxied-tool', id),
   getToolAuthStatuses: () =>
     ipcRenderer.invoke('get-tool-auth-statuses'),
   checkToolAuth: () =>
@@ -451,6 +467,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-socket-settings', settings),
   updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) =>
     ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
+  updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) =>
+    ipcRenderer.invoke('update-docker-pnpm-store-settings', settings),
+  detectPnpmStorePath: () =>
+    ipcRenderer.invoke('detect-pnpm-store-path'),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 
@@ -538,6 +558,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('update-tray', count)
   },
 
+  // Cron Job Automations
+  getCronJobs: (): Promise<import('../shared/cron-types').CronJob[]> =>
+    ipcRenderer.invoke('get-cron-jobs'),
+  getCronJob: (id: string): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('get-cron-job', id),
+  createCronJob: (data: { name: string; schedule: string; enabled: boolean; workflowGraph: import('../shared/cron-types').WorkflowGraph }): Promise<import('../shared/cron-types').CronJob> =>
+    ipcRenderer.invoke('create-cron-job', data),
+  updateCronJob: (id: string, updates: Partial<import('../shared/cron-types').CronJob>): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('update-cron-job', id, updates),
+  deleteCronJob: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-cron-job', id),
+  toggleCronJobEnabled: (id: string, enabled: boolean): Promise<import('../shared/cron-types').CronJob | null> =>
+    ipcRenderer.invoke('toggle-cron-job-enabled', id, enabled),
+  runCronJobNow: (id: string): Promise<{ tabId: string } | undefined> =>
+    ipcRenderer.invoke('run-cron-job-now', id),
+  getCronJobRuns: (cronJobId: string): Promise<import('../shared/cron-types').CronJobRun[]> =>
+    ipcRenderer.invoke('get-cron-job-runs', cronJobId),
+  getNextCronRunTime: (cronExpression: string): Promise<string | null> =>
+    ipcRenderer.invoke('get-next-cron-run-time', cronExpression),
+  validateCronExpression: (cron: string): Promise<boolean> =>
+    ipcRenderer.invoke('validate-cron-expression', cron),
+
+  // Cron Job events (additive - multiple listeners can coexist)
+  onCronJobStarted: (callback: (data: { jobId: string; runId: string; tabId: string }) => void): void => {
+    ipcRenderer.on('cron-job-started', (_event, data) => callback(data))
+  },
+  onCronJobCompleted: (callback: (data: { jobId: string; runId: string; status: string }) => void): void => {
+    ipcRenderer.on('cron-job-completed', (_event, data) => callback(data))
+  },
+  onCronJobNodeUpdate: (callback: (data: { jobId: string; runId: string; nodeId: string; status: string }) => void): void => {
+    ipcRenderer.on('cron-job-node-update', (_event, data) => callback(data))
+  },
+  removeCronJobListeners: (): void => {
+    ipcRenderer.removeAllListeners('cron-job-started')
+    ipcRenderer.removeAllListeners('cron-job-completed')
+    ipcRenderer.removeAllListeners('cron-job-node-update')
+  },
+
   // Startup benchmark timing (for renderer → main communication)
   sendBenchmarkTiming: (label: string, phase: string, startMs: number, durationMs: number): void => {
     ipcRenderer.send('benchmark-timing', { label, phase, startMs, durationMs })
@@ -576,6 +634,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('base-image-updated')
     ipcRenderer.removeAllListeners('tool-auth-status')
     ipcRenderer.removeAllListeners('debug-log-lines')
+    ipcRenderer.removeAllListeners('cron-job-started')
+    ipcRenderer.removeAllListeners('cron-job-completed')
+    ipcRenderer.removeAllListeners('cron-job-node-update')
   },
 
   // Dev test harness (development mode only)

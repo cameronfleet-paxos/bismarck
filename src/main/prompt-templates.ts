@@ -378,11 +378,9 @@ All these commands work normally (they are proxied to the host automatically):
 
 === COMMIT STYLE ===
 Keep commits simple and direct:
-- Use: git commit -m "Brief description of change
-
-  Co-Authored-By: Claude <noreply@anthropic.com>"
-- ALWAYS include the Co-Authored-By trailer in every commit
+- Use: git commit -m "Brief description of change"
 - Do NOT use HEREDOC, --file, or multi-step verification
+- Do NOT modify git config (user.name, user.email, etc.)
 - Commit once when work is complete, don't overthink it
 
 === YOUR WORKING DIRECTORY ===
@@ -426,11 +424,9 @@ For trivial tasks (typo fixes, single-line changes, simple renames), skip planni
 === COMPLETION REQUIREMENTS ===
 {{completionCriteria}}When you complete your work:
 
-1. Commit your changes (ALWAYS include Co-Authored-By trailer):
+1. Commit your changes:
    git add <files>
-   git commit -m "Brief description of change
-
-   Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 2. Push your branch:
    git push -u origin {{branchName}}
@@ -469,11 +465,9 @@ For simple follow-ups, skip planning and just do the work directly.
 === COMPLETION REQUIREMENTS ===
 {{completionCriteria}}1. Review the previous commits above to understand what was done
 
-2. Make your changes and commit (ALWAYS include Co-Authored-By trailer):
+2. Make your changes and commit:
    git add <files>
-   git commit -m "Brief description of change
-
-   Co-Authored-By: Claude <noreply@anthropic.com>"
+   git commit -m "Brief description of change"
 
 3. Push your changes:
    git push origin {{branchName}}
@@ -904,37 +898,35 @@ export async function getPromptTemplate(type: PromptType): Promise<string> {
 /**
  * Build the PROXIED COMMANDS section based on which tools are enabled
  */
-export function buildProxiedToolsSection(enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }): string {
+export function buildProxiedToolsSection(tools: Array<{ name: string; enabled: boolean; promptHint?: string; description?: string; builtIn?: boolean }>): string {
   const sections: string[] = []
   let num = 1
 
-  if (enabledTools.git) {
-    sections.push(`${num}. Git:
+  // Hardcoded descriptions for built-in tools (they have important caveats)
+  const builtInDescriptions: Record<string, string> = {
+    git: `Git:
    - git status, git add, git commit, git push
    - IMPORTANT: For git commit, always use -m "message" inline.
-   - Do NOT use --file or -F flags - file paths don't work across the proxy.`)
-    num++
-  }
-
-  if (enabledTools.gh) {
-    sections.push(`${num}. GitHub CLI (gh):
+   - Do NOT use --file or -F flags - file paths don't work across the proxy.`,
+    gh: `GitHub CLI (gh):
    - gh pr create, gh pr view, gh pr edit
-   - All standard gh commands work`)
-    num++
-  }
-
-  if (enabledTools.bd) {
-    sections.push(`${num}. Beads Task Management (bd):
+   - All standard gh commands work`,
+    bd: `Beads Task Management (bd):
    - bd list, bd ready, bd show, bd close, bd update
-   - The --sandbox flag is added automatically`)
-    num++
+   - The --sandbox flag is added automatically`,
   }
 
-  if (enabledTools.bb) {
-    sections.push(`${num}. BuildBuddy CLI (bb):
-   - bb view, bb run, bb test, bb remote
-   - IMPORTANT: Always use \`bb remote --os=linux --arch=amd64\` for remote commands (e.g. \`bb remote --os=linux --arch=amd64 test //...\`). The host is macOS ARM but remote executors are Linux x86.
-   - All standard bb commands work`)
+  for (const tool of tools) {
+    if (!tool.enabled) continue
+
+    const builtInDesc = builtInDescriptions[tool.name]
+    if (builtInDesc) {
+      sections.push(`${num}. ${builtInDesc}`)
+    } else {
+      const hint = tool.promptHint || tool.description || tool.name
+      sections.push(`${num}. ${tool.name}:\n   - ${hint}`)
+    }
+    num++
   }
 
   if (sections.length === 0) {

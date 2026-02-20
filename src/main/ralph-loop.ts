@@ -28,6 +28,7 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from './config'
 import { HeadlessAgent, HeadlessAgentOptions } from './headless'
 import { createTab, addWorkspaceToTab, setActiveTab, getState } from './state-manager'
@@ -39,8 +40,6 @@ import {
   createWorktree,
   removeWorktree,
   deleteLocalBranch,
-  deleteRemoteBranch,
-  remoteBranchExists,
   getCommitsBetween,
 } from './git-utils'
 import { startToolProxy, isProxyRunning } from './tool-proxy'
@@ -57,31 +56,12 @@ import type {
 } from '../shared/types'
 import { spawnWithPathAsync } from './exec-utils'
 import * as fsPromises from 'fs/promises'
-
-// Word lists for fun random names (same as standalone-headless)
-const ADJECTIVES = [
-  'fluffy', 'happy', 'brave', 'swift', 'clever', 'gentle', 'mighty', 'calm',
-  'wild', 'eager', 'jolly', 'lucky', 'plucky', 'zesty', 'snappy', 'peppy'
-]
-
-const NOUNS = [
-  'bunny', 'panda', 'koala', 'otter', 'falcon', 'dolphin', 'fox', 'owl',
-  'tiger', 'eagle', 'wolf', 'bear', 'hawk', 'lynx', 'raven', 'seal'
-]
-
-/**
- * Generate a fun, memorable random phrase
- * Format: {adjective}-{noun} (e.g., "plucky-otter")
- */
-function generateRandomPhrase(): string {
-  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
-  return `${adjective}-${noun}`
-}
+import { generateBranchSlug } from './naming-utils'
 
 // Track active Ralph Loops
 const ralphLoops: Map<string, RalphLoopState> = new Map()
 const ralphLoopAgents: Map<string, HeadlessAgent> = new Map() // loopId -> current agent
+const completionWaiters: Map<string, Array<(status: RalphLoopStatus) => void>> = new Map()
 
 // Reference to main window for IPC
 let mainWindow: BrowserWindow | null = null
@@ -151,6 +131,18 @@ function emitRalphLoopUpdate(state: RalphLoopState): void {
     mainWindow.webContents.send('ralph-loop-update', state)
   }
   onStatusChangeCallback?.(state.id, state.status)
+
+  // Resolve any completion waiters if the loop reached a terminal status
+  const terminalStatuses: RalphLoopStatus[] = ['completed', 'failed', 'cancelled', 'max_iterations']
+  if (terminalStatuses.includes(state.status)) {
+    const waiters = completionWaiters.get(state.id)
+    if (waiters) {
+      for (const resolve of waiters) {
+        resolve(state.status)
+      }
+      completionWaiters.delete(state.id)
+    }
+  }
 }
 
 /**
@@ -235,9 +227,9 @@ function buildRalphLoopPrompt(
   iterationNumber: number,
   maxIterations: number,
   completionPhrase: string,
-  enabledTools: { git: boolean; gh: boolean; bd: boolean; bb?: boolean }
+  tools: Array<{ name: string; enabled: boolean; promptHint?: string; description?: string; builtIn?: boolean }>
 ): string {
-  const proxiedToolsSection = buildProxiedToolsSection(enabledTools)
+  const proxiedToolsSection = buildProxiedToolsSection(tools)
 
   return `[RALPH LOOP - ITERATION ${iterationNumber}/${maxIterations}]
 
@@ -319,7 +311,6 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
 
   // Generate unique IDs
   const loopId = `ralph-loop-${Date.now()}`
-  const phrase = generateRandomPhrase()
 
   // Get repository info
   const repoPath = await getMainRepoRoot(referenceAgent.directory)
@@ -328,11 +319,14 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
   }
   const repoName = path.basename(repoPath)
 
+  // Generate prompt-aware slug for branch name
+  const phrase = generateBranchSlug(config.prompt)
+
   // Get default branch as base for worktree
   const baseBranch = await getDefaultBranch(repoPath)
 
   // Generate branch and worktree paths
-  const branchName = `ralph/${repoName}-${phrase}`
+  const branchName = `bismarck-ralph/${repoName}-${phrase}`
   const worktreePath = getStandaloneWorktreePath(repoName, `ralph-${phrase}`)
 
   // Ensure directory exists
@@ -361,9 +355,13 @@ export async function startRalphLoop(config: RalphLoopConfig): Promise<RalphLoop
     repoPath: repoPath,
   }
 
-  // Create a dedicated tab for this Ralph Loop
-  const tab = createTab(`Ralph: ${phrase}`)
-  tab.isPlanTab = true // Treat like a plan tab for styling
+  // Use existing tab if provided (e.g., from cron automation), otherwise create a new one
+  const tab = config.tabId
+    ? (getState().tabs.find(t => t.id === config.tabId) || createTab(`Ralph: ${phrase}`))
+    : createTab(`Ralph: ${phrase}`)
+  if (!config.tabId) {
+    tab.isDedicatedTab = true // Dedicated to this ralph loop — not for standalone agents
+  }
 
   // Create the initial state
   const state: RalphLoopState = {
@@ -526,13 +524,6 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
     // Build the prompt with enabled tools
     const selectedImage = await getSelectedDockerImage()
     const settings = await loadSettings()
-    const proxiedTools = settings.docker.proxiedTools
-    const enabledTools = {
-      git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-      gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-      bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-      bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-    }
     const enhancedPrompt = buildRalphLoopPrompt(
       state.config.prompt,
       state.worktreeInfo.path,
@@ -540,13 +531,14 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       iterationNumber,
       state.config.maxIterations,
       state.config.completionPhrase,
-      enabledTools
+      settings.docker.proxiedTools
     )
 
     // Derive shared cache dirs from repo path
     const iterRepoName = path.basename(state.worktreeInfo.repoPath)
     const sharedCacheDir = getRepoCacheDir(iterRepoName)
     const sharedModCacheDir = getRepoModCacheDir(iterRepoName)
+    const pnpmStoreDir = await resolvePnpmStorePath(settings)
 
     const options: HeadlessAgentOptions = {
       prompt: enhancedPrompt,
@@ -558,6 +550,7 @@ async function runIteration(state: RalphLoopState, iterationNumber: number): Pro
       claudeFlags: ['--model', state.config.model],
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
     }
 
     devLog(`[RalphLoop] Starting iteration ${iterationNumber} agent`)
@@ -692,6 +685,27 @@ export async function retryRalphLoop(loopId: string): Promise<void> {
 }
 
 /**
+ * Wait for a Ralph Loop to reach a terminal status.
+ * Resolves with true if completed successfully, false otherwise.
+ */
+export function waitForRalphLoopCompletion(loopId: string): Promise<boolean> {
+  const state = ralphLoops.get(loopId)
+  if (!state) return Promise.resolve(false)
+
+  // Already in a terminal state
+  const terminalStatuses: RalphLoopStatus[] = ['completed', 'failed', 'cancelled', 'max_iterations']
+  if (terminalStatuses.includes(state.status)) {
+    return Promise.resolve(state.status === 'completed')
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const waiters = completionWaiters.get(loopId) || []
+    waiters.push((status) => resolve(status === 'completed'))
+    completionWaiters.set(loopId, waiters)
+  })
+}
+
+/**
  * Get Ralph Loop state by ID
  */
 export function getRalphLoopState(loopId: string): RalphLoopState | undefined {
@@ -760,15 +774,7 @@ export async function cleanupRalphLoop(loopId: string): Promise<void> {
     devLog(`[RalphLoop] Local branch ${branch} may already be deleted:`, error)
   }
 
-  // Delete the remote branch if it exists
-  try {
-    if (await remoteBranchExists(repoPath, branch)) {
-      await deleteRemoteBranch(repoPath, branch)
-      devLog(`[RalphLoop] Deleted remote branch ${branch}`)
-    }
-  } catch (error) {
-    console.error(`[RalphLoop] Failed to delete remote branch:`, error)
-  }
+  // Note: remote branch is intentionally NOT deleted to preserve PRs and pushed work
 
   // Remove state
   ralphLoops.delete(loopId)

@@ -1,6 +1,6 @@
 {
   "name": "bismarck",
-  "version": "0.7.9",
+  "version": "0.8.6",
   "description": "Bismarck - Desktop application for monitoring and managing Claude Code agents",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -16,6 +16,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "start": "electron .",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "test:start": "NODE_ENV=development electron --remote-debugging-port=9222 .",
     "test:server": "node scripts/test/cdp-server.js",
     "dev:cdp": "node scripts/test/dev-with-cdp.js",
@@ -27,6 +30,15 @@
     "test:core": "node scripts/test/core-flows-test.js",
     "test:core:screenshots": "node scripts/test/core-flows-test.js --screenshots",
     "test:all": "node scripts/test/core-flows-test.js && node scripts/test/tutorial-test.js",
+    "test:comprehensive": "node scripts/test/comprehensive-test.js",
+    "test:comprehensive:screenshots": "node scripts/test/comprehensive-test.js --screenshots",
+    "test:visual": "node scripts/test/visual-regression-test.js",
+    "test:visual:update": "node scripts/test/visual-regression-test.js --update",
+    "test:accessibility": "node scripts/test/accessibility-test.js",
+    "test:performance": "node scripts/test/performance-test.js",
+    "test:full": "node scripts/test/comprehensive-test.js && node scripts/test/tutorial-test.js && node scripts/test/accessibility-test.js && node scripts/test/performance-test.js",
+    "dev:inspector": "node scripts/test/cdp-inspector.js",
+    "dev:recorder": "node scripts/test/cdp-recorder.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
@@ -58,6 +70,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
+    "vitest": "^4.0.18",
     "ws": "^8.19.0"
   },
   "build": {
@@ -110,6 +123,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/typography": "^0.5.19",
     "@uiw/react-codemirror": "^4.25.4",
     "@xterm/addon-fit": "^0.11.0",
@@ -123,6 +137,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
+    "smol-toml": "^1.6.0",
     "tailwind-merge": "^3.4.0"
   }
 }

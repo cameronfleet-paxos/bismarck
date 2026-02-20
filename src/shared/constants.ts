@@ -1,4 +1,4 @@
-import type { ThemeName, ThemeColors } from './types'
+import type { ThemeName, ThemeColors, AgentProvider } from './types'
 
 // Famous German figure icons for agents
 // Mix of iconic historical figures and modern pop-culture personalities
@@ -72,4 +72,10 @@ export const themes: Record<ThemeName, ThemeColors> = {
   teal: { bg: '#0f2828', fg: '#ffffff' },
   orange: { bg: '#332814', fg: '#ffffff' },
   pink: { bg: '#33141e', fg: '#ffffff' },
+}
+
+// Human-readable display names for agent providers
+export const agentProviderNames: Record<AgentProvider, string> = {
+  claude: 'Claude Code',
+  codex: 'OpenAI Codex',
 }

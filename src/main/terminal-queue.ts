@@ -18,7 +18,6 @@ interface QueuedTerminal {
   options?: {
     initialPrompt?: string
     claudeFlags?: string
-    autoAcceptMode?: boolean
   }
   resolve: (terminalId: string) => void
   reject: (error: Error) => void
@@ -99,7 +98,6 @@ async function spawnTerminal(item: QueuedTerminal): Promise<void> {
       item.mainWindow,
       item.options?.initialPrompt,
       item.options?.claudeFlags,
-      item.options?.autoAcceptMode
     )
     endTimer(`agent:spawn-terminal:${item.workspaceId}`)
     item.resolve(terminalId)
@@ -120,7 +118,6 @@ export function queueTerminalCreation(
   options?: {
     initialPrompt?: string
     claudeFlags?: string
-    autoAcceptMode?: boolean
   }
 ): Promise<string> {
   return new Promise((resolve, reject) => {

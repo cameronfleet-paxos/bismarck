@@ -29,6 +29,7 @@ import {
   extractTextContent,
 } from '../stream-parser'
 import { isProxyRunning, getProxyConfig } from '../tool-proxy'
+import { generateToolWrappers, cleanupToolWrappers } from '../wrapper-generator'
 import { getGitHubToken } from '../settings-manager'
 import { writeCrashLog } from '../crash-logger'
 import { startTimer, endTimer, milestone } from '../startup-benchmark'
@@ -56,6 +57,7 @@ export interface HeadlessAgentOptions {
   useEntrypoint?: boolean // If true, use image's entrypoint instead of claude command (for mock images)
   sharedCacheDir?: string // Host path to shared Go build cache (per-repo)
   sharedModCacheDir?: string // Host path to shared Go module cache (per-repo)
+  pnpmStoreDir?: string // Host path to shared pnpm store
   planOutputDir?: string // Host path to mount as /plan-output (writable, for plan file capture)
 }
 
@@ -91,6 +93,8 @@ export class HeadlessAgent extends EventEmitter {
   private options: HeadlessAgentOptions | null = null
   private events: StreamEvent[] = []
   private startTime: number = 0
+  private useStreamJsonInput: boolean = false
+  private wrapperContainerId: string | null = null
 
   constructor() {
     super()
@@ -144,6 +148,13 @@ export class HeadlessAgent extends EventEmitter {
       // Retrieve GitHub token from settings so containers can access private registries
       const githubToken = await getGitHubToken()
 
+      // Use stream-json input mode to enable nudges (multi-turn messaging)
+      this.useStreamJsonInput = !options.useEntrypoint
+
+      // Generate tool wrapper scripts for custom proxied tools
+      this.wrapperContainerId = options.taskId || `agent-${Date.now()}`
+      const wrapperDir = await generateToolWrappers(this.wrapperContainerId)
+
       // Build container config
       const containerConfig: ContainerConfig = {
         image: options.image || getDefaultImage(),
@@ -158,15 +169,29 @@ export class HeadlessAgent extends EventEmitter {
           BISMARCK_TASK_ID: options.taskId || '',
         },
         useEntrypoint: options.useEntrypoint,
+        inputMode: this.useStreamJsonInput ? 'stream-json' : undefined,
         sharedCacheDir: options.sharedCacheDir,
         sharedModCacheDir: options.sharedModCacheDir,
+        pnpmStoreDir: options.pnpmStoreDir,
         planOutputDir: options.planOutputDir,
+        wrapperDir: wrapperDir || undefined,
       }
 
       // Spawn container
       startTimer(`agent:container-spawn:${taskLabel}`, 'agent')
       this.container = await spawnContainerAgent(containerConfig)
       endTimer(`agent:container-spawn:${taskLabel}`)
+
+      // For stream-json input mode, send the initial prompt via stdin
+      if (this.useStreamJsonInput && this.container.stdin) {
+        const initialMessage = JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: options.prompt },
+        })
+        this.container.stdin.write(initialMessage + '\n')
+        logger.debug('agent', 'Sent initial prompt via stream-json stdin', this.getLogContext())
+      }
+
       this.setStatus('running')
 
       // Set up stream parser
@@ -269,6 +294,35 @@ export class HeadlessAgent extends EventEmitter {
     logger.info('agent', 'HeadlessAgent.stop() finished', logCtx, { finalStatus: this.status })
   }
 
+  /**
+   * Send a nudge message to the running agent via stdin.
+   * Uses the stream-json protocol to inject a user message.
+   */
+  nudge(message: string): boolean {
+    if (this.status !== 'running') {
+      logger.warn('agent', `Cannot nudge agent in status: ${this.status}`, this.getLogContext())
+      return false
+    }
+
+    if (!this.useStreamJsonInput || !this.container?.stdin) {
+      logger.warn('agent', 'Cannot nudge: stream-json input not available', this.getLogContext())
+      return false
+    }
+
+    try {
+      const nudgeMessage = JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: message },
+      })
+      this.container.stdin.write(nudgeMessage + '\n')
+      logger.info('agent', `Nudge sent (${message.length} chars)`, this.getLogContext())
+      return true
+    } catch (error) {
+      logger.error('agent', 'Failed to send nudge', this.getLogContext(), { error: String(error) })
+      return false
+    }
+  }
+
   private setStatus(status: HeadlessAgentStatus): void {
     this.status = status
     this.emit('status', status)
@@ -325,6 +379,17 @@ export class HeadlessAgent extends EventEmitter {
         duration_ms: resultEvent.duration_ms || Date.now() - this.startTime,
       }
       this.emit('result_event', result)
+
+      // In stream-json mode, the container stays alive waiting for more stdin input.
+      // Close stdin so the container can exit gracefully.
+      if (this.useStreamJsonInput && this.container?.stdin) {
+        logger.info('agent', 'Closing stdin after result event (stream-json mode)', this.getLogContext())
+        try {
+          this.container.stdin.end()
+        } catch (err) {
+          logger.debug('agent', 'Error closing stdin', this.getLogContext(), { error: String(err) })
+        }
+      }
     })
   }
 
@@ -341,6 +406,13 @@ export class HeadlessAgent extends EventEmitter {
 
   private handleContainerExit(exitCode: number): void {
     const duration = Date.now() - this.startTime
+
+    // Clean up tool wrapper scripts
+    if (this.wrapperContainerId) {
+      cleanupToolWrappers(this.wrapperContainerId).catch((err) => {
+        logger.debug('agent', 'Failed to clean up tool wrappers', this.getLogContext(), { error: String(err) })
+      })
+    }
 
     logger.info('agent', `Container exited with code ${exitCode} after ${duration}ms`, this.getLogContext(), {
       eventCount: this.events.length,

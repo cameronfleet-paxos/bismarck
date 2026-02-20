@@ -234,7 +234,7 @@ export async function requestFollowUps(planId: string): Promise<Plan | null> {
   // Find or create the plan's tab
   let tabId = plan.orchestratorTabId
   if (!tabId) {
-    const newTab = createTab(`📋 ${plan.title.substring(0, 15)}`, { isPlanTab: true, planId: plan.id })
+    const newTab = createTab(`📋 ${plan.title.substring(0, 15)}`, { isDedicatedTab: true, planId: plan.id })
     tabId = newTab.id
     plan.orchestratorTabId = tabId
     await savePlan(plan)

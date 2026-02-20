@@ -165,6 +165,22 @@ export function getRepoModCacheDir(repoName: string): string {
   return path.join(getConfigDir(), 'repos', repoName, '.gomodcache')
 }
 
+export function getRepoPnpmStoreDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.pnpm-store')
+}
+
+/**
+ * Resolve the pnpm store path to mount into containers.
+ * If user configured a path, use that. Otherwise auto-detect via `pnpm store path`.
+ * Returns null if pnpm store sharing is disabled or no path can be determined.
+ */
+export async function resolvePnpmStorePath(settings: { docker: { pnpmStore?: { enabled: boolean; path: string | null } } }): Promise<string | null> {
+  if (!settings.docker.pnpmStore?.enabled) return null
+  if (settings.docker.pnpmStore.path) return settings.docker.pnpmStore.path
+  const { detectPnpmStorePath } = await import('./pnpm-detect')
+  return detectPnpmStorePath()
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [
@@ -352,6 +368,14 @@ export function loadState(): AppState {
     if (!state.preferences.keyboardShortcuts) {
       state.preferences.keyboardShortcuts = getDefaultKeyboardShortcuts()
       needsSave = true
+    }
+    // Migration: rename isPlanTab → isDedicatedTab on existing tabs
+    for (const tab of state.tabs) {
+      if ('isPlanTab' in tab) {
+        (tab as any).isDedicatedTab = (tab as any).isPlanTab
+        delete (tab as any).isPlanTab
+        needsSave = true
+      }
     }
     // Persist migrations
     if (needsSave) {
