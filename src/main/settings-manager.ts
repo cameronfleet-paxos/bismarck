@@ -8,7 +8,7 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
-import type { CustomizablePromptType } from '../shared/types'
+import type { CustomizablePromptType, AgentProvider } from '../shared/types'
 
 const OFFICIAL_IMAGE_REPO = 'bismarckapp/bismarck-agent'
 
@@ -31,6 +31,8 @@ export interface ProxiedTool {
   hostPath: string       // Host command path, e.g., "/usr/local/bin/npm"
   description?: string
   enabled: boolean       // Whether the tool is available to agents
+  promptHint?: string    // Usage hint for agent prompts (e.g., "npm install, npm test")
+  builtIn?: boolean      // true for git/gh/bd - cannot be removed by user
   authCheck?: {
     command: string[]        // e.g. ['bb', 'login', '--check'] — exit 0=valid, 1=needs reauth
     reauthHint: string       // e.g. 'Run `bb login --browser` in your terminal'
@@ -67,6 +69,10 @@ export interface AppSettings {
     }
     sharedBuildCache: {
       enabled: boolean     // Enable shared Go build cache across agents (per-repo)
+    }
+    pnpmStore: {
+      enabled: boolean     // Enable pnpm store sharing to containers
+      path: string | null  // Override path (null = auto-detect via `pnpm store path`)
     }
     imageDigests: Record<string, string>     // { "image:tag": "sha256:abc..." } - tracks pulled digests
     upstreamTemplateDigest: string | null    // last known digest of official image template
@@ -113,6 +119,8 @@ export interface AppSettings {
   _internal: {
     lastLogPurgeVersion: string | null  // Track one-time log purges across upgrades
   }
+  // Agent provider default (which CLI new manual agents use)
+  defaultProvider?: AgentProvider
 }
 
 /**
@@ -164,6 +172,7 @@ export function getDefaultSettings(): AppSettings {
           hostPath: '/usr/bin/git',
           description: 'Git version control',
           enabled: true,
+          builtIn: true,
         },
         {
           id: 'gh',
@@ -171,6 +180,7 @@ export function getDefaultSettings(): AppSettings {
           hostPath: '/usr/local/bin/gh',
           description: 'GitHub CLI',
           enabled: true,
+          builtIn: true,
         },
         {
           id: 'bd',
@@ -178,13 +188,7 @@ export function getDefaultSettings(): AppSettings {
           hostPath: '/usr/local/bin/bd',
           description: 'Beads task manager',
           enabled: true,
-        },
-        {
-          id: 'bb',
-          name: 'bb',
-          hostPath: '/usr/local/bin/bb',
-          description: 'BuildBuddy CLI',
-          enabled: false,
+          builtIn: true,
         },
       ],
       sshAgent: {
@@ -196,6 +200,10 @@ export function getDefaultSettings(): AppSettings {
       },
       sharedBuildCache: {
         enabled: true,   // Share Go build cache across agents per-repo
+      },
+      pnpmStore: {
+        enabled: true,   // Share pnpm store across agents by default
+        path: null,      // Auto-detect via `pnpm store path`
       },
       imageDigests: {},
       upstreamTemplateDigest: null,
@@ -242,6 +250,7 @@ export function getDefaultSettings(): AppSettings {
     _internal: {
       lastLogPurgeVersion: null,
     },
+    defaultProvider: 'claude',
   }
 }
 
@@ -287,6 +296,10 @@ export async function loadSettings(): Promise<AppSettings> {
         sharedBuildCache: {
           ...defaults.docker.sharedBuildCache,
           ...(loaded.docker?.sharedBuildCache || {}),
+        },
+        pnpmStore: {
+          ...defaults.docker.pnpmStore,
+          ...(loaded.docker?.pnpmStore || {}),
         },
         imageDigests: {
           ...defaults.docker.imageDigests,
@@ -351,6 +364,23 @@ export async function loadSettings(): Promise<AppSettings> {
       delete bbTool.authCheck
       needsMigration = true
     }
+
+    // Migration: Set builtIn flag on default tools
+    const builtInNames = new Set(['git', 'gh', 'bd'])
+    for (const tool of merged.docker.proxiedTools) {
+      if (builtInNames.has(tool.name) && !tool.builtIn) {
+        tool.builtIn = true
+        needsMigration = true
+      }
+    }
+
+    // Migration: Convert bb from builtIn to custom tool
+    const bbToolMigrate = merged.docker.proxiedTools.find(t => t.name === 'bb' && t.builtIn)
+    if (bbToolMigrate) {
+      delete bbToolMigrate.builtIn
+      needsMigration = true
+    }
+
     if (oldPlaybox?.bismarckMode === true) {
       merged.playbox.personaMode = 'bismarck'
       merged.playbox.customPersonaPrompt = null
@@ -467,6 +497,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
         ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
         ...(updates.docker?.sharedBuildCache || {}),
       },
+      pnpmStore: {
+        ...(currentSettings.docker.pnpmStore || defaults.docker.pnpmStore),
+        ...(updates.docker?.pnpmStore || {}),
+      },
       imageDigests: {
         ...(currentSettings.docker.imageDigests || defaults.docker.imageDigests),
         ...(updates.docker?.imageDigests || {}),
@@ -531,6 +565,13 @@ export async function getSettings(): Promise<AppSettings> {
  */
 export async function addProxiedTool(tool: Omit<ProxiedTool, 'id'>): Promise<ProxiedTool> {
   const settings = await loadSettings()
+
+  // Validate name uniqueness
+  const existingNames = new Set(settings.docker.proxiedTools.map(t => t.name))
+  if (existingNames.has(tool.name)) {
+    throw new Error(`A proxied tool named '${tool.name}' already exists`)
+  }
+
   const newTool: ProxiedTool = {
     id: generateToolId(),
     ...tool,
@@ -568,6 +609,13 @@ export async function updateProxiedTool(
  */
 export async function removeProxiedTool(id: string): Promise<boolean> {
   const settings = await loadSettings()
+
+  // Prevent removing built-in tools
+  const tool = settings.docker.proxiedTools.find((t) => t.id === id)
+  if (tool?.builtIn) {
+    throw new Error(`Cannot remove built-in tool '${tool.name}'`)
+  }
+
   const initialLength = settings.docker.proxiedTools.length
   settings.docker.proxiedTools = settings.docker.proxiedTools.filter((t) => t.id !== id)
 
@@ -700,6 +748,19 @@ export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enab
     ...cacheSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Update Docker pnpm store settings
+ */
+export async function updateDockerPnpmStoreSettings(settings: { enabled?: boolean; path?: string | null }): Promise<void> {
+  const current = await loadSettings()
+  const defaults = getDefaultSettings()
+  current.docker.pnpmStore = {
+    ...(current.docker.pnpmStore || defaults.docker.pnpmStore),
+    ...settings,
+  }
+  await saveSettings(current)
 }
 
 /**

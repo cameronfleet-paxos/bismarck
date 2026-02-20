@@ -74,7 +74,7 @@ export async function startDiscussion(planId: string, referenceAgentId: string):
   plan.updatedAt = new Date().toISOString()
 
   // Create a dedicated tab for the discussion
-  const discussionTab = createTab(`💬 ${plan.title.substring(0, 15)}`, { isPlanTab: true, planId: plan.id })
+  const discussionTab = createTab(`💬 ${plan.title.substring(0, 15)}`, { isDedicatedTab: true, planId: plan.id })
   plan.orchestratorTabId = discussionTab.id
 
   await savePlan(plan)

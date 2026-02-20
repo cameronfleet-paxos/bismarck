@@ -165,6 +165,22 @@ export function getRepoModCacheDir(repoName: string): string {
   return path.join(getConfigDir(), 'repos', repoName, '.gomodcache')
 }
 
+export function getRepoPnpmStoreDir(repoName: string): string {
+  return path.join(getConfigDir(), 'repos', repoName, '.pnpm-store')
+}
+
+/**
+ * Resolve the pnpm store path to mount into containers.
+ * If user configured a path, use that. Otherwise auto-detect via `pnpm store path`.
+ * Returns null if pnpm store sharing is disabled or no path can be determined.
+ */
+export async function resolvePnpmStorePath(settings: { docker: { pnpmStore?: { enabled: boolean; path: string | null } } }): Promise<string | null> {
+  if (!settings.docker.pnpmStore?.enabled) return null
+  if (settings.docker.pnpmStore.path) return settings.docker.pnpmStore.path
+  const { detectPnpmStorePath } = await import('./pnpm-detect')
+  return detectPnpmStorePath()
+}
+
 export function ensureConfigDirExists(): void {
   const configDir = getConfigDir()
   const dirs = [
@@ -176,7 +192,7 @@ export function ensureConfigDirExists(): void {
 
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     }
   }
 
@@ -231,10 +247,10 @@ export function getDefaultPreferences(): AppPreferences {
 }
 
 // Atomic write to prevent corruption
-export function writeConfigAtomic(filePath: string, data: unknown | string): void {
+export function writeConfigAtomic(filePath: string, data: unknown | string, mode?: number): void {
   const tempPath = `${filePath}.tmp`
   const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-  fs.writeFileSync(tempPath, content)
+  fs.writeFileSync(tempPath, content, { mode: mode ?? 0o644 })
   fs.renameSync(tempPath, filePath)
 }
 
@@ -352,6 +368,14 @@ export function loadState(): AppState {
     if (!state.preferences.keyboardShortcuts) {
       state.preferences.keyboardShortcuts = getDefaultKeyboardShortcuts()
       needsSave = true
+    }
+    // Migration: rename isPlanTab → isDedicatedTab on existing tabs
+    for (const tab of state.tabs) {
+      if ('isPlanTab' in tab) {
+        (tab as any).isDedicatedTab = (tab as any).isPlanTab
+        delete (tab as any).isPlanTab
+        needsSave = true
+      }
     }
     // Persist migrations
     if (needsSave) {
@@ -492,7 +516,7 @@ export function setClaudeOAuthToken(token: string): void {
     token,
     createdAt: new Date().toISOString(),
   }
-  writeConfigAtomic(tokenPath, data)
+  writeConfigAtomic(tokenPath, data, 0o600)
 }
 
 /**
@@ -542,7 +566,7 @@ export function setConfiguredGitHubToken(token: string): void {
     token,
     createdAt: new Date().toISOString(),
   }
-  writeConfigAtomic(tokenPath, data)
+  writeConfigAtomic(tokenPath, data, 0o600)
 }
 
 /**

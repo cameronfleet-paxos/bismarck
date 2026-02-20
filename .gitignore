@@ -9,3 +9,6 @@ dist/
 .claude/ralph-loop.local.md
 CLAUDE.local.md
 .beads/daemon-error
+test-screenshots/
+test-reports/
+.idea

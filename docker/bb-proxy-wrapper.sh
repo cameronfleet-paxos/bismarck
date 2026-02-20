@@ -16,13 +16,14 @@ PROXY_URL="${TOOL_PROXY_URL:-http://host.docker.internal:9847}"
 HOST_CWD="${BISMARCK_HOST_WORKTREE_PATH:-}"
 
 # Build JSON payload with all arguments
-ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+ARGS_JSON=$(printf '%s\0' "$@" | jq -Rs 'rtrimstr("\u0000") | split("\u0000")')
 
-# Build request body
+# Build JSON payload safely using jq (avoids shell injection via variable values)
 if [ -n "$HOST_CWD" ]; then
-  BODY="{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_CWD}\"}"
+  BODY=$(jq -n --argjson args "$ARGS_JSON" --arg cwd "$HOST_CWD" \
+    '{args: $args, cwd: $cwd}')
 else
-  BODY="{\"args\": ${ARGS_JSON}}"
+  BODY=$(jq -n --argjson args "$ARGS_JSON" '{args: $args}')
 fi
 
 # Build auth header if token is available

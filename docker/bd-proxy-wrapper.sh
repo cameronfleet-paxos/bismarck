@@ -26,7 +26,11 @@ fi
 
 # Build JSON payload with all arguments
 # Note: We pass args as-is; the proxy will add --sandbox automatically
-ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+ARGS_JSON=$(printf '%s\0' "$@" | jq -Rs 'rtrimstr("\u0000") | split("\u0000")')
+
+# Build JSON payload safely using jq (avoids shell injection via variable values)
+JSON_PAYLOAD=$(jq -n --argjson args "$ARGS_JSON" --arg planId "$PLAN_ID" \
+  '{args: $args, planId: $planId}')
 
 # Build auth header if token is available
 AUTH_HEADER=()
@@ -39,7 +43,7 @@ RESPONSE=$(curl -s -X POST "${PROXY_URL}/bd" \
   -H "Content-Type: application/json" \
   -H "X-Bismarck-Plan-Id: ${PLAN_ID}" \
   "${AUTH_HEADER[@]}" \
-  -d "{\"args\": ${ARGS_JSON}, \"planId\": \"${PLAN_ID}\"}")
+  -d "$JSON_PAYLOAD")
 
 # Extract fields from response
 SUCCESS=$(echo "$RESPONSE" | jq -r '.success')

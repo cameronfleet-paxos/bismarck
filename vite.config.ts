@@ -18,4 +18,7 @@ export default defineConfig({
   server: {
     port: parseInt(process.env.VITE_PORT || '5173', 10),
   },
+  test: {
+    include: ['src/**/*.test.ts'],
+  },
 })

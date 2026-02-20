@@ -884,9 +884,9 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   }
 
   // NEW: Create plan tab BEFORE saving the plan
-  const planTab = createTab('Mock Plan', { isPlanTab: true })
+  const planTab = createTab('Mock Plan', { isDedicatedTab: true })
   bismarckPlan.orchestratorTabId = planTab.id
-  devLog('[DevHarness] Created plan tab:', planTab.id, 'isPlanTab:', planTab.isPlanTab)
+  devLog('[DevHarness] Created plan tab:', planTab.id, 'isDedicatedTab:', planTab.isDedicatedTab)
 
   // NEW: Save plan so renderer can find it
   savePlan(bismarckPlan)
@@ -903,7 +903,7 @@ export async function runMockFlow(options?: Partial<MockFlowOptions>): Promise<M
   // THEN emit state update so renderer knows about the new tab
   const state = getState()
   mainWindow?.webContents.send('state-update', state)
-  devLog('[DevHarness] Emitted state-update with tabs:', state.tabs.map(t => ({ id: t.id, name: t.name, isPlanTab: t.isPlanTab })))
+  devLog('[DevHarness] Emitted state-update with tabs:', state.tabs.map(t => ({ id: t.id, name: t.name, isDedicatedTab: t.isDedicatedTab })))
 
   // Small delay to let renderer process state updates before starting agents
   await new Promise(resolve => setTimeout(resolve, 100))

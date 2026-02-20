@@ -1,9 +1,10 @@
 import './index.css'
 import './electron.d.ts'
-import { useState, useEffect, useCallback, useRef, useLayoutEffect, ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, ReactNode } from 'react'
 import { benchmarkStartTime, sendTiming, sendMilestone } from './main'
-import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare } from 'lucide-react'
+import { Plus, ChevronRight, ChevronLeft, Settings, Check, X, Maximize2, Minimize2, ListTodo, Container, CheckCircle2, FileText, Play, Pencil, Eye, GitBranch, GitCommitHorizontal, GitCompareArrows, Loader2, RotateCcw, ArrowUpCircle, Users, TerminalSquare, Copy } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent } from '@/renderer/components/ui/tooltip'
 import { devLog } from './utils/dev-log'
 import {
   Dialog,
@@ -28,6 +29,7 @@ import { DevConsole } from '@/renderer/components/DevConsole'
 import type { UpdateStatus } from '@/renderer/electron.d'
 import { CommandSearch } from '@/renderer/components/CommandSearch'
 import { PlanAgentGroup } from '@/renderer/components/PlanAgentGroup'
+import { SidebarAgentCard } from '@/renderer/components/SidebarAgentCard'
 import { CollapsedPlanGroup } from '@/renderer/components/CollapsedPlanGroup'
 import { SpawningPlaceholder } from '@/renderer/components/SpawningPlaceholder'
 import { PromptViewerModal } from '@/renderer/components/PromptViewerModal'
@@ -39,6 +41,9 @@ import { SetupWizard } from '@/renderer/components/SetupWizard'
 import { TutorialProvider, useTutorial } from '@/renderer/components/tutorial'
 import type { TutorialAction } from '@/renderer/components/tutorial'
 import { DiffOverlay } from '@/renderer/components/DiffOverlay'
+import { WorkflowViewerModal } from '@/renderer/components/WorkflowViewerModal'
+import type { NodeStatus } from '@/renderer/components/workflow/WorkflowStatusViewer'
+import type { WorkflowGraph } from '@/shared/cron-types'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
 import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
@@ -128,6 +133,45 @@ function TutorialTrigger({ shouldStart, onTriggered }: { shouldStart: boolean; o
   return null
 }
 
+function DockerBadge({ containerName }: { containerName?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <TooltipProvider delayDuration={100}>
+      <TooltipRoot disableHoverableContent={false}>
+        <TooltipTrigger asChild>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.electronAPI.openDockerDesktop()
+            }}
+            className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+          >
+            <Container className="h-3 w-3" />
+            <span>Docker</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <div className="flex items-center gap-2">
+            <span className="font-mono">{containerName}</span>
+            <button
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigator.clipboard.writeText(containerName || '')
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+              className="p-0.5 rounded hover:bg-muted transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </TooltipContent>
+      </TooltipRoot>
+    </TooltipProvider>
+  )
+}
+
 function App() {
   // View routing
   const [currentView, setCurrentView] = useState<AppView>('main')
@@ -167,6 +211,16 @@ function App() {
   const [plainTerminals, setPlainTerminals] = useState<Map<string, PlainTerminal>>(new Map())
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null)
   const [editingTerminalName, setEditingTerminalName] = useState('')
+
+  // Cron workflow status viewer state
+  const [cronRunStatuses, setCronRunStatuses] = useState<Map<string, {
+    jobId: string
+    runId: string
+    workflowGraph: WorkflowGraph
+    nodeStatuses: Map<string, NodeStatus>
+    jobName: string
+  }>>(new Map())
+  const [workflowViewerTabId, setWorkflowViewerTabId] = useState<string | null>(null)
 
   // Left sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -1294,6 +1348,66 @@ function App() {
       setCommandSearchOpen(true)
     })
 
+    // Cron job workflow status events
+    // Buffer for node updates that arrive before cron-job-started has been processed
+    const cronNodeUpdateBuffer: Array<{ jobId: string; runId: string; nodeId: string; status: string }> = []
+    const cronStartedRuns = new Set<string>() // Track which runIds have been fully initialized
+
+    window.electronAPI?.onCronJobStarted?.((data: { jobId: string; runId: string; tabId: string }) => {
+      devLog('[Renderer] Received cron-job-started', data)
+      // Fetch the workflow graph and initialize node statuses
+      window.electronAPI?.getCronJob(data.jobId).then((job) => {
+        if (job) {
+          const nodeStatuses = new Map<string, NodeStatus>()
+          for (const node of job.workflowGraph.nodes) {
+            nodeStatuses.set(node.id, 'pending')
+          }
+          // Apply any buffered node updates for this run
+          const buffered = cronNodeUpdateBuffer.filter(u => u.runId === data.runId)
+          for (const update of buffered) {
+            nodeStatuses.set(update.nodeId, update.status as NodeStatus)
+          }
+          cronStartedRuns.add(data.runId)
+          setCronRunStatuses((prev) => {
+            const updated = new Map(prev)
+            updated.set(data.tabId, {
+              jobId: data.jobId,
+              runId: data.runId,
+              workflowGraph: job.workflowGraph,
+              nodeStatuses,
+              jobName: job.name,
+            })
+            return updated
+          })
+        }
+      })
+    })
+
+    window.electronAPI?.onCronJobNodeUpdate?.((data: { jobId: string; runId: string; nodeId: string; status: string }) => {
+      devLog('[Renderer] Received cron-job-node-update', data)
+      // If the run hasn't been initialized yet, buffer the update
+      if (!cronStartedRuns.has(data.runId)) {
+        cronNodeUpdateBuffer.push(data)
+      }
+      setCronRunStatuses((prev) => {
+        const updated = new Map(prev)
+        for (const [tabId, entry] of updated) {
+          if (entry.jobId === data.jobId && entry.runId === data.runId) {
+            const newStatuses = new Map(entry.nodeStatuses)
+            newStatuses.set(data.nodeId, data.status as NodeStatus)
+            updated.set(tabId, { ...entry, nodeStatuses: newStatuses })
+            break
+          }
+        }
+        return updated
+      })
+    })
+
+    window.electronAPI?.onCronJobCompleted?.((data: { jobId: string; runId: string; status: string }) => {
+      devLog('[Renderer] Received cron-job-completed', data)
+      // Keep final state - don't clean up so user can still view
+    })
+
     // Terminal queue status for boot progress indicator
     window.electronAPI?.onTerminalQueueStatus?.((status) => {
       setTerminalQueueStatus({ queued: status.queued, active: status.active })
@@ -1450,8 +1564,8 @@ function App() {
   // Handle sidebar agent reorder via drag-and-drop
   const handleSidebarAgentReorder = async (draggedId: string, targetId: string) => {
     // Get standalone agents only (plan agents shouldn't be reordered this way)
-    const { standaloneAgents } = groupAgentsByPlan()
-    const currentOrder = standaloneAgents.map(a => a.id)
+    const { standaloneAgents } = agentsByPlan
+    const currentOrder = standaloneAgents.map((a: Agent) => a.id)
 
     const dragIndex = currentOrder.indexOf(draggedId)
     const targetIndex = currentOrder.indexOf(targetId)
@@ -1563,6 +1677,32 @@ function App() {
     }
   }
 
+  const handleNudgeAgent = async (taskId: string, message: string, isStandalone: boolean) => {
+    const success = await window.electronAPI?.nudgeHeadlessAgent?.(taskId, message, isStandalone)
+    if (success) {
+      // Inject a nudge event into the agent's event stream for display
+      const nudgeEvent = {
+        type: 'nudge' as const,
+        content: message,
+        timestamp: new Date().toISOString(),
+      }
+      // Find the agent by taskId and add the event (immutable update to avoid React StrictMode double-push)
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        for (const [key, info] of newMap) {
+          if (info.taskId === taskId || key === taskId) {
+            newMap.set(key, {
+              ...info,
+              events: [...info.events, nudgeEvent],
+            })
+            break
+          }
+        }
+        return newMap
+      })
+    }
+  }
+
   const handleStandaloneConfirmDone = async (headlessId: string) => {
     setConfirmingDoneIds(prev => new Set(prev).add(headlessId))
     try {
@@ -1639,7 +1779,7 @@ function App() {
     if (!slot) {
       // All tabs full — optimistically create a temporary tab
       const tempTabId = `tab-temp-${Date.now()}`
-      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tabNumber = tabs.filter(t => !t.isDedicatedTab && !t.isTerminalTab).length + 1
       const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
       setTabs(prev => [...prev, tempTab])
       slot = { tabId: tempTabId, position: 0 }
@@ -1774,6 +1914,69 @@ function App() {
     }
   }
 
+  // Open Docker terminal handler (interactive bash shell inside the Docker sandbox)
+  const handleStartDockerTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory: agent.directory,
+        command: ['bash'],
+        name: `Docker — ${agent.name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${agent.name}`,
+          directory: agent.directory,
+          isDocker: true,
+          containerName: result.containerName,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+
+        // Refresh state to pick up the new workspace slot and active tab
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal:', err)
+    }
+  }
+
+  // Open Docker terminal in a headless agent's worktree directory
+  const handleOpenDockerTerminalInWorktree = async (directory: string, name: string) => {
+    try {
+      const result = await window.electronAPI?.createDockerTerminal?.({
+        directory,
+        command: ['bash'],
+        name: `Docker — ${name}`,
+        mountClaudeConfig: true,
+      })
+      if (result) {
+        const plainTerminal: PlainTerminal = {
+          id: `plain-${result.terminalId}`,
+          terminalId: result.terminalId,
+          tabId: result.tabId,
+          name: `Docker — ${name}`,
+          directory,
+          isDocker: true,
+          containerName: result.containerName,
+        }
+        setPlainTerminals(prev => new Map(prev).set(plainTerminal.id, plainTerminal))
+        const state = await window.electronAPI.getState()
+        setTabs(state.tabs || [])
+        setActiveTabId(state.activeTabId)
+      }
+    } catch (err) {
+      console.error('Failed to start Docker terminal in agent worktree:', err)
+    }
+  }
+
   // Open plain terminal handler (non-agent shell terminal)
   const handleOpenTerminal = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -1843,7 +2046,7 @@ function App() {
     let ipcTabId = slot?.tabId || activeTabId || tabs[0]?.id
     if (!slot) {
       const tempTabId = `tab-temp-${Date.now()}`
-      const tabNumber = tabs.filter(t => !t.isPlanTab && !t.isTerminalTab).length + 1
+      const tabNumber = tabs.filter(t => !t.isDedicatedTab && !t.isTerminalTab).length + 1
       const tempTab: AgentTab = { id: tempTabId, name: `Tab ${tabNumber}`, workspaceIds: [] }
       setTabs(prev => [...prev, tempTab])
       slot = { tabId: tempTabId, position: 0 }
@@ -2098,14 +2301,57 @@ function App() {
     [activeTerminals]
   )
 
-  const isAgentWaiting = (agentId: string) => waitingQueue.includes(agentId)
+  const waitingSet = useMemo(() => new Set(waitingQueue), [waitingQueue])
+  const isAgentWaiting = useCallback((agentId: string) => waitingSet.has(agentId), [waitingSet])
+
+  // Stable sidebar callbacks for memoized agent cards
+  const sidebarHandleAgentClick = useCallback((agentId: string, agentTab: AgentTab | undefined) => {
+    if (activeTerminals.some((t) => t.workspaceId === agentId)) {
+      if (agentTab && agentTab.id !== activeTabId) {
+        handleTabSelect(agentTab.id)
+      }
+      handleFocusAgent(agentId)
+    }
+  }, [activeTerminals, activeTabId, handleTabSelect, handleFocusAgent])
+
+  const sidebarHandleDragStart = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId(agentId)
+  }, [])
+
+  const sidebarHandleDragEnd = useCallback(() => {
+    setSidebarDraggedAgentId(null)
+    setSidebarDropTargetAgentId(null)
+  }, [])
+
+  const sidebarHandleDragOver = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId((current) => {
+      if (current && current !== agentId) {
+        setSidebarDropTargetAgentId(agentId)
+      }
+      return current
+    })
+  }, [])
+
+  const sidebarHandleDragLeave = useCallback((agentId: string) => {
+    setSidebarDropTargetAgentId((current) => current === agentId ? null : current)
+  }, [])
+
+  const sidebarHandleDrop = useCallback((agentId: string) => {
+    setSidebarDraggedAgentId((current) => {
+      if (current && current !== agentId) {
+        handleSidebarAgentReorder(current, agentId)
+      }
+      return null
+    })
+    setSidebarDropTargetAgentId(null)
+  }, [handleSidebarAgentReorder])
 
   // Get headless agents for a plan tab
   const getHeadlessAgentsForTab = useCallback((tab: AgentTab): HeadlessAgentInfo[] => {
     const plan = plans.find((p) => p.orchestratorTabId === tab.id)
     if (!plan) {
       // Only log for plan tabs to avoid noise
-      if (tab.isPlanTab) {
+      if (tab.isDedicatedTab) {
         devLog('[Renderer] getHeadlessAgentsForTab: No plan found for tab', tab.id, 'plans:', plans.map(p => ({ id: p.id, tabId: p.orchestratorTabId })))
       }
       return []
@@ -2191,7 +2437,7 @@ function App() {
     // Search tabs starting from the active tab's position
     for (let i = startIndex; i < currentTabs.length; i++) {
       const tab = currentTabs[i]
-      if (tab.isPlanTab) continue
+      if (tab.isDedicatedTab) continue
       const claimed = claimedPositions.get(tab.id) || new Set()
       for (let pos = 0; pos < maxAgents; pos++) {
         if (!tab.workspaceIds[pos] && !claimed.has(pos)) {
@@ -2241,8 +2487,8 @@ function App() {
     devLog('[Renderer] headlessAgents state changed:', headlessAgents.size, Array.from(headlessAgents.keys()))
   }, [headlessAgents])
 
-  // Group agents by plan for sidebar display
-  const groupAgentsByPlan = useCallback(() => {
+  // Group agents by plan for sidebar display (memoized to avoid recomputation on every render)
+  const agentsByPlan = useMemo(() => {
     const planGroups: Map<string, { plan: Plan; agents: Agent[] }> = new Map()
     const standaloneAgents: Agent[] = []
 
@@ -2493,6 +2739,11 @@ function App() {
           }}
           initialSection={settingsInitialSection}
           onSectionChange={() => setSettingsInitialSection(undefined)}
+          onNavigateToTab={(tabId) => {
+            loadPreferences()
+            setCurrentView('main')
+            window.electronAPI.setActiveTab(tabId)
+          }}
         />
       )}
 
@@ -2614,6 +2865,35 @@ function App() {
         onTabDrop={handleDropOnTab}
         onTabReorder={handleTabReorder}
         closingTabIds={closingTabIds}
+        onCronWorkflowView={(tabId) => {
+          setWorkflowViewerTabId(tabId)
+          // If we don't have status data yet, fetch the graph on demand
+          if (!cronRunStatuses.has(tabId)) {
+            const tab = tabs.find(t => t.id === tabId)
+            if (tab?.cronJobId) {
+              window.electronAPI?.getCronJob(tab.cronJobId).then((job) => {
+                if (job) {
+                  const nodeStatuses = new Map<string, NodeStatus>()
+                  for (const node of job.workflowGraph.nodes) {
+                    nodeStatuses.set(node.id, 'pending')
+                  }
+                  setCronRunStatuses((prev) => {
+                    if (prev.has(tabId)) return prev // Don't overwrite if event arrived
+                    const updated = new Map(prev)
+                    updated.set(tabId, {
+                      jobId: tab.cronJobId!,
+                      runId: '',
+                      workflowGraph: job.workflowGraph,
+                      nodeStatuses,
+                      jobName: job.name,
+                    })
+                    return updated
+                  })
+                }
+              })
+            }
+          }
+        }}
       />
 
       {/* Main content */}
@@ -2660,7 +2940,7 @@ function App() {
             {sidebarCollapsed ? (
               /* Collapsed: icon-only view - horizontal layout */
               (() => {
-                const { planGroups, standaloneAgents } = groupAgentsByPlan()
+                const { planGroups, standaloneAgents } = agentsByPlan
                 return (
                   <div className="flex flex-row flex-wrap gap-2 justify-center">
                     {/* Plan groups */}
@@ -2696,7 +2976,7 @@ function App() {
                               setSidebarCollapsed(false)
                             }
                           }}
-                          className={`p-1.5 rounded-md hover:brightness-110 transition-all cursor-pointer ${
+                          className={`p-1.5 rounded-md hover:brightness-110 transition-[box-shadow,filter] duration-150 cursor-pointer ${
                             isWaiting ? 'ring-2 ring-yellow-500' : ''
                           } ${isFocused ? 'ring-2 ring-white/50' : ''}`}
                           style={{ backgroundColor: themeColors.bg }}
@@ -2712,15 +2992,7 @@ function App() {
             ) : (
               /* Expanded: full cards with plan grouping */
               (() => {
-                const { planGroups, standaloneAgents } = groupAgentsByPlan()
-                const handleAgentClick = (agentId: string, agentTab: AgentTab | undefined) => {
-                  if (activeTerminals.some((t) => t.workspaceId === agentId)) {
-                    if (agentTab && agentTab.id !== activeTabId) {
-                      handleTabSelect(agentTab.id)
-                    }
-                    handleFocusAgent(agentId)
-                  }
-                }
+                const { planGroups, standaloneAgents } = agentsByPlan
                 return (
                   <div data-tutorial="agents" className="space-y-3">
                     {/* Plan groups */}
@@ -2746,7 +3018,7 @@ function App() {
                         focusedAgentId={focusedAgentId}
                         tabs={tabs}
                         activeTabId={activeTabId}
-                        onAgentClick={handleAgentClick}
+                        onAgentClick={sidebarHandleAgentClick}
                         onEditAgent={handleEditAgent}
                         onDeleteAgent={handleDeleteAgent}
                         onCloneAgent={handleCloneAgent}
@@ -2757,67 +3029,39 @@ function App() {
                       />
                     ))}
                     {/* Standalone agents */}
-                    {standaloneAgents.map((agent) => {
-                      const agentTab = tabs.find((t) =>
-                        t.workspaceIds.includes(agent.id)
-                      )
-                      return (
-                        <AgentCard
-                          key={agent.id}
-                          agent={agent}
-                          isActive={activeTerminals.some(
-                            (t) => t.workspaceId === agent.id
-                          )}
-                          isWaiting={isAgentWaiting(agent.id)}
-                          isFocused={focusedAgentId === agent.id}
-                          tabs={tabs}
-                          currentTabId={agentTab?.id}
-                          dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
-                          onClick={() => {
-                            if (activeTerminals.some((t) => t.workspaceId === agent.id)) {
-                              if (agentTab && agentTab.id !== activeTabId) {
-                                handleTabSelect(agentTab.id)
-                              }
-                              handleFocusAgent(agent.id)
-                            }
-                          }}
-                          onEdit={() => handleEditAgent(agent)}
-                          onDelete={() => handleDeleteAgent(agent.id)}
-                          onClone={() => handleCloneAgent(agent)}
-                          onLaunch={() => handleLaunchAgent(agent.id)}
-                          onStop={() => handleStopAgent(agent.id)}
-                          onMoveToTab={(tabId) => handleMoveAgentToTab(agent.id, tabId)}
-                          onStopHeadless={() => handleStopHeadlessAgent(agent)}
-                          // Drag-and-drop for sidebar reordering
-                          draggable={true}
-                          isDragging={sidebarDraggedAgentId === agent.id}
-                          isDropTarget={sidebarDropTargetAgentId === agent.id}
-                          isEditMode={sidebarEditMode}
-                          onDragStart={() => setSidebarDraggedAgentId(agent.id)}
-                          onDragEnd={() => {
-                            setSidebarDraggedAgentId(null)
-                            setSidebarDropTargetAgentId(null)
-                          }}
-                          onDragOver={() => {
-                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
-                              setSidebarDropTargetAgentId(agent.id)
-                            }
-                          }}
-                          onDragLeave={() => {
-                            if (sidebarDropTargetAgentId === agent.id) {
-                              setSidebarDropTargetAgentId(null)
-                            }
-                          }}
-                          onDrop={() => {
-                            if (sidebarDraggedAgentId && sidebarDraggedAgentId !== agent.id) {
-                              handleSidebarAgentReorder(sidebarDraggedAgentId, agent.id)
-                            }
-                            setSidebarDraggedAgentId(null)
-                            setSidebarDropTargetAgentId(null)
-                          }}
-                        />
-                      )
-                    })}
+                    {standaloneAgents.map((agent) => (
+                      <SidebarAgentCard
+                        key={agent.id}
+                        agent={agent}
+                        isActive={activeTerminals.some(
+                          (t) => t.workspaceId === agent.id
+                        )}
+                        isWaiting={isAgentWaiting(agent.id)}
+                        isFocused={focusedAgentId === agent.id}
+                        tabs={tabs}
+                        currentTabId={undefined}
+                        dataTutorial={simulatedAttentionAgentId === agent.id ? 'waiting-agent' : undefined}
+                        activeTabId={activeTabId}
+                        isDragging={sidebarDraggedAgentId === agent.id}
+                        isDropTarget={sidebarDropTargetAgentId === agent.id}
+                        isEditMode={sidebarEditMode}
+                        sidebarDraggedAgentId={sidebarDraggedAgentId}
+                        sidebarDropTargetAgentId={sidebarDropTargetAgentId}
+                        onAgentClick={sidebarHandleAgentClick}
+                        onEditAgent={handleEditAgent}
+                        onDeleteAgent={handleDeleteAgent}
+                        onCloneAgent={handleCloneAgent}
+                        onLaunchAgent={handleLaunchAgent}
+                        onStopAgent={handleStopAgent}
+                        onMoveToTab={handleMoveAgentToTab}
+                        onStopHeadless={handleStopHeadlessAgent}
+                        onDragStart={sidebarHandleDragStart}
+                        onDragEnd={sidebarHandleDragEnd}
+                        onDragOver={sidebarHandleDragOver}
+                        onDragLeave={sidebarHandleDragLeave}
+                        onDrop={sidebarHandleDrop}
+                      />
+                    ))}
                   </div>
                 )
               })()
@@ -2852,7 +3096,7 @@ function App() {
               >
                 {tabWorkspaceIds.length === 0 && getHeadlessAgentsForTab(tab).length === 0 && getRalphLoopIterationsForTab(tab).length === 0 && getSpawningPlaceholdersForTab(tab.id).length === 0 ? (
                   (() => {
-                    const discussedPlan = tab.isPlanTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
+                    const discussedPlan = tab.isDedicatedTab && plans.find(p => p.orchestratorTabId === tab.id && p.status === 'discussed')
                     if (discussedPlan) {
                       const selectedAgentId = discussionExecuteAgent[discussedPlan.id] || ''
                       const selectedTeamMode = discussionExecuteTeamMode[discussedPlan.id] || 'top-down'
@@ -2967,14 +3211,28 @@ function App() {
                         </div>
                       )
                     }
+                    // Show spinner for cron automation tabs that are still booting up
+                    if (tab.name.startsWith('Cron:')) {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center gap-3">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                          <div>
+                            <h3 className="text-sm font-medium">Starting Cron Automation</h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Preparing agents...
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    }
                     return (
                       <div className="h-full flex items-center justify-center text-muted-foreground">
                         Launch an agent to see the terminal
                       </div>
                     )
                   })()
-                ) : tab.isPlanTab ? (
-                  // Scrollable 2-column grid for plan tabs (unlimited agents)
+                ) : tab.isDedicatedTab ? (
+                  // Scrollable 2-column grid for dedicated tabs (unlimited agents)
                   // Use CSS grid with fixed row heights that match the regular 2x2 layout
                   <div
                     className="h-full overflow-y-auto grid gap-2 p-1 relative"
@@ -3087,6 +3345,7 @@ function App() {
                                 terminalId={terminal.terminalId}
                                 theme={agent.theme}
                                 isBooting={!bootedTerminals.has(terminal.terminalId)}
+                                provider={agent.provider}
                                 isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                                 searchOpen={terminalSearchAgentId === agent.id}
                                 onSearchClose={() => setTerminalSearchAgentId(null)}
@@ -3102,6 +3361,7 @@ function App() {
                     {getHeadlessAgentsForTab(tab).map((info) => {
                       devLog('[Renderer] Rendering HeadlessTerminal for', { taskId: info.taskId, status: info.status })
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === info.id
                       const prUrl = extractPRUrl(info.events)
                       const isDragging = draggedHeadlessId === info.id
                       const isDropTarget = dropTargetHeadlessId === info.id && !isDragging
@@ -3128,10 +3388,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(info.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3207,6 +3471,7 @@ function App() {
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, false)}
                             />
                           </div>
                         </div>
@@ -3215,6 +3480,7 @@ function App() {
                     {/* Standalone headless agents (e.g., Ralph Loop iterations) */}
                     {getStandaloneHeadlessForTab(tab).map(({ agent, info }) => {
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const isDragging = draggedHeadlessId === agent.id
                       const isDropTarget = dropTargetHeadlessId === agent.id && !isDragging
                       return (
@@ -3248,10 +3514,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3329,6 +3599,7 @@ function App() {
                               isStandalone={true}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, true)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -3355,6 +3626,7 @@ function App() {
                     {getRalphLoopIterationsForTab(tab).map(({ loopState, iteration, agent }) => {
                       const uniqueId = `ralph-${loopState.id}-iter-${iteration.iterationNumber}`
                       const isExpanded = expandedAgentId === uniqueId
+                      const isFocused = focusedAgentId === uniqueId
                       const isDragging = draggedHeadlessId === uniqueId
                       const isDropTarget = dropTargetHeadlessId === uniqueId && !isDragging
                       return (
@@ -3383,10 +3655,14 @@ function App() {
                             setDropTargetHeadlessId(null)
                           }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(uniqueId)
+                          }}
                         >
                           <div
                             draggable={!expandedAgentId}
@@ -3673,6 +3949,7 @@ function App() {
                               terminalId={terminal.terminalId}
                               theme={agent.theme}
                               isBooting={!bootedTerminals.has(terminal.terminalId)}
+                              provider={agent.provider}
                               isVisible={currentView === 'main' && !!shouldShowTab && (!expandedAgentId || isExpanded)}
                               searchOpen={terminalSearchAgentId === agent.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
@@ -3705,6 +3982,7 @@ function App() {
                       if (position === -1 || position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === info.id
+                      const isFocused = focusedAgentId === agent.id
                       const prUrl = extractPRUrl(info.events)
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === agent.id
@@ -3729,8 +4007,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(agent.id)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
@@ -3815,6 +4097,7 @@ function App() {
                               isStandalone={true}
                               searchOpen={terminalSearchAgentId === info.id}
                               onSearchClose={() => setTerminalSearchAgentId(null)}
+                              onNudge={(msg) => handleNudgeAgent(info.taskId!, msg, true)}
                               onConfirmDone={() => handleStandaloneConfirmDone(info.taskId!)}
                               onStartFollowUp={() => handleStandaloneStartFollowup(info.taskId!)}
                               onRestart={() => handleStandaloneRestart(info.taskId!)}
@@ -3836,6 +4119,7 @@ function App() {
                       if (position >= gridConfig.maxAgents) return null
                       const { row: gridRow, col: gridCol } = getGridPosition(position, gridConfig.cols)
                       const isExpanded = expandedAgentId === wsId
+                      const isFocused = focusedAgentId === wsId
                       const isDropTarget = dropTargetPosition === position && isActiveTab
                       const isDragging = draggedWorkspaceId === wsId
 
@@ -3868,8 +4152,12 @@ function App() {
                             setDropTargetPosition(null)
                             setDraggedWorkspaceId(null)
                           }}
+                          onClick={() => {
+                            if (!isExpanded) handleFocusAgent(wsId)
+                          }}
                           className={`rounded-lg border overflow-hidden transition-all duration-200 ${
-                            !isExpanded && expandedAgentId ? 'invisible' : ''
+                            isFocused ? 'ring-2 ring-primary' : ''
+                          } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
                             isDragging ? 'opacity-50' : ''
                           } ${isDropTarget && !isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${
@@ -3936,6 +4224,9 @@ function App() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
+                              {pt.isDocker && (
+                                <DockerBadge containerName={pt.containerName} />
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -4214,8 +4505,8 @@ function App() {
         </Dialog>
       )}
 
-      {/* Prompt Viewer Modal */}
-      <PromptViewerModal info={promptViewerInfo} onClose={() => setPromptViewerInfo(null)} />
+      {/* Prompt Viewer Modal - resolve live info from headlessAgents map for up-to-date events */}
+      <PromptViewerModal info={promptViewerInfo ? (headlessAgents.get(promptViewerInfo.taskId || promptViewerInfo.id) || promptViewerInfo) : null} onClose={() => setPromptViewerInfo(null)} />
 
       {/* Follow-up Modal */}
       <FollowUpModal
@@ -4225,6 +4516,22 @@ function App() {
         onSubmit={executeFollowUp}
         isSubmitting={followUpInfo?.taskId ? startingFollowUpIds.has(followUpInfo.taskId) : false}
       />
+
+      {/* Cron Workflow Status Viewer Modal */}
+      {(() => {
+        const viewerData = workflowViewerTabId ? cronRunStatuses.get(workflowViewerTabId) : null
+        const viewerTab = workflowViewerTabId ? tabs.find(t => t.id === workflowViewerTabId) : null
+        return (
+          <WorkflowViewerModal
+            open={workflowViewerTabId !== null}
+            onClose={() => setWorkflowViewerTabId(null)}
+            nodes={viewerData?.workflowGraph.nodes ?? []}
+            edges={viewerData?.workflowGraph.edges ?? []}
+            nodeStatuses={viewerData?.nodeStatuses ?? new Map()}
+            jobName={viewerData?.jobName ?? viewerTab?.name ?? ''}
+          />
+        )
+      })()}
 
       {/* Plan Creator Modal (Team Mode) */}
       <PlanCreator
@@ -4271,7 +4578,21 @@ function App() {
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onOpenTerminal={handleOpenTerminal}
+        onStartDockerTerminal={handleStartDockerTerminal}
         onStartRalphLoop={handleStartRalphLoop}
+        onOpenCronAutomation={() => {
+          setSettingsInitialSection('cron-jobs')
+          setCurrentView('settings')
+        }}
+        focusedHeadlessAgent={(() => {
+          if (!focusedAgentId) return null
+          const agent = agents.find(a => a.id === focusedAgentId)
+          if (agent && (agent.isStandaloneHeadless || agent.isHeadless)) {
+            return { name: agent.name, directory: agent.directory }
+          }
+          return null
+        })()}
+        onOpenDockerTerminalInWorktree={handleOpenDockerTerminalInWorktree}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
       />
 

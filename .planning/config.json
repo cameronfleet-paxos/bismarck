@@ -1,0 +1,11 @@
+{
+  "project": "bismarck-codex-support",
+  "created": "2026-02-15",
+  "git": {
+    "commitStrategy": "atomic",
+    "autoCommit": true
+  },
+  "research": "deep",
+  "milestone": 1,
+  "modelProfile": "quality"
+}

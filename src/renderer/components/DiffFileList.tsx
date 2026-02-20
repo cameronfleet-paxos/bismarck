@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft, Undo2, List, FolderTree, ChevronRight, ChevronDown, Folder } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Pencil, Plus, Trash2, CheckCircle2, ArrowRightLeft, Undo2, List, FolderTree, ChevronRight, ChevronDown, Folder, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DiffFile } from '@/shared/types'
 
@@ -13,6 +13,33 @@ interface DiffFileListProps {
 }
 
 type ViewType = 'flat' | 'tree'
+
+function CopyPathButton({ path, className }: { path: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await navigator.clipboard.writeText(path)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }, [path])
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : `Copy path: ${path}`}
+      className={cn(
+        'p-0.5 rounded transition-all flex-shrink-0',
+        copied
+          ? 'text-green-500 opacity-100'
+          : 'opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground',
+        className
+      )}
+    >
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  )
+}
 
 const statusConfig = {
   modified: { icon: Pencil, color: 'text-yellow-500', letter: 'M', letterColor: 'text-yellow-500' },
@@ -153,6 +180,7 @@ function FileItem({
       )}
       <span className="flex-1 truncate text-foreground">{displayName}</span>
       <div className="flex items-center gap-1 text-xs flex-shrink-0">
+        <CopyPathButton path={file.path} />
         {file.additions > 0 && (
           <span className="text-green-500">+{file.additions}</span>
         )}
@@ -244,7 +272,7 @@ function TreeDirectory({
       {depth > 0 && (
         <div
           className={cn(
-            'flex items-center gap-1.5 py-1.5 text-sm cursor-pointer rounded-md',
+            'group flex items-center gap-1.5 py-1.5 text-sm cursor-pointer rounded-md',
             'hover:bg-accent/50 text-muted-foreground'
           )}
           style={{ paddingLeft: `${(depth - 1) * 16 + 12}px`, paddingRight: '12px' }}
@@ -256,7 +284,8 @@ function TreeDirectory({
             <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
           )}
           <Folder className="w-4 h-4 flex-shrink-0 text-blue-400" />
-          <span className="truncate">{node.name}</span>
+          <span className="flex-1 truncate">{node.name}</span>
+          <CopyPathButton path={node.path} />
         </div>
       )}
 

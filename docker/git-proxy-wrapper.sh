@@ -58,7 +58,11 @@ if should_use_proxy; then
 
   # Proxy git commands to the host for workspace operations
   # Build JSON payload with all arguments
-  ARGS_JSON=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+  ARGS_JSON=$(printf '%s\0' "$@" | jq -Rs 'rtrimstr("\u0000") | split("\u0000")')
+
+  # Build JSON payload safely using jq (avoids shell injection via variable values)
+  JSON_PAYLOAD=$(jq -n --argjson args "$ARGS_JSON" --arg cwd "$HOST_WORKTREE_PATH" \
+    '{args: $args, cwd: $cwd}')
 
   # Build auth header if token is available
   AUTH_HEADER=()
@@ -71,7 +75,7 @@ if should_use_proxy; then
   HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/git_response.json -X POST "${PROXY_URL}/git" \
     -H "Content-Type: application/json" \
     "${AUTH_HEADER[@]}" \
-    -d "{\"args\": ${ARGS_JSON}, \"cwd\": \"${HOST_WORKTREE_PATH}\"}" 2>/tmp/curl_error.txt)
+    -d "$JSON_PAYLOAD" 2>/tmp/curl_error.txt)
 
   CURL_EXIT=$?
 

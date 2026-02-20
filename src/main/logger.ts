@@ -482,7 +482,7 @@ export const logger = {
    * Log proxy requests
    */
   proxyRequest(
-    tool: 'gh' | 'bd' | 'git' | 'bb',
+    tool: string,
     args: string[],
     success: boolean,
     context?: LogContext,

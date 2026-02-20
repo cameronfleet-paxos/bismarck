@@ -22,6 +22,7 @@ import {
   getWorkspaces,
   getRepoCacheDir,
   getRepoModCacheDir,
+  resolvePnpmStorePath,
 } from '../config'
 import { HeadlessAgent, HeadlessAgentOptions } from './docker-agent'
 import { getOrCreateTabForWorkspaceWithPreference, addWorkspaceToTab, setActiveTab, removeActiveWorkspace, removeWorkspaceFromTab, addActiveWorkspace, createTab, deleteTab, getTabForWorkspace } from '../state-manager'
@@ -42,27 +43,7 @@ import { runPlanPhase, wrapPromptWithPlan } from '../plan-phase'
 import { queueTerminalCreation } from '../terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
 import * as fsPromises from 'fs/promises'
-
-// Word lists for fun random names
-const ADJECTIVES = [
-  'fluffy', 'happy', 'brave', 'swift', 'clever', 'gentle', 'mighty', 'calm',
-  'wild', 'eager', 'jolly', 'lucky', 'plucky', 'zesty', 'snappy', 'peppy'
-]
-
-const NOUNS = [
-  'bunny', 'panda', 'koala', 'otter', 'falcon', 'dolphin', 'fox', 'owl',
-  'tiger', 'eagle', 'wolf', 'bear', 'hawk', 'lynx', 'raven', 'seal'
-]
-
-/**
- * Generate a fun, memorable random phrase for a standalone agent
- * Format: {adjective}-{noun} (e.g., "plucky-otter")
- */
-function generateRandomPhrase(): string {
-  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
-  return `${adjective}-${noun}`
-}
+import { generateBranchSlug, generateRandomPhrase } from '../naming-utils'
 
 /**
  * Generate the display name for a standalone agent
@@ -182,13 +163,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,
@@ -244,13 +219,7 @@ ${guidance}
 
   // Build proxied tools section based on enabled tools
   const settings = await loadSettings()
-  const proxiedTools = settings.docker.proxiedTools
-  const proxiedToolsSection = buildProxiedToolsSection({
-    git: proxiedTools.find(t => t.name === 'git')?.enabled ?? true,
-    gh: proxiedTools.find(t => t.name === 'gh')?.enabled ?? true,
-    bd: proxiedTools.find(t => t.name === 'bd')?.enabled ?? true,
-    bb: proxiedTools.find(t => t.name === 'bb')?.enabled ?? false,
-  })
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
 
   const variables: PromptVariables = {
     userPrompt,
@@ -301,12 +270,12 @@ export async function startStandaloneHeadlessAgent(
   // Get default branch as base for worktree
   const baseBranch = await getDefaultBranch(repoPath)
 
-  // Generate fun random phrase for this agent (e.g., "plucky-otter")
-  const randomPhrase = generateRandomPhrase()
+  // Generate prompt-aware slug for branch name (e.g., "fix-login-session-a3f7")
+  const slug = generateBranchSlug(prompt)
 
-  // Use random phrase for branch and worktree
-  const branchName = `standalone/${repoName}-${randomPhrase}`
-  const worktreePath = getStandaloneWorktreePath(repoName, randomPhrase)
+  // Use slug for branch and worktree
+  const branchName = `bismarck-standalone/${repoName}-${slug}`
+  const worktreePath = getStandaloneWorktreePath(repoName, slug)
 
   // Ensure standalone headless directory exists
   ensureStandaloneHeadlessDir()
@@ -335,6 +304,10 @@ export async function startStandaloneHeadlessAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
+  // Resolve pnpm store path for sharing
+  const currentSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(currentSettings)
+
   // Store worktree info for cleanup
   const worktreeInfo: StandaloneWorktreeInfo = {
     path: worktreePath,
@@ -346,7 +319,7 @@ export async function startStandaloneHeadlessAgent(
   const existingWorkspaces = getWorkspaces()
   const newAgent: Agent = {
     id: workspaceId,
-    name: generateDisplayName(repoName, randomPhrase), // e.g., "bismarck: plucky-otter"
+    name: generateDisplayName(repoName, slug), // e.g., "bismarck: fix-login-session-a3f7"
     directory: worktreePath, // Use worktree path instead of reference directory
     purpose: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''),
     theme: referenceAgent.theme,
@@ -455,6 +428,7 @@ export async function startStandaloneHeadlessAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -496,6 +470,7 @@ export async function startStandaloneHeadlessAgent(
     claudeFlags: ['--model', model],
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   devLog(`[StandaloneHeadless] Starting agent with config:`, {
@@ -531,6 +506,31 @@ export async function startStandaloneHeadlessAgent(
 }
 
 /**
+ * Wait for a standalone headless agent to complete.
+ * Resolves with true if successful, false if failed.
+ */
+export function waitForStandaloneAgentCompletion(headlessId: string): Promise<boolean> {
+  const agent = standaloneHeadlessAgents.get(headlessId)
+  if (!agent) {
+    // Agent not found in active map — check if it already completed
+    const info = standaloneHeadlessAgentInfo.get(headlessId)
+    if (info && (info.status === 'completed' || info.status === 'failed')) {
+      return Promise.resolve(info.status === 'completed')
+    }
+    return Promise.resolve(false)
+  }
+
+  return new Promise<boolean>((resolve) => {
+    agent.on('complete', (result) => {
+      resolve(result.success)
+    })
+    agent.on('error', () => {
+      resolve(false)
+    })
+  })
+}
+
+/**
  * Get all standalone headless agent info
  */
 export function getStandaloneHeadlessAgents(): HeadlessAgentInfo[] {
@@ -561,6 +561,19 @@ export async function stopStandaloneHeadlessAgent(headlessId: string): Promise<v
     info.completedAt = new Date().toISOString()
     emitHeadlessAgentUpdate(info)
   }
+}
+
+/**
+ * Send a nudge message to a running standalone headless agent.
+ * Returns true if the nudge was sent successfully.
+ */
+export function nudgeStandaloneHeadlessAgent(headlessId: string, message: string): boolean {
+  const agent = standaloneHeadlessAgents.get(headlessId)
+  if (!agent) {
+    devLog('[StandaloneHeadless] nudge: agent not found:', headlessId)
+    return false
+  }
+  return agent.nudge(message)
 }
 
 /**
@@ -739,9 +752,13 @@ export async function startFollowUpAgent(
   await fsPromises.mkdir(sharedCacheDir, { recursive: true })
   await fsPromises.mkdir(sharedModCacheDir, { recursive: true })
 
-  // Extract phrase from branch (e.g., "standalone/bismarck-plucky-otter" -> "plucky-otter")
-  const branchSuffix = branch.replace('standalone/', '') // e.g., "bismarck-plucky-otter"
-  const phrase = branchSuffix.replace(`${repoName}-`, '') // e.g., "plucky-otter"
+  // Resolve pnpm store path for sharing
+  const followUpSettings = await loadSettings()
+  const pnpmStoreDir = await resolvePnpmStorePath(followUpSettings)
+
+  // Extract slug from branch (e.g., "bismarck-standalone/bismarck-fix-login-a3f7" -> "fix-login-a3f7")
+  const branchSuffix = branch.replace('bismarck-standalone/', '').replace('standalone/', '') // handle both prefixes
+  const phrase = branchSuffix.replace(`${repoName}-`, '')
 
   // Generate new headless ID
   const newHeadlessId = `standalone-headless-${Date.now()}`
@@ -876,6 +893,7 @@ export async function startFollowUpAgent(
       guidance: repository?.guidance,
       sharedCacheDir,
       sharedModCacheDir,
+      pnpmStoreDir: pnpmStoreDir || undefined,
       planOutputDir: followUpPlanOutputDir,
       enabled: true,
       onEvent: (event) => {
@@ -915,6 +933,7 @@ export async function startFollowUpAgent(
     claudeFlags: model ? ['--model', model] : undefined,
     sharedCacheDir,
     sharedModCacheDir,
+    pnpmStoreDir: pnpmStoreDir || undefined,
   }
 
   // Store model in agent info
