@@ -279,7 +279,6 @@ function App() {
 
   // Destroy agent confirmation dialog state
   const [destroyAgentTarget, setDestroyAgentTarget] = useState<{info: HeadlessAgentInfo; isStandalone: boolean} | null>(null)
-  const [isDestroyingAgent, setIsDestroyingAgent] = useState(false)
 
 
   // Prompt viewer modal state
@@ -1731,14 +1730,17 @@ function App() {
   const handleDestroyAgent = async () => {
     if (!destroyAgentTarget) return
     const { info, isStandalone } = destroyAgentTarget
-    setIsDestroyingAgent(true)
+    const taskId = info.taskId!
+    // Close modal immediately and show "Closing..." on the agent card
+    setDestroyAgentTarget(null)
+    setConfirmingDoneIds(prev => new Set(prev).add(taskId))
     try {
       // Await backend cleanup (releases slot before UI removal)
-      await window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
+      await window.electronAPI?.destroyHeadlessAgent?.(taskId, isStandalone)
       // Remove agent from UI after slot is released
       setHeadlessAgents((prev) => {
         const newMap = new Map(prev)
-        newMap.delete(info.taskId!)
+        newMap.delete(taskId)
         return newMap
       })
       // Reload agents to pick up workspace deletion
@@ -1750,8 +1752,11 @@ function App() {
       // Re-fetch correct state on error
       await loadAgents()
     } finally {
-      setIsDestroyingAgent(false)
-      setDestroyAgentTarget(null)
+      setConfirmingDoneIds(prev => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
     }
   }
 
@@ -3463,7 +3468,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: false })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
@@ -3590,7 +3595,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
@@ -4088,7 +4093,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
@@ -4488,7 +4493,7 @@ function App() {
 
       {/* Destroy Agent Confirmation Dialog */}
       {destroyAgentTarget && (
-        <Dialog open onOpenChange={(open) => !open && !isDestroyingAgent && setDestroyAgentTarget(null)}>
+        <Dialog open onOpenChange={(open) => !open && setDestroyAgentTarget(null)}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle className="text-red-400">Destroy Agent?</DialogTitle>
@@ -4503,11 +4508,11 @@ function App() {
             </ul>
             <p className="text-sm text-yellow-500">This action cannot be undone.</p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)} disabled={isDestroyingAgent}>
+              <Button variant="outline" onClick={() => setDestroyAgentTarget(null)}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDestroyAgent} disabled={isDestroyingAgent}>
-                {isDestroyingAgent ? 'Destroying…' : 'Destroy'}
+              <Button variant="destructive" onClick={handleDestroyAgent}>
+                Destroy
               </Button>
             </DialogFooter>
           </DialogContent>
