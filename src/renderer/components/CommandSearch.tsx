@@ -52,7 +52,7 @@ interface CommandSearchProps {
   activeTabId: string | null
   onSelectAgent: (agentId: string) => void
   onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => void
-  onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string) => void
+  onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string, model: 'opus' | 'sonnet') => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
   onOpenTerminal?: (agentId: string) => void
@@ -554,7 +554,7 @@ export function CommandSearch({
         return
       }
       if (pendingCommand === 'headless-discussion') {
-        onStartHeadlessDiscussion?.(selectedAgent.id, prompt.trim())
+        onStartHeadlessDiscussion?.(selectedAgent.id, prompt.trim(), model)
         onOpenChange(false)
       } else if (pendingCommand === 'ralph-loop-discussion') {
         onStartRalphLoopDiscussion?.(selectedAgent.id, prompt.trim())
@@ -700,7 +700,7 @@ export function CommandSearch({
               )}
             </div>
             <div className="flex justify-end mt-2">
-              {pendingCommand === 'headless-discussion' || pendingCommand === 'ralph-loop-discussion' ? (
+              {pendingCommand === 'ralph-loop-discussion' ? (
                 <button
                   onClick={() => handleSubmitPrompt('sonnet')}
                   disabled={!prompt.trim()}
@@ -708,6 +708,23 @@ export function CommandSearch({
                 >
                   Start Discussion
                 </button>
+              ) : pendingCommand === 'headless-discussion' ? (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => handleSubmitPrompt('sonnet')}
+                    disabled={!prompt.trim()}
+                    className="px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Discuss Sonnet
+                  </button>
+                  <button
+                    onClick={() => handleSubmitPrompt('opus')}
+                    disabled={!prompt.trim()}
+                    className="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Discuss Opus
+                  </button>
+                </div>
               ) : (
                 <div className="flex gap-1.5">
                   <button

@@ -2210,9 +2210,9 @@ function App() {
   }
 
   // Start headless discussion handler
-  const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string) => {
+  const handleStartHeadlessDiscussion = async (agentId: string, initialPrompt: string, model: 'opus' | 'sonnet' = 'sonnet') => {
     try {
-      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId, initialPrompt)
+      const result = await window.electronAPI?.startHeadlessDiscussion?.(agentId, initialPrompt, model)
       if (result) {
         // Reload agents to pick up the new discussion workspace
         await loadAgents()
