@@ -81,6 +81,8 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
   toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
   closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
+  startHeadlessSonnet: { key: 'j', modifiers: { meta: true, shift: false, alt: false } },
+  startHeadlessOpus: { key: 'j', modifiers: { meta: true, shift: true, alt: false } },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -301,6 +303,7 @@ function App() {
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+  const [commandSearchHeadlessMode, setCommandSearchHeadlessMode] = useState<'opus' | 'sonnet' | null>(null)
   const [prefillRalphLoopConfig, setPrefillRalphLoopConfig] = useState<{
     referenceAgentId: string
     prompt: string
@@ -674,7 +677,7 @@ function App() {
 
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
-    const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
+    const shortcuts = { ...defaultKeyboardShortcuts, ...preferences.keyboardShortcuts }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to return to main view from settings or close command search
@@ -812,6 +815,22 @@ function App() {
         if (focusedAgentIdRef.current) {
           window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
         }
+        return
+      }
+
+      // Start headless Sonnet agent shortcut
+      if (matchesShortcut(e, shortcuts.startHeadlessSonnet)) {
+        e.preventDefault()
+        setCommandSearchHeadlessMode('sonnet')
+        setCommandSearchOpen(true)
+        return
+      }
+
+      // Start headless Opus agent shortcut
+      if (matchesShortcut(e, shortcuts.startHeadlessOpus)) {
+        e.preventDefault()
+        setCommandSearchHeadlessMode('opus')
+        setCommandSearchOpen(true)
         return
       }
 
@@ -2306,13 +2325,15 @@ function App() {
 
   // Stable sidebar callbacks for memoized agent cards
   const sidebarHandleAgentClick = useCallback((agentId: string, agentTab: AgentTab | undefined) => {
-    if (activeTerminals.some((t) => t.workspaceId === agentId)) {
+    const isActive = activeTerminals.some((t) => t.workspaceId === agentId)
+    const isHeadless = agents.some(a => a.id === agentId && (a.isHeadless || a.isStandaloneHeadless))
+    if (isActive || isHeadless) {
       if (agentTab && agentTab.id !== activeTabId) {
         handleTabSelect(agentTab.id)
       }
       handleFocusAgent(agentId)
     }
-  }, [activeTerminals, activeTabId, handleTabSelect, handleFocusAgent])
+  }, [activeTerminals, agents, activeTabId, handleTabSelect, handleFocusAgent])
 
   const sidebarHandleDragStart = useCallback((agentId: string) => {
     setSidebarDraggedAgentId(agentId)
@@ -2957,6 +2978,7 @@ function App() {
                     {/* Standalone agents */}
                     {standaloneAgents.map((agent) => {
                       const isActive = activeTerminals.some((t) => t.workspaceId === agent.id)
+                      const isHeadless = agent.isHeadless || agent.isStandaloneHeadless
                       const isWaiting = isAgentWaiting(agent.id)
                       const isFocused = focusedAgentId === agent.id
                       const agentTab = tabs.find((t) => t.workspaceIds.includes(agent.id))
@@ -2965,7 +2987,7 @@ function App() {
                         <button
                           key={agent.id}
                           onClick={() => {
-                            if (isActive) {
+                            if (isActive || isHeadless) {
                               // Navigate to agent without expanding sidebar
                               if (agentTab && agentTab.id !== activeTabId) {
                                 handleTabSelect(agentTab.id)
@@ -3387,7 +3409,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3408,14 +3430,14 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
                             } ${!expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''}`}
                           >
-                            <div className="flex items-center gap-2">
-                              <span>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="truncate" title={`${info.agentType === 'critic' ? 'Critic' : 'Task'} ${info.taskId}`}>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3482,7 +3504,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)] relative">
+                          <div className="flex-1 min-h-0 relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme="teal"
@@ -3540,7 +3562,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3561,15 +3583,15 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
-                              <span>{agent.name}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />
+                              <span className="truncate" title={agent.name}>{agent.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3636,7 +3658,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)] relative">
+                          <div className="flex-1 min-h-0 relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
@@ -3708,7 +3730,7 @@ function App() {
                             setDraggedHeadlessId(null)
                             setDropTargetHeadlessId(null)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -3729,13 +3751,13 @@ function App() {
                               setDraggedHeadlessId(null)
                               setDropTargetHeadlessId(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              {agent && <AgentIcon icon={agent.icon} className="w-4 h-4" />}
-                              <span>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              {agent && <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />}
+                              <span className="truncate" title={agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}>{agent?.name || `Ralph: ${loopState.phrase} (iter ${iteration.iterationNumber})`}</span>
                               {/* Git Summary */}
                               {loopState.gitSummary && (
                                 <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
@@ -3748,7 +3770,7 @@ function App() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -3817,7 +3839,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)] relative">
+                          <div className="flex-1 min-h-0 relative">
                             <HeadlessTerminal
                               events={iteration.events}
                               theme={agent?.theme || 'purple'}
@@ -4091,7 +4113,7 @@ function App() {
                           onClick={() => {
                             if (!isExpanded) handleFocusAgent(agent.id)
                           }}
-                          className={`rounded-lg border overflow-hidden transition-all duration-200 ${
+                          className={`rounded-lg border overflow-hidden transition-all duration-200 flex flex-col ${
                             isFocused ? 'ring-2 ring-primary' : ''
                           } ${!isExpanded && expandedAgentId ? 'invisible' : ''
                           } ${isExpanded ? 'absolute inset-0 z-10 bg-background' : ''} ${
@@ -4108,15 +4130,15 @@ function App() {
                               setDraggedWorkspaceId(null)
                               setDropTargetPosition(null)
                             }}
-                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between ${
+                            className={`px-3 py-1.5 border-b bg-card text-sm font-medium flex items-center justify-between flex-shrink-0 ${
                               !expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <AgentIcon icon={agent.icon} className="w-4 h-4" />
-                              <span>{agent.name}</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <AgentIcon icon={agent.icon} className="w-4 h-4 flex-shrink-0" />
+                              <span className="truncate" title={agent.name}>{agent.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={() => window.electronAPI.openDockerDesktop()}
                                 className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
@@ -4188,7 +4210,7 @@ function App() {
                               </Button>
                             </div>
                           </div>
-                          <div className="h-[calc(100%-2rem)] relative">
+                          <div className="flex-1 min-h-0 relative">
                             <HeadlessTerminal
                               events={info.events}
                               theme={agent.theme}
@@ -4673,6 +4695,7 @@ function App() {
           if (!open) {
             // Clear prefill when closing
             setPrefillRalphLoopConfig(null)
+            setCommandSearchHeadlessMode(null)
           }
         }}
         agents={agents}
@@ -4702,6 +4725,7 @@ function App() {
         })()}
         onOpenDockerTerminalInWorktree={handleOpenDockerTerminalInWorktree}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
+        prefillHeadlessMode={commandSearchHeadlessMode}
       />
 
       {/* Update Available Popup (for significantly outdated versions) */}
