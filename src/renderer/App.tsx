@@ -1839,20 +1839,34 @@ function App() {
   const handleDestroyAgent = async () => {
     if (!destroyAgentTarget) return
     const { info, isStandalone } = destroyAgentTarget
-    // Close dialog immediately
+    const taskId = info.taskId!
+    // Close modal immediately and show "Closing..." on the agent card
     setDestroyAgentTarget(null)
-    // Optimistically remove agent from UI
-    setHeadlessAgents((prev) => {
-      const newMap = new Map(prev)
-      newMap.delete(info.taskId!)
-      return newMap
-    })
-    // Fire-and-forget backend cleanup
-    window.electronAPI?.destroyHeadlessAgent?.(info.taskId!, isStandalone)
-      .then(() => loadAgents())
-      .then(() => window.electronAPI.getState())
-      .then((state) => setTabs(state.tabs || []))
-      .catch(() => loadAgents()) // Re-fetch correct state on error
+    setConfirmingDoneIds(prev => new Set(prev).add(taskId))
+    try {
+      // Await backend cleanup (releases slot before UI removal)
+      await window.electronAPI?.destroyHeadlessAgent?.(taskId, isStandalone)
+      // Remove agent from UI after slot is released
+      setHeadlessAgents((prev) => {
+        const newMap = new Map(prev)
+        newMap.delete(taskId)
+        return newMap
+      })
+      // Reload agents to pick up workspace deletion
+      await loadAgents()
+      // Refresh tabs
+      const state = await window.electronAPI.getState()
+      setTabs(state.tabs || [])
+    } catch {
+      // Re-fetch correct state on error
+      await loadAgents()
+    } finally {
+      setConfirmingDoneIds(prev => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
+    }
   }
 
   // Open follow-up modal for a standalone headless agent
@@ -3599,7 +3613,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: false })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
@@ -3769,7 +3783,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
@@ -4340,7 +4354,7 @@ function App() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDestroyAgentTarget({ info, isStandalone: true })}
-                                disabled={info.status === 'starting' || info.status === 'stopping'}
+                                disabled={info.status === 'starting' || info.status === 'stopping' || confirmingDoneIds.has(info.taskId!)}
                                 className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                                 title="Destroy agent"
                               >
