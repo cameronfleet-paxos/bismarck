@@ -7,18 +7,77 @@
 import * as os from 'os'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec as execCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
+import { exec as execCallback, execFile as execFileCallback, spawn as spawnRaw, ExecOptions, SpawnOptions, ChildProcess } from 'child_process'
 import { promisify } from 'util'
 
 const execRaw = promisify(execCallback)
+const execFileRaw = promisify(execFileCallback)
+
+// Cached shell PATH - populated once at startup
+let cachedShellPath: string | null = null
+let shellPathInitialized = false
+
+/**
+ * Get the user's default shell
+ */
+function getDefaultShell(): string {
+  return process.env.SHELL || '/bin/zsh'
+}
+
+/**
+ * Initialize the shell PATH by spawning a login shell
+ * This gets the user's full PATH including nix, cabal, and other custom paths
+ * Call this once at app startup
+ */
+export async function initShellPath(): Promise<void> {
+  if (shellPathInitialized) return
+
+  try {
+    const shell = getDefaultShell()
+    // Spawn a login shell to get the PATH after all profile scripts run
+    // Use -l for login shell, -i for interactive (some tools only init in interactive)
+    // -c to run a command
+    const { stdout } = await execFileRaw(shell, ['-l', '-i', '-c', 'echo $PATH'], {
+      timeout: 5000,
+      env: { ...process.env, HOME: os.homedir() },
+    })
+    const shellPath = stdout.toString().trim()
+    if (shellPath && shellPath.length > 0) {
+      cachedShellPath = shellPath
+    }
+  } catch (err) {
+    // Failed to get shell PATH - will fall back to hardcoded paths
+    console.warn('Failed to get PATH from login shell:', err)
+  }
+  shellPathInitialized = true
+}
+
+/**
+ * Get the cached shell PATH (must call initShellPath first)
+ * Returns null if not initialized or failed to get shell PATH
+ */
+export function getShellPath(): string | null {
+  return cachedShellPath
+}
 
 /**
  * Get extended PATH that includes common user bin directories
  * This is needed because GUI apps don't inherit shell PATH
+ *
+ * Priority:
+ * 1. Cached shell PATH (from login shell, includes nix, cabal, etc.)
+ * 2. Fallback hardcoded paths (if shell PATH init failed)
+ * 3. Current process.env.PATH
  */
 export function getExtendedPath(): string {
+  // If we have the shell PATH, use it directly - it already has everything
+  if (cachedShellPath) {
+    return cachedShellPath
+  }
+
+  // Fallback: hardcoded common paths for when shell PATH init fails
   const home = os.homedir()
-  const extraPaths = [
+  const fallbackPaths = [
     // User local binaries
     `${home}/.local/bin`,
     // Cargo (Rust)
@@ -46,30 +105,18 @@ export function getExtendedPath(): string {
   ]
   const currentPath = process.env.PATH || ''
   // Prepend extra paths so they take priority, deduplicate
-  const allPaths = [...extraPaths, ...currentPath.split(':')]
+  const allPaths = [...fallbackPaths, ...currentPath.split(':')]
   return [...new Set(allPaths)].filter(Boolean).join(':')
 }
 
 /**
- * Find the full path to a binary by searching common locations
+ * Find the full path to a binary by searching PATH directories
+ * Uses the cached shell PATH if available, otherwise falls back to hardcoded paths
  * Returns null if not found
  */
 export function findBinary(name: string): string | null {
-  const home = os.homedir()
-  const searchPaths = [
-    `${home}/.local/bin`,
-    `${home}/.cargo/bin`,
-    `${home}/.asdf/shims`,
-    `${home}/.asdf/bin`,
-    `${home}/.nvm/current/bin`,
-    `${home}/.pyenv/shims`,
-    `${home}/.pyenv/bin`,
-    `${home}/go/bin`,
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/usr/bin',
-    '/bin',
-  ]
+  // Get search paths from shell PATH if available, otherwise use fallback
+  const searchPaths = getSearchPaths()
 
   for (const dir of searchPaths) {
     const fullPath = path.join(dir, name)
@@ -83,6 +130,34 @@ export function findBinary(name: string): string | null {
   }
 
   return null
+}
+
+/**
+ * Get the list of directories to search for binaries
+ * Uses cached shell PATH if available, otherwise returns fallback paths
+ */
+function getSearchPaths(): string[] {
+  // If we have the shell PATH, use it
+  if (cachedShellPath) {
+    return cachedShellPath.split(':').filter(Boolean)
+  }
+
+  // Fallback hardcoded paths
+  const home = os.homedir()
+  return [
+    `${home}/.local/bin`,
+    `${home}/.cargo/bin`,
+    `${home}/.asdf/shims`,
+    `${home}/.asdf/bin`,
+    `${home}/.nvm/current/bin`,
+    `${home}/.pyenv/shims`,
+    `${home}/.pyenv/bin`,
+    `${home}/go/bin`,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+  ]
 }
 
 /**
