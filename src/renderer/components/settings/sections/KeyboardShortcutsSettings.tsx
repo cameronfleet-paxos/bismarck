@@ -38,6 +38,8 @@ function getDefaultKeyboardShortcuts(): KeyboardShortcuts {
     closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
     toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
     closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
+    startHeadlessSonnet: { key: 'j', modifiers: { meta: true, shift: false, alt: false } },
+    startHeadlessOpus: { key: 'j', modifiers: { meta: true, shift: true, alt: false } },
   }
 }
 
@@ -271,6 +273,25 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
             description="Stop the focused agent"
             shortcut={shortcuts.closeAgent}
             onChange={(s) => handleShortcutChange('closeAgent', s)}
+          />
+        )}
+
+        <h4 className="text-sm font-medium text-muted-foreground pt-4">Headless Agents</h4>
+        {shortcuts.startHeadlessSonnet && (
+          <ShortcutEditor
+            label="Start Headless (Sonnet)"
+            description="Quick-launch a Sonnet headless agent"
+            shortcut={shortcuts.startHeadlessSonnet}
+            onChange={(s) => handleShortcutChange('startHeadlessSonnet', s)}
+          />
+        )}
+
+        {shortcuts.startHeadlessOpus && (
+          <ShortcutEditor
+            label="Start Headless (Opus)"
+            description="Quick-launch an Opus headless agent"
+            shortcut={shortcuts.startHeadlessOpus}
+            onChange={(s) => handleShortcutChange('startHeadlessOpus', s)}
           />
         )}
       </div>

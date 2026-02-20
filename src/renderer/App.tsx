@@ -81,6 +81,8 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   closeTab: { key: 'w', modifiers: { meta: true, shift: false, alt: false } },
   toggleMaximizeAgent: { key: 'm', modifiers: { meta: true, shift: true, alt: false } },
   closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
+  startHeadlessSonnet: { key: 'j', modifiers: { meta: true, shift: false, alt: false } },
+  startHeadlessOpus: { key: 'j', modifiers: { meta: true, shift: true, alt: false } },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -301,6 +303,7 @@ function App() {
 
   // Command search state (CMD-K)
   const [commandSearchOpen, setCommandSearchOpen] = useState(false)
+  const [commandSearchHeadlessMode, setCommandSearchHeadlessMode] = useState<'opus' | 'sonnet' | null>(null)
   const [prefillRalphLoopConfig, setPrefillRalphLoopConfig] = useState<{
     referenceAgentId: string
     prompt: string
@@ -674,7 +677,7 @@ function App() {
 
   // Keyboard shortcuts for expand mode and dev console
   useEffect(() => {
-    const shortcuts = preferences.keyboardShortcuts || defaultKeyboardShortcuts
+    const shortcuts = { ...defaultKeyboardShortcuts, ...preferences.keyboardShortcuts }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to return to main view from settings or close command search
@@ -812,6 +815,22 @@ function App() {
         if (focusedAgentIdRef.current) {
           window.electronAPI?.stopWorkspace?.(focusedAgentIdRef.current)
         }
+        return
+      }
+
+      // Start headless Sonnet agent shortcut
+      if (matchesShortcut(e, shortcuts.startHeadlessSonnet)) {
+        e.preventDefault()
+        setCommandSearchHeadlessMode('sonnet')
+        setCommandSearchOpen(true)
+        return
+      }
+
+      // Start headless Opus agent shortcut
+      if (matchesShortcut(e, shortcuts.startHeadlessOpus)) {
+        e.preventDefault()
+        setCommandSearchHeadlessMode('opus')
+        setCommandSearchOpen(true)
         return
       }
 
@@ -4565,6 +4584,7 @@ function App() {
           if (!open) {
             // Clear prefill when closing
             setPrefillRalphLoopConfig(null)
+            setCommandSearchHeadlessMode(null)
           }
         }}
         agents={agents}
@@ -4594,6 +4614,7 @@ function App() {
         })()}
         onOpenDockerTerminalInWorktree={handleOpenDockerTerminalInWorktree}
         prefillRalphLoopConfig={prefillRalphLoopConfig}
+        prefillHeadlessMode={commandSearchHeadlessMode}
       />
 
       {/* Update Available Popup (for significantly outdated versions) */}
