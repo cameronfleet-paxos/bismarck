@@ -13,12 +13,13 @@ import { PlayboxSettings } from '@/renderer/components/settings/sections/Playbox
 import { KeyboardShortcutsSettings } from '@/renderer/components/settings/sections/KeyboardShortcutsSettings'
 import { UpdatesSettings } from '@/renderer/components/settings/sections/UpdatesSettings'
 import { RalphLoopPresetsSettings } from '@/renderer/components/settings/sections/RalphLoopPresetsSettings'
+import { FollowUpPresetsSettings } from '@/renderer/components/settings/sections/FollowUpPresetsSettings'
 import { DockerSettings } from '@/renderer/components/settings/sections/DockerSettings'
 import { RepositoriesSettings } from '@/renderer/components/settings/sections/RepositoriesSettings'
 import { LanguagesSettings } from '@/renderer/components/settings/sections/LanguagesSettings'
 import { CronJobsSettings } from '@/renderer/components/settings/sections/CronJobsSettings'
 
-type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'languages' | 'paths' | 'tools' | 'plans' | 'ralph-presets' | 'cron-jobs' | 'repositories' | 'playbox' | 'advanced'
+type SettingsSection = 'general' | 'keyboard' | 'updates' | 'authentication' | 'docker' | 'languages' | 'paths' | 'tools' | 'plans' | 'presets' | 'cron-jobs' | 'repositories' | 'playbox' | 'advanced'
 
 interface SidebarItem {
   id: SettingsSection
@@ -68,9 +69,9 @@ const sidebarItems: SidebarItem[] = [
     description: 'Agent model and custom prompts',
   },
   {
-    id: 'ralph-presets',
-    label: 'Ralph Loop Presets',
-    description: 'Custom automation presets',
+    id: 'presets',
+    label: 'Presets',
+    description: 'Follow-up and Ralph Loop presets',
   },
   {
     id: 'cron-jobs',
@@ -714,10 +715,15 @@ export function SettingsPage({ onBack, initialSection, onSectionChange, onNaviga
           </div>
         )
 
-      case 'ralph-presets':
+      case 'presets':
         return (
-          <div className="bg-card border rounded-lg p-6">
-            <RalphLoopPresetsSettings onSettingsChange={loadSettings} />
+          <div className="space-y-6">
+            <div className="bg-card border rounded-lg p-6">
+              <FollowUpPresetsSettings onSettingsChange={loadSettings} />
+            </div>
+            <div className="bg-card border rounded-lg p-6">
+              <RalphLoopPresetsSettings onSettingsChange={loadSettings} />
+            </div>
           </div>
         )
 

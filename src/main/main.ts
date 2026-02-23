@@ -166,6 +166,10 @@ import {
   addRalphLoopPreset,
   updateRalphLoopPreset,
   deleteRalphLoopPreset,
+  getFollowUpPresets,
+  addFollowUpPreset,
+  updateFollowUpPreset,
+  deleteFollowUpPreset,
   getDebugSettings,
   updateDebugSettings,
   getPreventSleepSettings,
@@ -1434,6 +1438,23 @@ function registerIpcHandlers() {
 
   ipcMain.handle('delete-ralph-loop-preset', async (_event, id: string) => {
     return deleteRalphLoopPreset(id)
+  })
+
+  // Follow-up preset management
+  ipcMain.handle('get-followup-presets', async () => {
+    return getFollowUpPresets()
+  })
+
+  ipcMain.handle('add-followup-preset', async (_event, preset: { label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }) => {
+    return addFollowUpPreset(preset)
+  })
+
+  ipcMain.handle('update-followup-preset', async (_event, id: string, updates: { label?: string; description?: string; prompt?: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }) => {
+    return updateFollowUpPreset(id, updates)
+  })
+
+  ipcMain.handle('delete-followup-preset', async (_event, id: string) => {
+    return deleteFollowUpPreset(id)
   })
 
   // Debug settings

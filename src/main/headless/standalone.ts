@@ -44,6 +44,7 @@ import { queueTerminalCreation } from '../terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
 import * as fsPromises from 'fs/promises'
 import { generateBranchSlug, generateRandomPhrase } from '../naming-utils'
+import { extractPRUrls } from '../../shared/pr-utils'
 
 /**
  * Generate the display name for a standalone agent
@@ -190,6 +191,7 @@ async function buildFollowUpPrompt(
   branchName: string,
   protectedBranch: string,
   recentCommits: Array<{ shortSha: string; message: string }>,
+  prUrls: string[],
   completionCriteria?: string,
   guidance?: string
 ): Promise<string> {
@@ -197,6 +199,11 @@ async function buildFollowUpPrompt(
   const commitHistory = recentCommits.length > 0
     ? recentCommits.map(c => `  - ${c.shortSha}: ${c.message}`).join('\n')
     : '(No prior commits on this branch)'
+
+  // Format PR URLs
+  const prUrlsFormatted = prUrls.length > 0
+    ? prUrls.map(url => `  - ${url}`).join('\n')
+    : '(No PRs created)'
 
   // Format completion criteria (folded into COMPLETION REQUIREMENTS via template)
   const completionCriteriaSection = completionCriteria
@@ -227,6 +234,7 @@ ${guidance}
     branchName,
     protectedBranch,
     commitHistory,
+    prUrls: prUrlsFormatted,
     completionCriteria: completionCriteriaSection,
     guidance: guidanceSection,
     proxiedToolsSection,
@@ -904,10 +912,14 @@ export async function startFollowUpAgent(
   const recentCommits = allCommits.slice(-5)
   devLog(`[StandaloneHeadless] Found ${allCommits.length} commits, using last ${recentCommits.length} for context`)
 
+  // Extract PR URLs from previous agent's events
+  const prUrls = extractPRUrls(existingInfo.events)
+  devLog(`[StandaloneHeadless] Found ${prUrls.length} PR URLs from previous agent`)
+
   // Look up repository for completion criteria and guidance
   const repository = await getRepositoryByPath(repoPath)
   const protectedBranch = repository?.protectedBranches?.[0] || defaultBranch
-  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, repository?.completionCriteria, repository?.guidance)
+  const enhancedPrompt = await buildFollowUpPrompt(prompt, worktreePath, branch, protectedBranch, recentCommits, prUrls, repository?.completionCriteria, repository?.guidance)
 
   let executionPrompt = enhancedPrompt
   if (!startOptions?.skipPlanPhase) {

@@ -60,6 +60,7 @@ export interface PromptVariables {
   branchName?: string            // Git branch name
   protectedBranch?: string       // Protected branch for PR base (e.g., main or master)
   commitHistory?: string         // Recent commits for context (follow-up agents)
+  prUrls?: string                // PR URLs from previous agent (follow-up agents)
 
   // Headless discussion variables
   maxQuestions?: number          // Max number of questions to ask in discussion
@@ -459,6 +460,9 @@ For simple follow-ups, skip planning and just do the work directly.
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
 
+=== PULL REQUESTS ===
+{{prUrls}}
+
 === YOUR FOLLOW-UP TASK ===
 {{userPrompt}}
 {{guidance}}
@@ -832,7 +836,7 @@ export function getAvailableVariables(type: PromptType): string[] {
     case 'standalone_headless':
       return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'standalone_followup':
-      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'commitHistory', 'completionCriteria', 'guidance', 'proxiedToolsSection']
+      return ['userPrompt', 'workingDir', 'branchName', 'protectedBranch', 'commitHistory', 'prUrls', 'completionCriteria', 'guidance', 'proxiedToolsSection']
     case 'headless_discussion':
       return ['referenceRepoName', 'codebasePath', 'maxQuestions', 'discussionOutputPath', 'initialPrompt']
     case 'ralph_loop_discussion':

@@ -147,6 +147,12 @@ export interface ElectronAPI {
   updateRalphLoopPreset: (id: string, updates: { label?: string; description?: string; prompt?: string; completionPhrase?: string; maxIterations?: number; model?: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; completionPhrase: string; maxIterations: number; model: 'opus' | 'sonnet' } | undefined>
   deleteRalphLoopPreset: (id: string) => Promise<boolean>
 
+  // Follow-up presets
+  getFollowUpPresets: () => Promise<Array<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }>>
+  addFollowUpPreset: (preset: { label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }>
+  updateFollowUpPreset: (id: string, updates: { label?: string; description?: string; prompt?: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }) => Promise<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' } | undefined>
+  deleteFollowUpPreset: (id: string) => Promise<boolean>
+
   // OAuth token management
   setOAuthToken: (token: string) => Promise<boolean>
   hasOAuthToken: () => Promise<boolean>

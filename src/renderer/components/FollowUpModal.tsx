@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ExternalLink, GitPullRequest, MessageSquare, HelpCircle } from 'lucide-react'
+import { ExternalLink, GitPullRequest, MessageSquare, HelpCircle, Bookmark } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import { Switch } from '@/renderer/components/ui/switch'
 import { Tooltip } from '@/renderer/components/ui/tooltip'
 import type { HeadlessAgentInfo, AgentModel } from '@/shared/types'
 import { extractPRUrls } from '@/shared/pr-utils'
+import type { FollowUpPreset } from '@/shared/followup-presets'
 
 interface FollowUpModalProps {
   info: HeadlessAgentInfo | null
@@ -26,11 +27,27 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<AgentModel>(defaultModel)
   const [planPhase, setPlanPhase] = useState(true)
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
+  const [presets, setPresets] = useState<FollowUpPreset[]>([])
+  const [savePresetLabel, setSavePresetLabel] = useState('')
+  const [showSavePreset, setShowSavePreset] = useState(false)
+  const [savedPreset, setSavedPreset] = useState(false)
 
-  // Reset planPhase default when info changes (infer from whether original agent used a plan)
+  // Load presets from settings
+  useEffect(() => {
+    window.electronAPI?.getFollowUpPresets?.().then((loaded) => {
+      setPresets(loaded)
+    })
+  }, [])
+
+  // Reset state when info changes (new modal open)
   useEffect(() => {
     if (info) {
       setPlanPhase(!!info.planText)
+      setSelectedPresetId(null)
+      setPrompt('')
+      setShowSavePreset(false)
+      setSavedPreset(false)
     }
   }, [info])
 
@@ -41,6 +58,52 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
     const prMatches = info.originalPrompt.match(/https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+(?![/\w])/g)
     if (prMatches) {
       prUrls = [...new Set(prMatches)]
+    }
+  }
+
+  // Filter presets based on available context
+  const hasPrUrls = prUrls.length > 0
+  const availablePresets = presets.filter(
+    (preset) => !preset.requiresPrUrls || hasPrUrls
+  )
+
+  const handlePresetClick = (preset: FollowUpPreset) => {
+    if (selectedPresetId === preset.id) {
+      // Deselect
+      setSelectedPresetId(null)
+      setPrompt('')
+    } else {
+      setSelectedPresetId(preset.id)
+      setPrompt(preset.prompt)
+      if (preset.suggestedModel) {
+        setModel(preset.suggestedModel)
+      }
+    }
+  }
+
+  const handlePromptChange = (value: string) => {
+    setPrompt(value)
+    // Deselect preset if user edits the text
+    if (selectedPresetId) {
+      setSelectedPresetId(null)
+    }
+  }
+
+  const handleSaveAsPreset = async () => {
+    if (!prompt.trim() || !savePresetLabel.trim()) return
+    try {
+      const saved = await window.electronAPI.addFollowUpPreset({
+        label: savePresetLabel.trim(),
+        description: '',
+        prompt: prompt,
+      })
+      setPresets((prev) => [...prev, saved])
+      setSavedPreset(true)
+      setShowSavePreset(false)
+      setSavePresetLabel('')
+      setTimeout(() => setSavedPreset(false), 2000)
+    } catch (error) {
+      console.error('Failed to save preset:', error)
     }
   }
 
@@ -115,18 +178,74 @@ export function FollowUpModal({ info, defaultModel, onClose, onSubmit, isSubmitt
             <label htmlFor="followup-prompt" className="text-sm font-medium">
               Follow-up Task
             </label>
+            {availablePresets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {availablePresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handlePresetClick(preset)}
+                    title={preset.description}
+                    className={`px-2.5 py-1.5 text-xs font-medium rounded ${
+                      selectedPresetId === preset.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <Textarea
               id="followup-prompt"
               placeholder="Describe what you want the follow-up agent to do..."
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => handlePromptChange(e.target.value)}
               onKeyDown={handleKeyDown}
               className="min-h-[100px] resize-none"
               autoFocus
             />
-            <p className="text-xs text-muted-foreground">
-              The follow-up agent will continue working on the same branch with access to all previous commits.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground flex-1">
+                The follow-up agent will continue working on the same branch with access to all previous commits.
+              </p>
+              {prompt.trim() && !selectedPresetId && (
+                savedPreset ? (
+                  <span className="text-xs text-green-500 shrink-0">Saved!</span>
+                ) : showSavePreset ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input
+                      type="text"
+                      value={savePresetLabel}
+                      onChange={(e) => setSavePresetLabel(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveAsPreset(); if (e.key === 'Escape') setShowSavePreset(false) }}
+                      placeholder="Preset name..."
+                      className="h-6 px-2 text-xs border rounded bg-background w-36"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={handleSaveAsPreset}
+                      disabled={!savePresetLabel.trim()}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowSavePreset(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  >
+                    <Bookmark className="h-3 w-3" />
+                    Save as Preset
+                  </button>
+                )
+              )}
+            </div>
           </div>
 
           {/* Model selection */}

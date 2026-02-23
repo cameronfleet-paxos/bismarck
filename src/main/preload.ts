@@ -510,6 +510,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteRalphLoopPreset: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('delete-ralph-loop-preset', id),
 
+  // Follow-up preset management
+  getFollowUpPresets: (): Promise<Array<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }>> =>
+    ipcRenderer.invoke('get-followup-presets'),
+  addFollowUpPreset: (preset: { label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }): Promise<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }> =>
+    ipcRenderer.invoke('add-followup-preset', preset),
+  updateFollowUpPreset: (id: string, updates: { label?: string; description?: string; prompt?: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' }): Promise<{ id: string; label: string; description: string; prompt: string; requiresPrUrls?: boolean; suggestedModel?: 'opus' | 'sonnet' } | undefined> =>
+    ipcRenderer.invoke('update-followup-preset', id, updates),
+  deleteFollowUpPreset: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-followup-preset', id),
+
   // Debug settings
   getDebugSettings: (): Promise<{ enabled: boolean; logPath: string }> =>
     ipcRenderer.invoke('get-debug-settings'),

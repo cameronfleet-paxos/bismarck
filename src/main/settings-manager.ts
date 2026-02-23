@@ -9,6 +9,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { getConfigDir, writeConfigAtomic, getConfiguredGitHubToken, setConfiguredGitHubToken, clearConfiguredGitHubToken } from './config'
 import type { CustomizablePromptType, AgentProvider } from '../shared/types'
+import { DEFAULT_FOLLOWUP_PRESETS } from '../shared/followup-presets'
 
 const OFFICIAL_IMAGE_REPO = 'bismarckapp/bismarck-agent'
 
@@ -104,6 +105,9 @@ export interface AppSettings {
   ralphLoopPresets: {
     custom: RalphLoopPresetData[]  // User-created presets
   }
+  followUpPresets: {
+    custom: FollowUpPresetData[]  // User-created follow-up presets
+  }
   debug: {
     enabled: boolean              // Toggle logging on/off
     logPath: string               // Log file path (default ~/.bismarck/debug.log)
@@ -134,6 +138,18 @@ export interface RalphLoopPresetData {
   completionPhrase: string
   maxIterations: number
   model: 'opus' | 'sonnet'
+}
+
+/**
+ * Follow-up preset data stored in settings
+ */
+export interface FollowUpPresetData {
+  id: string
+  label: string
+  description: string
+  prompt: string
+  requiresPrUrls?: boolean
+  suggestedModel?: 'opus' | 'sonnet'
 }
 
 // In-memory cache of settings
@@ -235,6 +251,9 @@ export function getDefaultSettings(): AppSettings {
     ralphLoopPresets: {
       custom: [],
     },
+    followUpPresets: {
+      custom: [],
+    },
     debug: {
       enabled: true,  // Enabled by default for troubleshooting
       logPath: path.join(getConfigDir(), 'debug.log'),
@@ -314,6 +333,7 @@ export async function loadSettings(): Promise<AppSettings> {
       playbox: { ...defaults.playbox, ...(loaded.playbox || {}) },
       updates: { ...defaults.updates, ...(loaded.updates || {}) },
       ralphLoopPresets: { ...defaults.ralphLoopPresets, ...(loaded.ralphLoopPresets || {}) },
+      followUpPresets: { ...defaults.followUpPresets, ...(loaded.followUpPresets || {}) },
       debug: { ...defaults.debug, ...(loaded.debug || {}) },
       preventSleep: { ...defaults.preventSleep, ...(loaded.preventSleep || {}) },
       critic: { ...defaults.critic, ...(loaded.critic || {}) },
@@ -441,6 +461,15 @@ export async function loadSettings(): Promise<AppSettings> {
       purgeDebugLogs().catch(() => {})
     }
 
+    // Seed default follow-up presets on first load (when no presets exist yet)
+    if (!merged.followUpPresets?.custom?.length) {
+      merged.followUpPresets = {
+        ...merged.followUpPresets,
+        custom: DEFAULT_FOLLOWUP_PRESETS.map(p => ({ ...p })),
+      }
+      needsMigration = true
+    }
+
     settingsCache = merged
 
     // Persist migrated settings to disk so old format is cleaned up
@@ -531,6 +560,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
     ralphLoopPresets: {
       ...(currentSettings.ralphLoopPresets || defaults.ralphLoopPresets),
       ...(updates.ralphLoopPresets || {}),
+    },
+    followUpPresets: {
+      ...(currentSettings.followUpPresets || defaults.followUpPresets),
+      ...(updates.followUpPresets || {}),
     },
     debug: {
       ...(currentSettings.debug || defaults.debug),
@@ -1088,6 +1121,85 @@ export async function deleteRalphLoopPreset(id: string): Promise<boolean> {
 
   settings.ralphLoopPresets = {
     ...(settings.ralphLoopPresets || defaults.ralphLoopPresets),
+    custom: filtered,
+  }
+
+  await saveSettings(settings)
+  return true
+}
+
+/**
+ * Get custom follow-up presets
+ */
+export async function getFollowUpPresets(): Promise<FollowUpPresetData[]> {
+  const settings = await loadSettings()
+  return settings.followUpPresets?.custom || []
+}
+
+/**
+ * Add a custom follow-up preset
+ */
+export async function addFollowUpPreset(preset: Omit<FollowUpPresetData, 'id'>): Promise<FollowUpPresetData> {
+  const settings = await loadSettings()
+  const newPreset: FollowUpPresetData = {
+    id: `preset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    ...preset,
+  }
+  const defaults = getDefaultSettings()
+  settings.followUpPresets = {
+    ...(settings.followUpPresets || defaults.followUpPresets),
+    custom: [...(settings.followUpPresets?.custom || []), newPreset],
+  }
+  await saveSettings(settings)
+  return newPreset
+}
+
+/**
+ * Update a custom follow-up preset
+ */
+export async function updateFollowUpPreset(
+  id: string,
+  updates: Partial<Omit<FollowUpPresetData, 'id'>>
+): Promise<FollowUpPresetData | undefined> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.followUpPresets?.custom || []
+  const index = presets.findIndex((p) => p.id === id)
+
+  if (index === -1) {
+    return undefined
+  }
+
+  presets[index] = {
+    ...presets[index],
+    ...updates,
+  }
+
+  settings.followUpPresets = {
+    ...(settings.followUpPresets || defaults.followUpPresets),
+    custom: presets,
+  }
+
+  await saveSettings(settings)
+  return presets[index]
+}
+
+/**
+ * Delete a custom follow-up preset
+ */
+export async function deleteFollowUpPreset(id: string): Promise<boolean> {
+  const settings = await loadSettings()
+  const defaults = getDefaultSettings()
+  const presets = settings.followUpPresets?.custom || []
+  const initialLength = presets.length
+  const filtered = presets.filter((p) => p.id !== id)
+
+  if (filtered.length === initialLength) {
+    return false // Preset not found
+  }
+
+  settings.followUpPresets = {
+    ...(settings.followUpPresets || defaults.followUpPresets),
     custom: filtered,
   }
 
