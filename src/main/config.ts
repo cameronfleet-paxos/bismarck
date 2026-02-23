@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import type { Workspace, AppConfig, AppState, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo } from '../shared/types'
+import type { Workspace, AppConfig, AppState, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, PrefixChordConfig } from '../shared/types'
 import { agentIcons, type AgentIconName } from '../shared/constants'
 
 // Use .bismarck-dev in development mode to avoid affecting production data
@@ -234,6 +234,19 @@ export function getDefaultKeyboardShortcuts() {
   }
 }
 
+export function getDefaultPrefixChordConfig(): PrefixChordConfig {
+  return {
+    enabled: true,
+    prefixKey: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+    timeoutMs: 500,
+    chords: {
+      nextTab: 'n',
+      previousTab: 'p',
+      cycleFocus: 'o',
+    },
+  }
+}
+
 export function getDefaultPreferences(): AppPreferences {
   return {
     attentionMode: 'focus',
@@ -241,6 +254,7 @@ export function getDefaultPreferences(): AppPreferences {
     agentModel: 'sonnet',
     gridSize: '2x2',
     keyboardShortcuts: getDefaultKeyboardShortcuts(),
+    prefixChords: getDefaultPrefixChordConfig(),
     showDiffView: true,
     showAgentTimer: true,
   }

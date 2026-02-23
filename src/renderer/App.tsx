@@ -45,7 +45,7 @@ import { WorkflowViewerModal } from '@/renderer/components/WorkflowViewerModal'
 import type { NodeStatus } from '@/renderer/components/workflow/WorkflowStatusViewer'
 import type { WorkflowGraph } from '@/shared/cron-types'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, PrefixChordConfig, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -83,6 +83,18 @@ const defaultKeyboardShortcuts: KeyboardShortcuts = {
   closeAgent: { key: 'w', modifiers: { meta: true, shift: true, alt: false } },
   startHeadlessSonnet: { key: 'j', modifiers: { meta: true, shift: false, alt: false } },
   startHeadlessOpus: { key: 'j', modifiers: { meta: true, shift: true, alt: false } },
+}
+
+// Default prefix chord config for use when preferences haven't loaded
+const defaultPrefixChordConfig: PrefixChordConfig = {
+  enabled: true,
+  prefixKey: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+  timeoutMs: 500,
+  chords: {
+    nextTab: 'n',
+    previousTab: 'p',
+    cycleFocus: 'o',
+  },
 }
 
 // Format a keyboard shortcut for compact display (e.g., "⌘K")
@@ -317,6 +329,11 @@ function App() {
 
   // Terminal search state (CMD-F) - tracks which agent has search open
   const [terminalSearchAgentId, setTerminalSearchAgentId] = useState<string | null>(null)
+
+  // Prefix chord state (tmux-style navigation: Cmd+B → chord key)
+  const [prefixModeActive, setPrefixModeActive] = useState(false)
+  const prefixModeActiveRef = useRef(false)
+  const prefixTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Discussion execute state - maps planId to selected agent id
   const [discussionExecuteAgent, setDiscussionExecuteAgent] = useState<Record<string, string>>({})
@@ -775,8 +792,18 @@ function App() {
     const shortcuts = { ...defaultKeyboardShortcuts, ...preferences.keyboardShortcuts }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape to return to main view from settings or close command search
+      // Escape to cancel prefix mode, return to main view, or close command search
       if (e.key === 'Escape') {
+        if (prefixModeActiveRef.current) {
+          e.preventDefault()
+          if (prefixTimeoutRef.current) {
+            clearTimeout(prefixTimeoutRef.current)
+            prefixTimeoutRef.current = null
+          }
+          prefixModeActiveRef.current = false
+          setPrefixModeActive(false)
+          return
+        }
         if (terminalSearchAgentId) {
           e.preventDefault()
           setTerminalSearchAgentId(null)
@@ -819,8 +846,106 @@ function App() {
         return
       }
 
-      // Toggle agent sidebar shortcut
-      if (matchesShortcut(e, shortcuts.toggleAgentSidebar)) {
+      // Prefix chord handling (tmux-style: Cmd+B → chord key)
+      const chordConfig = preferences.prefixChords ?? defaultPrefixChordConfig
+
+      // If prefix mode is active, check for chord keys
+      if (prefixModeActiveRef.current && chordConfig.enabled) {
+        // Cancel prefix mode
+        if (prefixTimeoutRef.current) {
+          clearTimeout(prefixTimeoutRef.current)
+          prefixTimeoutRef.current = null
+        }
+        prefixModeActiveRef.current = false
+        setPrefixModeActive(false)
+
+        const pressedKey = e.key.toLowerCase()
+
+        // n → next tab
+        if (pressedKey === chordConfig.chords.nextTab) {
+          e.preventDefault()
+          if (tabs.length > 1 && activeTabId) {
+            const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+            const nextIndex = (currentIndex + 1) % tabs.length
+            const nextTabId = tabs[nextIndex].id
+            setActiveTabId(nextTabId)
+            window.electronAPI?.setActiveTab?.(nextTabId)
+          }
+          return
+        }
+
+        // p → previous tab
+        if (pressedKey === chordConfig.chords.previousTab) {
+          e.preventDefault()
+          if (tabs.length > 1 && activeTabId) {
+            const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+            const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length
+            const prevTabId = tabs[prevIndex].id
+            setActiveTabId(prevTabId)
+            window.electronAPI?.setActiveTab?.(prevTabId)
+          }
+          return
+        }
+
+        // o → cycle focus between panes in current tab
+        if (pressedKey === chordConfig.chords.cycleFocus) {
+          e.preventDefault()
+          if (activeTabId) {
+            const currentTab = tabs.find(t => t.id === activeTabId)
+            if (currentTab) {
+              const occupiedIds = currentTab.workspaceIds.filter(id => id !== '')
+              if (occupiedIds.length > 0) {
+                const currentFocused = focusedAgentIdRef.current
+                const currentIndex = currentFocused ? occupiedIds.indexOf(currentFocused) : -1
+                const nextIndex = (currentIndex + 1) % occupiedIds.length
+                handleFocusAgent(occupiedIds[nextIndex])
+              }
+            }
+          }
+          return
+        }
+
+        // 1-9 → jump to tab by number
+        const tabNumber = parseInt(pressedKey, 10)
+        if (tabNumber >= 1 && tabNumber <= 9 && tabNumber <= tabs.length) {
+          e.preventDefault()
+          const targetTab = tabs[tabNumber - 1]
+          setActiveTabId(targetTab.id)
+          window.electronAPI?.setActiveTab?.(targetTab.id)
+          return
+        }
+
+        // Unrecognized chord key — ignore (prefix mode already cancelled)
+        return
+      }
+
+      // Prefix key pressed → enter prefix mode (or toggle sidebar if chords disabled)
+      if (matchesShortcut(e, chordConfig.enabled ? chordConfig.prefixKey : undefined) ||
+          (!chordConfig.enabled && matchesShortcut(e, shortcuts.toggleAgentSidebar))) {
+        e.preventDefault()
+        if (chordConfig.enabled) {
+          // Enter prefix mode, start timeout for sidebar fallback
+          prefixModeActiveRef.current = true
+          setPrefixModeActive(true)
+          prefixTimeoutRef.current = setTimeout(() => {
+            if (prefixModeActiveRef.current) {
+              prefixModeActiveRef.current = false
+              setPrefixModeActive(false)
+              // Fallback: toggle sidebar
+              setSidebarCollapsed(prev => !prev)
+            }
+          }, chordConfig.timeoutMs)
+        } else {
+          setSidebarCollapsed(prev => !prev)
+        }
+        return
+      }
+
+      // Toggle agent sidebar shortcut (only if prefix chords don't own the same key)
+      if (chordConfig.enabled && matchesShortcut(e, shortcuts.toggleAgentSidebar) &&
+          matchesShortcut(e, chordConfig.prefixKey)) {
+        // Already handled above by prefix key logic
+      } else if (matchesShortcut(e, shortcuts.toggleAgentSidebar)) {
         e.preventDefault()
         setSidebarCollapsed(prev => !prev)
         return
@@ -1003,8 +1128,13 @@ function App() {
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, handleCloseAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (prefixTimeoutRef.current) {
+        clearTimeout(prefixTimeoutRef.current)
+      }
+    }
+  }, [currentView, commandSearchOpen, terminalSearchAgentId, preferences.attentionMode, preferences.keyboardShortcuts, preferences.prefixChords, preferences.operatingMode, waitingQueue, tabs, activeTabId, maximizedAgentIdByTab, handleFocusAgent, handleCloseAgent, planSidebarOpen, diffOpenForWorkspace, focusedAgentId, closeDiffAndRestore])
 
   const loadPreferences = async () => {
     const prefs = await window.electronAPI?.getPreferences?.()
@@ -2888,13 +3018,19 @@ function App() {
             </span>
           )}
         </div>
-        {/* Search hint */}
-        <span
-          onClick={() => setCommandSearchOpen(true)}
-          className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
-        >
-          {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
-        </span>
+        {/* Prefix mode indicator / Search hint */}
+        {prefixModeActive ? (
+          <span className="text-xs font-mono bg-primary/15 text-primary px-2 py-0.5 rounded-md animate-pulse">
+            {formatShortcutCompact((preferences.prefixChords ?? defaultPrefixChordConfig).prefixKey)} &rarr; ...
+          </span>
+        ) : (
+          <span
+            onClick={() => setCommandSearchOpen(true)}
+            className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground transition-colors"
+          >
+            {formatShortcutCompact((preferences.keyboardShortcuts || defaultKeyboardShortcuts).commandPalette)} to search
+          </span>
+        )}
         <div className="flex items-center gap-2">
           {toolsNeedingReauth.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs">

@@ -2,10 +2,25 @@ import { useState, useEffect, useCallback } from 'react'
 import { Check, RotateCcw } from 'lucide-react'
 import { Label } from '@/renderer/components/ui/label'
 import { Button } from '@/renderer/components/ui/button'
-import type { KeyboardShortcut, KeyboardShortcuts } from '@/shared/types'
+import { Switch } from '@/renderer/components/ui/switch'
+import type { KeyboardShortcut, KeyboardShortcuts, PrefixChordConfig } from '@/shared/types'
 
 interface KeyboardShortcutsSettingsProps {
-  onPreferencesChange: (preferences: { keyboardShortcuts?: KeyboardShortcuts }) => void
+  onPreferencesChange: (preferences: { keyboardShortcuts?: KeyboardShortcuts; prefixChords?: PrefixChordConfig }) => void
+}
+
+// Default prefix chord config
+function getDefaultPrefixChordConfig(): PrefixChordConfig {
+  return {
+    enabled: true,
+    prefixKey: { key: 'b', modifiers: { meta: true, shift: false, alt: false } },
+    timeoutMs: 500,
+    chords: {
+      nextTab: 'n',
+      previousTab: 'p',
+      cycleFocus: 'o',
+    },
+  }
 }
 
 // Format a keyboard shortcut for display
@@ -119,7 +134,13 @@ function ShortcutEditor({ label, description, shortcut, onChange }: ShortcutEdit
 
 export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShortcutsSettingsProps) {
   const [shortcuts, setShortcuts] = useState<KeyboardShortcuts>(getDefaultKeyboardShortcuts())
+  const [prefixChords, setPrefixChords] = useState<PrefixChordConfig>(getDefaultPrefixChordConfig())
   const [showSaved, setShowSaved] = useState(false)
+
+  const showSavedIndicator = () => {
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
+  }
 
   // Load preferences on mount
   useEffect(() => {
@@ -128,6 +149,9 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
         const prefs = await window.electronAPI.getPreferences()
         if (prefs.keyboardShortcuts) {
           setShortcuts({ ...getDefaultKeyboardShortcuts(), ...prefs.keyboardShortcuts })
+        }
+        if (prefs.prefixChords) {
+          setPrefixChords({ ...getDefaultPrefixChordConfig(), ...prefs.prefixChords })
         }
       } catch (error) {
         console.error('Failed to load preferences:', error)
@@ -143,20 +167,27 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
     const update = { keyboardShortcuts: newShortcuts }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
-    // Show saved indicator
-    setShowSaved(true)
-    setTimeout(() => setShowSaved(false), 2000)
+    showSavedIndicator()
+  }
+
+  const handlePrefixChordChange = (updates: Partial<PrefixChordConfig>) => {
+    const newConfig = { ...prefixChords, ...updates }
+    setPrefixChords(newConfig)
+    const update = { prefixChords: newConfig }
+    window.electronAPI.setPreferences(update)
+    onPreferencesChange(update)
+    showSavedIndicator()
   }
 
   const handleResetAll = () => {
     const defaults = getDefaultKeyboardShortcuts()
+    const defaultChords = getDefaultPrefixChordConfig()
     setShortcuts(defaults)
-    const update = { keyboardShortcuts: defaults }
+    setPrefixChords(defaultChords)
+    const update = { keyboardShortcuts: defaults, prefixChords: defaultChords }
     window.electronAPI.setPreferences(update)
     onPreferencesChange(update)
-    // Show saved indicator
-    setShowSaved(true)
-    setTimeout(() => setShowSaved(false), 2000)
+    showSavedIndicator()
   }
 
   return (
@@ -293,6 +324,73 @@ export function KeyboardShortcutsSettings({ onPreferencesChange }: KeyboardShort
             shortcut={shortcuts.startHeadlessOpus}
             onChange={(s) => handleShortcutChange('startHeadlessOpus', s)}
           />
+        )}
+
+        <h4 className="text-sm font-medium text-muted-foreground pt-4">Prefix Chords</h4>
+        <div className="flex items-center justify-between py-3">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">Enable Prefix Chords</Label>
+            <p className="text-sm text-muted-foreground">
+              Tmux-style navigation: press prefix key, then a chord key
+            </p>
+          </div>
+          <Switch
+            checked={prefixChords.enabled}
+            onCheckedChange={(checked) => handlePrefixChordChange({ enabled: checked })}
+          />
+        </div>
+
+        {prefixChords.enabled && (
+          <>
+            <ShortcutEditor
+              label="Prefix Key"
+              description="Press this key to enter prefix mode"
+              shortcut={prefixChords.prefixKey}
+              onChange={(s) => handlePrefixChordChange({ prefixKey: s })}
+            />
+
+            <div className="flex items-center justify-between py-3">
+              <div className="space-y-0.5">
+                <Label className="text-base font-medium">Timeout</Label>
+                <p className="text-sm text-muted-foreground">
+                  Time to wait for chord key ({prefixChords.timeoutMs}ms)
+                </p>
+              </div>
+              <div className="w-[180px]">
+                <input
+                  type="range"
+                  value={prefixChords.timeoutMs}
+                  onChange={(e) => handlePrefixChordChange({ timeoutMs: parseInt(e.target.value, 10) })}
+                  min={200}
+                  max={2000}
+                  step={50}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 py-3">
+              <Label className="text-base font-medium">Chord Mappings</Label>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
+                  <kbd className="font-mono bg-background px-1.5 py-0.5 rounded border text-xs">{prefixChords.chords.nextTab}</kbd>
+                  <span className="text-muted-foreground">Next Tab</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
+                  <kbd className="font-mono bg-background px-1.5 py-0.5 rounded border text-xs">{prefixChords.chords.previousTab}</kbd>
+                  <span className="text-muted-foreground">Previous Tab</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
+                  <kbd className="font-mono bg-background px-1.5 py-0.5 rounded border text-xs">{prefixChords.chords.cycleFocus}</kbd>
+                  <span className="text-muted-foreground">Cycle Focus</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
+                  <kbd className="font-mono bg-background px-1.5 py-0.5 rounded border text-xs">1-9</kbd>
+                  <span className="text-muted-foreground">Jump to Tab #</span>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

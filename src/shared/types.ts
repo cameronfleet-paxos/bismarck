@@ -159,6 +159,19 @@ export interface KeyboardShortcuts {
   startHeadlessOpus?: KeyboardShortcut   // Default: Cmd/Ctrl+Shift+J
 }
 
+// Prefix chord configuration for tmux-style navigation
+export interface PrefixChordConfig {
+  enabled: boolean
+  prefixKey: KeyboardShortcut      // Default: Cmd+B
+  timeoutMs: number                // Default: 500
+  chords: {
+    nextTab: string                // Default: 'n'
+    previousTab: string            // Default: 'p'
+    cycleFocus: string             // Default: 'o'
+    // Keys '1'-'9' always map to jumpToTab(N)
+  }
+}
+
 // App preferences (stored in ~/.bismarck/state.json)
 export interface AppPreferences {
   attentionMode: AttentionMode
@@ -167,6 +180,7 @@ export interface AppPreferences {
   gridSize: GridSize
   tutorialCompleted?: boolean
   keyboardShortcuts?: KeyboardShortcuts
+  prefixChords?: PrefixChordConfig
   showDiffView?: boolean
   showAgentTimer?: boolean
   diffFileViewType?: 'flat' | 'tree'
