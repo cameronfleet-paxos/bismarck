@@ -404,17 +404,30 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     const mcpHostPath = settings.docker.buildbuddyMcp.hostPath
     try {
       await fs.access(mcpHostPath)
+      devLog('[DockerSandbox] Mounting BuildBuddy MCP server from:', mcpHostPath)
       args.push('-v', `${mcpHostPath}:/mcp/buildbuddy:ro`)
       args.push('-e', 'BAZEL_BINDIR=/workspace/bazel-bin')
 
       // Generate Claude Code MCP config and mount it
+      // Claude Code stores MCP servers per-project under projects["/workspace"]
       const claudeConfig = JSON.stringify({
-        mcpServers: {
-          buildbuddy: {
-            command: 'node',
-            args: ['/mcp/buildbuddy/index.js']
-          }
-        }
+        hasCompletedOnboarding: true,
+        projects: {
+          '/workspace': {
+            mcpServers: {
+              buildbuddy: {
+                type: 'stdio',
+                command: 'node',
+                args: ['/mcp/buildbuddy/index.js'],
+                env: {
+                  BAZEL_BINDIR: '/workspace/bazel-bin',
+                },
+              },
+            },
+            hasTrustDialogAccepted: true,
+            hasCompletedProjectOnboarding: true,
+          },
+        },
       }, null, 2)
       const tmpConfigPath = path.join(os.tmpdir(), `bismarck-claude-config-${Date.now()}.json`)
       await fs.writeFile(tmpConfigPath, claudeConfig)
