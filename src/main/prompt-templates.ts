@@ -352,15 +352,13 @@ Read your task details to understand what you need to do:
   bd show {{taskId}}
 {{guidance}}
 === WORKFLOW ===
-If an IMPLEMENTATION PLAN section appears above, skip planning entirely and implement directly following that plan.
+If an IMPLEMENTATION PLAN section appears above, follow that plan closely and implement directly.
 
-Otherwise, for non-trivial tasks (more than a simple fix or small change):
-1. After reading your task details, enter plan mode to explore the codebase and design your approach
-   - Investigate existing patterns, utilities, and code structure
-   - Auto-accept the plan and proceed to implementation
-2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
-
-For trivial tasks, skip planning and just do the work directly.
+Otherwise:
+1. Read your task details to understand the requirements
+2. Explore the codebase to understand existing patterns, utilities, and code structure
+3. Implement the changes directly - do NOT enter plan mode or use EnterPlanMode
+4. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
 
 === ENVIRONMENT ===
 You are running in a Docker container with:
@@ -410,14 +408,9 @@ You are running in a Docker container with:
 {{proxiedToolsSection}}
 
 === WORKFLOW ===
-For non-trivial tasks (more than a simple fix or small change):
-1. Enter plan mode to explore the codebase and design your approach
-   - Investigate existing patterns, utilities, and code structure
-   - Design your implementation approach
-   - Auto-accept the plan and proceed to implementation
-2. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
-
-For trivial tasks (typo fixes, single-line changes, simple renames), skip planning and just do the work directly.
+1. Explore the codebase to understand existing patterns, utilities, and code structure
+2. Implement the changes directly - do NOT enter plan mode or use EnterPlanMode
+3. Use TaskCreate to break down work into trackable steps, and TaskUpdate to mark progress
 
 === YOUR TASK ===
 {{userPrompt}}
@@ -451,11 +444,9 @@ You are running in a Docker container with:
 {{proxiedToolsSection}}
 
 === WORKFLOW ===
-For non-trivial follow-up work:
-1. Review the previous commits, then enter plan mode to design your approach
-2. Use TaskCreate to break down work into trackable steps if the follow-up involves multiple distinct steps
-
-For simple follow-ups, skip planning and just do the work directly.
+1. Review the previous commits to understand what was done
+2. Explore the codebase and implement the follow-up changes directly - do NOT enter plan mode or use EnterPlanMode
+3. Use TaskCreate to break down work into trackable steps if the follow-up involves multiple distinct steps
 
 === PREVIOUS WORK (review these commits for context) ===
 {{commitHistory}}
