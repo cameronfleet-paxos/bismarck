@@ -46,8 +46,8 @@ export function applyNetworkIsolationArgs(args: string[], settings: { docker: { 
   args.push('-e', `HTTPS_PROXY=${proxyUrl}`)
   args.push('-e', `http_proxy=${proxyUrl}`)
   args.push('-e', `https_proxy=${proxyUrl}`)
-  args.push('-e', 'NO_PROXY=host.docker.internal,localhost,127.0.0.1')
-  args.push('-e', 'no_proxy=host.docker.internal,localhost,127.0.0.1')
+  args.push('-e', 'NO_PROXY=localhost,127.0.0.1')
+  args.push('-e', 'no_proxy=localhost,127.0.0.1')
 }
 
 /**
