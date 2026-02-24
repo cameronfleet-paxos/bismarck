@@ -59,6 +59,9 @@ import {
   getWaitingQueue,
   removeFromWaitingQueue,
   setInstanceId,
+  writeSocketPidFile,
+  startSocketHealthCheck,
+  stopSocketHealthCheck,
 } from './socket-server'
 import { configureClaudeHook, configureCodexHook, createHookScript } from './hook-manager'
 import { createTray, updateTray, destroyTray } from './tray'
@@ -177,6 +180,7 @@ import {
   updatePreventSleepSettings,
   updateDockerSharedBuildCacheSettings,
   updateDockerPnpmStoreSettings,
+  updateDockerNetworkIsolationSettings,
   updateSettings,
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
@@ -216,6 +220,7 @@ import {
   onRalphLoopStatusChange,
 } from './ralph-loop'
 import { initializeDockerEnvironment, pullImage, getDefaultImage, checkDockerAvailable, checkImageExists, getImageInfo, persistImageDigest, fetchRegistryDigest, clearRegistryDigestCache } from './docker-sandbox'
+import { ensureNetworkProxy, stopNetworkProxy, reloadProxyConfig, cleanupOrphanedProxy } from './network-proxy'
 import { initPowerSave, acquirePowerSave, releasePowerSave, setPreventSleepEnabled, cleanupPowerSave, getPowerSaveState } from './power-save'
 import {
   initAutoUpdater,
@@ -282,6 +287,7 @@ process.on('uncaughtException', async (error) => {
   try {
     clearQueue()
     closeAllTerminals()
+    stopSocketHealthCheck()
     closeAllSocketServers()
     await cleanupPlanManager()
     await cleanupDevHarness()
@@ -1385,6 +1391,52 @@ function registerIpcHandlers() {
     return updateDockerPnpmStoreSettings(settings)
   })
 
+  ipcMain.handle('update-docker-network-isolation-settings', async (_event, networkSettings: { enabled?: boolean; allowedHosts?: string[] }) => {
+    const prevSettings = await loadSettings()
+    const wasEnabled = prevSettings.docker.networkIsolation?.enabled === true
+
+    await updateDockerNetworkIsolationSettings(networkSettings)
+
+    const newSettings = await loadSettings()
+    const isEnabled = newSettings.docker.networkIsolation?.enabled === true
+
+    // Handle lifecycle changes
+    if (isEnabled && !wasEnabled) {
+      // Toggled ON: start proxy
+      try {
+        await ensureNetworkProxy()
+      } catch (err) {
+        console.error('[Main] Failed to start network proxy:', err)
+      }
+    } else if (!isEnabled && wasEnabled) {
+      // Toggled OFF: stop proxy
+      try {
+        await stopNetworkProxy()
+      } catch (err) {
+        console.error('[Main] Failed to stop network proxy:', err)
+      }
+    } else if (isEnabled && networkSettings.allowedHosts) {
+      // Allowlist changed while enabled: reload config
+      try {
+        await reloadProxyConfig()
+      } catch (err) {
+        console.error('[Main] Failed to reload proxy config:', err)
+      }
+    }
+  })
+
+  ipcMain.handle('reset-docker-network-isolation-hosts', async () => {
+    const defaults = getDefaultSettings()
+    const defaultHosts = defaults.docker.networkIsolation.allowedHosts
+    await updateDockerNetworkIsolationSettings({ allowedHosts: defaultHosts })
+    try {
+      await reloadProxyConfig()
+    } catch (err) {
+      console.error('[Main] Failed to reload proxy config after reset:', err)
+    }
+    return defaultHosts
+  })
+
   ipcMain.handle('detect-pnpm-store-path', async () => {
     const { detectPnpmStorePath } = await import('./pnpm-detect')
     return detectPnpmStorePath()
@@ -1649,6 +1701,10 @@ app.whenReady().then(async () => {
   // Set instance ID for socket isolation
   timeSync('main:setInstanceId', 'main', () => setInstanceId(instanceId))
 
+  // Write PID file and start socket health monitor
+  writeSocketPidFile()
+  startSocketHealthCheck()
+
   // Initialize config directory structure
   timeSync('main:ensureConfigDirExists', 'main', () => ensureConfigDirExists())
 
@@ -1658,6 +1714,9 @@ app.whenReady().then(async () => {
 
   // Cleanup orphaned processes from previous sessions
   await timeAsync('main:cleanupOrphanedProcesses', 'main', () => cleanupOrphanedProcesses())
+
+  // Cleanup orphaned network proxy from previous sessions
+  await timeAsync('main:cleanupOrphanedProxy', 'main', () => cleanupOrphanedProxy())
 
   // Initialize state
   timeSync('main:initializeState', 'main', () => initializeState())
@@ -1758,6 +1817,12 @@ app.whenReady().then(async () => {
       } catch (err) {
         devLog('[Main] Failed to persist image digest:', err)
       }
+      // Start network proxy if network isolation is enabled
+      try {
+        await ensureNetworkProxy()
+      } catch (err) {
+        console.warn('[Main] Failed to start network proxy:', err)
+      }
     } else {
       console.warn('[Main] Docker environment not ready:', result.message)
       // Headless mode will fall back to interactive mode
@@ -1773,16 +1838,21 @@ app.on('window-all-closed', async () => {
   // Preserve terminals for active discussions so they can complete and spawn headless agents
   const discussionTerminals = getActiveDiscussionTerminalIds()
   closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
-  closeAllSocketServers()
   stopPeriodicChecks()
   stopToolAuthChecks()
   cleanupPowerSave()
   await cleanupPlanManager()
   await cleanupDevHarness()
+  await stopNetworkProxy().catch(() => {})
   destroyTray()
   if (process.platform !== 'darwin') {
+    // On non-macOS, the app actually quits — clean up sockets
+    stopSocketHealthCheck()
+    closeAllSocketServers()
     app.quit()
   }
+  // On macOS the app stays in the dock — keep sockets alive so attention
+  // events continue to work. The before-quit handler cleans up on true exit.
 })
 
 app.on('activate', () => {
@@ -1795,10 +1865,12 @@ app.on('before-quit', async () => {
   clearQueue()
   const discussionTerminals = getActiveDiscussionTerminalIds()
   closeAllTerminals(discussionTerminals.size > 0 ? discussionTerminals : undefined)
+  stopSocketHealthCheck()
   closeAllSocketServers()
   cleanupPowerSave()
   await shutdownCronScheduler()
   await cleanupPlanManager()
   await cleanupDevHarness()
+  await stopNetworkProxy().catch(() => {})
   destroyTray()
 })

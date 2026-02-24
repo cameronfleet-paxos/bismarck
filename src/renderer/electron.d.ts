@@ -243,6 +243,8 @@ export interface ElectronAPI {
   updateDockerSocketSettings: (settings: { enabled?: boolean; path?: string }) => Promise<void>
   updateDockerSharedBuildCacheSettings: (settings: { enabled?: boolean }) => Promise<void>
   updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) => Promise<void>
+  updateDockerNetworkIsolationSettings: (settings: { enabled?: boolean; allowedHosts?: string[] }) => Promise<void>
+  resetDockerNetworkIsolationHosts: () => Promise<string[]>
   detectPnpmStorePath: () => Promise<string | null>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 

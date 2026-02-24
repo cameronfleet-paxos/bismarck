@@ -68,6 +68,10 @@ export interface AppSettings {
       enabled: boolean     // Enable Docker socket mounting for testcontainers support
       path: string         // Socket path (default: /var/run/docker.sock)
     }
+    networkIsolation: {
+      enabled: boolean     // Enable network isolation via Squid proxy
+      allowedHosts: string[]  // Domain allowlist (e.g., ["github.com", "*.github.com"])
+    }
     sharedBuildCache: {
       enabled: boolean     // Enable shared Go build cache across agents (per-repo)
     }
@@ -214,6 +218,24 @@ export function getDefaultSettings(): AppSettings {
         enabled: true,   // Enabled by default for testcontainers support
         path: '/var/run/docker.sock',
       },
+      networkIsolation: {
+        enabled: false,  // Opt-in: restrict container network via Squid proxy
+        allowedHosts: [
+          'github.com', '*.github.com', '*.githubusercontent.com',
+          'registry.npmjs.org', '*.npmjs.org',
+          'pypi.org', '*.pypi.org', 'files.pythonhosted.org',
+          'rubygems.org', '*.rubygems.org',
+          'crates.io', '*.crates.io', 'static.crates.io',
+          'proxy.golang.org', 'sum.golang.org', 'storage.googleapis.com',
+          '*.maven.org', 'repo1.maven.org',
+          'registry.yarnpkg.com',
+          'api.anthropic.com',
+          'cdn.jsdelivr.net', 'unpkg.com',
+          'dl-cdn.alpinelinux.org',
+          'deb.debian.org', 'security.debian.org',
+          'archive.ubuntu.com', 'security.ubuntu.com',
+        ],
+      },
       sharedBuildCache: {
         enabled: true,   // Share Go build cache across agents per-repo
       },
@@ -311,6 +333,10 @@ export async function loadSettings(): Promise<AppSettings> {
         dockerSocket: {
           ...defaults.docker.dockerSocket,
           ...(loaded.docker?.dockerSocket || {}),
+        },
+        networkIsolation: {
+          ...defaults.docker.networkIsolation,
+          ...(loaded.docker?.networkIsolation || {}),
         },
         sharedBuildCache: {
           ...defaults.docker.sharedBuildCache,
@@ -521,6 +547,10 @@ export async function updateSettings(updates: Partial<AppSettings>): Promise<App
       dockerSocket: {
         ...(currentSettings.docker.dockerSocket || defaults.docker.dockerSocket),
         ...(updates.docker?.dockerSocket || {}),
+      },
+      networkIsolation: {
+        ...(currentSettings.docker.networkIsolation || defaults.docker.networkIsolation),
+        ...(updates.docker?.networkIsolation || {}),
       },
       sharedBuildCache: {
         ...(currentSettings.docker.sharedBuildCache || defaults.docker.sharedBuildCache),
@@ -781,6 +811,19 @@ export async function updateDockerSharedBuildCacheSettings(cacheSettings: { enab
     ...cacheSettings,
   }
   await saveSettings(settings)
+}
+
+/**
+ * Update Docker network isolation settings
+ */
+export async function updateDockerNetworkIsolationSettings(networkSettings: { enabled?: boolean; allowedHosts?: string[] }): Promise<void> {
+  const current = await loadSettings()
+  const defaults = getDefaultSettings()
+  current.docker.networkIsolation = {
+    ...(current.docker.networkIsolation || defaults.docker.networkIsolation),
+    ...networkSettings,
+  }
+  await saveSettings(current)
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle, Info, ShieldCheck } from 'lucide-react'
+import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle, Info, ShieldCheck, Shield, RotateCcw } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -20,6 +20,10 @@ interface AppSettings {
     dockerSocket?: {
       enabled: boolean
       path: string
+    }
+    networkIsolation?: {
+      enabled: boolean
+      allowedHosts: string[]
     }
   }
 }
@@ -68,6 +72,9 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null)
   const [pullingImage, setPullingImage] = useState<string | null>(null)
   const [baseImageUpdate, setBaseImageUpdate] = useState<{ newVersion: string | null; newDigest: string | null } | null>(null)
+  const [networkIsolationEnabled, setNetworkIsolationEnabled] = useState(settings.docker.networkIsolation?.enabled ?? false)
+  const [allowedHosts, setAllowedHosts] = useState<string[]>(settings.docker.networkIsolation?.allowedHosts ?? [])
+  const [newHost, setNewHost] = useState('')
 
   const checkImageStatuses = useCallback(async () => {
     const images = settings.docker.images
@@ -117,6 +124,11 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
     setCpuLimit(settings.docker.resourceLimits.cpu)
     setMemoryLimit(settings.docker.resourceLimits.memory)
   }, [settings.docker.resourceLimits.cpu, settings.docker.resourceLimits.memory])
+
+  useEffect(() => {
+    setNetworkIsolationEnabled(settings.docker.networkIsolation?.enabled ?? false)
+    setAllowedHosts(settings.docker.networkIsolation?.allowedHosts ?? [])
+  }, [settings.docker.networkIsolation?.enabled, settings.docker.networkIsolation?.allowedHosts])
 
   // Listen for base image update notifications (for BYO image users)
   useEffect(() => {
@@ -251,6 +263,56 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
       setTimeout(() => setShowSaved(false), 2000)
     } catch (error) {
       console.error('Failed to update Docker socket settings:', error)
+    }
+  }
+
+  const handleNetworkIsolationToggle = async (enabled: boolean) => {
+    try {
+      setNetworkIsolationEnabled(enabled)
+      await window.electronAPI.updateDockerNetworkIsolationSettings({ enabled })
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update network isolation settings:', error)
+      setNetworkIsolationEnabled(!enabled) // revert
+    }
+  }
+
+  const handleAddHost = async () => {
+    const host = newHost.trim()
+    if (!host || allowedHosts.includes(host)) return
+    const updated = [...allowedHosts, host]
+    setAllowedHosts(updated)
+    setNewHost('')
+    try {
+      await window.electronAPI.updateDockerNetworkIsolationSettings({ allowedHosts: updated })
+      await onSettingsChange()
+    } catch (error) {
+      console.error('Failed to add allowed host:', error)
+    }
+  }
+
+  const handleRemoveHost = async (host: string) => {
+    const updated = allowedHosts.filter(h => h !== host)
+    setAllowedHosts(updated)
+    try {
+      await window.electronAPI.updateDockerNetworkIsolationSettings({ allowedHosts: updated })
+      await onSettingsChange()
+    } catch (error) {
+      console.error('Failed to remove allowed host:', error)
+    }
+  }
+
+  const handleResetHosts = async () => {
+    try {
+      const defaultHosts = await window.electronAPI.resetDockerNetworkIsolationHosts()
+      setAllowedHosts(defaultHosts)
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to reset allowed hosts:', error)
     }
   }
 
@@ -582,6 +644,92 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
               On macOS, the <code className="bg-muted px-1 rounded">TESTCONTAINERS_HOST_OVERRIDE</code> environment
               variable is automatically set to enable proper networking with spawned containers.
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Network Isolation */}
+      <div className="bg-card border rounded-lg p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Shield className="h-5 w-5 text-muted-foreground" />
+          <h3 className="text-lg font-semibold">Network Isolation</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Restrict container outbound network access to an allowlist of domains via a Squid proxy
+        </p>
+
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <Label htmlFor="network-isolation-enabled">Enable Network Isolation</Label>
+            <p className="text-xs text-muted-foreground">
+              Containers can only reach HTTP/HTTPS domains in the allowlist below
+            </p>
+          </div>
+          <Switch
+            id="network-isolation-enabled"
+            checked={networkIsolationEnabled}
+            onCheckedChange={handleNetworkIsolationToggle}
+          />
+        </div>
+
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md mb-4">
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            <strong>How it works:</strong> Containers are placed on an internal Docker network with no direct internet access.
+            A shared Squid proxy is the sole egress gateway, enforcing domain-level filtering. Only HTTP/HTTPS traffic
+            to allowed domains is permitted. The tool proxy (<code className="bg-muted px-1 rounded">host.docker.internal</code>) is always allowed.
+          </p>
+        </div>
+
+        {networkIsolationEnabled && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Allowed Domains</Label>
+              <button
+                onClick={handleResetHosts}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset to defaults
+              </button>
+            </div>
+
+            <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2 bg-muted/30">
+              {allowedHosts.map((host) => (
+                <div
+                  key={host}
+                  className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 group"
+                >
+                  <span className="font-mono text-xs">{host}</span>
+                  <button
+                    onClick={() => handleRemoveHost(host)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              {allowedHosts.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  No domains allowed. All outbound traffic will be blocked.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g., *.example.com"
+                value={newHost}
+                onChange={(e) => setNewHost(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddHost()
+                }}
+                className="font-mono text-sm"
+              />
+              <Button onClick={handleAddHost} disabled={!newHost.trim()} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
           </div>
         )}
       </div>

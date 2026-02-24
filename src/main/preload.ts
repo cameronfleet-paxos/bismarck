@@ -481,6 +481,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('update-docker-shared-build-cache-settings', settings),
   updateDockerPnpmStoreSettings: (settings: { enabled?: boolean; path?: string | null }) =>
     ipcRenderer.invoke('update-docker-pnpm-store-settings', settings),
+  updateDockerNetworkIsolationSettings: (settings: { enabled?: boolean; allowedHosts?: string[] }) =>
+    ipcRenderer.invoke('update-docker-network-isolation-settings', settings),
+  resetDockerNetworkIsolationHosts: (): Promise<string[]> =>
+    ipcRenderer.invoke('reset-docker-network-isolation-hosts'),
   detectPnpmStorePath: () =>
     ipcRenderer.invoke('detect-pnpm-store-path'),
   setRawSettings: (settings: unknown) =>

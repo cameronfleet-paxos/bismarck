@@ -234,6 +234,10 @@ export async function buildInteractiveDockerArgs(options: InteractiveDockerOptio
     args.push('--add-host', 'host.docker.internal:host-gateway')
   }
 
+  // Network isolation: route traffic through Squid proxy on internal network
+  const { applyNetworkIsolationArgs } = await import('./network-proxy')
+  applyNetworkIsolationArgs(args, settings)
+
   // Resource limits
   if (settings.docker.resourceLimits?.memory) {
     args.push('--memory', settings.docker.resourceLimits.memory)
@@ -401,6 +405,10 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     // Linux: add host network or use special flag
     args.push('--add-host', 'host.docker.internal:host-gateway')
   }
+
+  // Network isolation: route traffic through Squid proxy on internal network
+  const { applyNetworkIsolationArgs } = await import('./network-proxy')
+  applyNetworkIsolationArgs(args, settings)
 
   // Resource limits
   if (settings.docker.resourceLimits?.memory) {

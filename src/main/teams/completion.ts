@@ -50,11 +50,21 @@ export async function completePlan(planId: string): Promise<Plan | null> {
   // Remove from executing set
   executingPlans.delete(planId)
 
-  // Stop tool proxy if no more active plans
+  // Stop tool proxy and network proxy if no more active plans
   const activePlans = loadPlans().filter(p => p.status === 'delegating' || p.status === 'in_progress')
-  if (activePlans.length === 0 && isProxyRunning()) {
-    await stopToolProxy()
-    addPlanActivity(planId, 'info', 'Tool proxy stopped')
+  if (activePlans.length === 0) {
+    if (isProxyRunning()) {
+      await stopToolProxy()
+      addPlanActivity(planId, 'info', 'Tool proxy stopped')
+    }
+    try {
+      const { stopNetworkProxy, isNetworkProxyRunning } = await import('../network-proxy')
+      if (isNetworkProxyRunning()) {
+        await stopNetworkProxy()
+      }
+    } catch {
+      // Ignore network proxy cleanup errors
+    }
   }
 
   return plan
