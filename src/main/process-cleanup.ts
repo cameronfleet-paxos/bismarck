@@ -29,8 +29,23 @@ export async function cleanupOrphanedProcesses(): Promise<void> {
 }
 
 /**
- * Remove socket directories in /tmp/bm/ that are older than 24 hours.
- * These are left over from previous sessions that didn't clean up properly.
+ * Check whether a process with the given PID is still alive.
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Remove socket directories in /tmp/bm/ that are stale.
+ * A directory is considered stale if:
+ *   1. It has a .pid file and the referenced process is no longer alive, OR
+ *   2. It has no .pid file (legacy) and is older than 24 hours.
+ * Directories whose owning process is still alive are never removed.
  */
 async function cleanupStaleSocketDirs(): Promise<void> {
   try {
@@ -47,6 +62,29 @@ async function cleanupStaleSocketDirs(): Promise<void> {
 
       const dirPath = path.join(SOCKET_BASE_DIR, entry.name)
       try {
+        // Check for PID file first
+        const pidFilePath = path.join(dirPath, '.pid')
+        let hasPidFile = false
+        try {
+          const pidContent = await fs.readFile(pidFilePath, 'utf-8')
+          const pid = parseInt(pidContent.trim(), 10)
+          hasPidFile = true
+          if (!isNaN(pid) && isProcessAlive(pid)) {
+            devLog(`[Cleanup] Skipping socket dir ${dirPath} — owning process ${pid} is still alive`)
+            continue
+          }
+          devLog(`[Cleanup] Removing socket dir ${dirPath} — owning process ${pid} is dead`)
+        } catch {
+          // No PID file or unreadable — fall through to age-based check
+        }
+
+        if (hasPidFile) {
+          // PID file existed but process is dead — remove immediately
+          await fs.rm(dirPath, { recursive: true, force: true })
+          continue
+        }
+
+        // No PID file (legacy directory) — fall back to age-based cleanup
         const stats = await fs.stat(dirPath)
         const age = now - stats.mtimeMs
 

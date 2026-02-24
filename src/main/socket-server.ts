@@ -5,6 +5,8 @@ import { BrowserWindow, Notification } from 'electron'
 import { getConfigDir } from './config'
 import { devLog } from './dev-log'
 
+const HEALTH_CHECK_INTERVAL_MS = 30_000
+
 interface StopEvent {
   event: 'stop'
   reason: 'input_required'
@@ -203,5 +205,56 @@ export function closeAllSocketServers(): void {
     if (fs.existsSync(instanceDir)) {
       fs.rmSync(instanceDir, { recursive: true })
     }
+  }
+}
+
+/**
+ * Write a PID file into the socket directory so other instances can check
+ * whether the owning process is still alive before cleaning up.
+ */
+export function writeSocketPidFile(): void {
+  const socketsDir = getSocketsDir()
+  if (!fs.existsSync(socketsDir)) {
+    fs.mkdirSync(socketsDir, { recursive: true })
+  }
+  const pidPath = path.join(socketsDir, '.pid')
+  fs.writeFileSync(pidPath, String(process.pid))
+  devLog(`[SocketServer] Wrote PID file: ${pidPath} (pid=${process.pid})`)
+}
+
+let healthCheckTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Start a periodic health check that verifies socket files still exist on disk.
+ * If a socket file has been deleted (by cleanup, /tmp purge, sleep/wake, etc.),
+ * the old server is closed and a new one is created.
+ */
+export function startSocketHealthCheck(): void {
+  if (healthCheckTimer) return
+
+  healthCheckTimer = setInterval(() => {
+    for (const [workspaceId, server] of servers) {
+      const socketPath = getSocketPath(workspaceId)
+      if (!fs.existsSync(socketPath)) {
+        devLog(`[SocketHealthCheck] Socket file missing for workspace ${workspaceId}: ${socketPath} — recreating`)
+        try {
+          server.close()
+        } catch {
+          // Ignore errors closing the old server
+        }
+        servers.delete(workspaceId)
+        createSocketServer(workspaceId)
+      }
+    }
+  }, HEALTH_CHECK_INTERVAL_MS)
+}
+
+/**
+ * Stop the periodic socket health check.
+ */
+export function stopSocketHealthCheck(): void {
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer)
+    healthCheckTimer = null
   }
 }
