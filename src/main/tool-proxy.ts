@@ -79,6 +79,14 @@ interface ProxyResponse {
   error?: string
 }
 
+const DEFAULT_CO_AUTHOR = 'Claude <noreply@anthropic.com>'
+
+interface GitArgPreparationResult {
+  success: boolean
+  args?: string[]
+  error?: string
+}
+
 // Event emitter for proxy activity logging
 export const proxyEvents = new EventEmitter()
 
@@ -167,6 +175,194 @@ async function parseBody(req: http.IncomingMessage): Promise<unknown> {
 function sendJson(res: http.ServerResponse, status: number, data: ProxyResponse): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(data))
+}
+
+function parseCoAuthorTrailer(line: string): string | null {
+  const match = line.trim().match(/^co-authored-by:\s*(.+?)\s*<([^<>\s]+@[^<>\s]+)>\s*$/i)
+  if (!match) return null
+
+  const name = match[1].replace(/\s+/g, ' ').trim()
+  const email = match[2].trim()
+  if (!name || !email) return null
+
+  return `${name} <${email}>`
+}
+
+function dedupeCoAuthors(coAuthors: string[]): string[] {
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const coAuthor of coAuthors) {
+    const key = coAuthor.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      deduped.push(coAuthor)
+    }
+  }
+  return deduped
+}
+
+function normalizeGitCommitArgs(args: string[]): GitArgPreparationResult {
+  const passthrough: string[] = ['commit']
+  const messageParts: string[] = []
+
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '-m' || arg === '--message') {
+      const msg = args[i + 1]
+      if (msg === undefined) {
+        return { success: false, error: 'git commit message flag requires a value' }
+      }
+      messageParts.push(msg)
+      i++
+      continue
+    }
+    passthrough.push(arg)
+  }
+
+  if (messageParts.length === 0) {
+    return { success: true, args: passthrough }
+  }
+
+  const combined = messageParts.join('\n\n').replace(/\r\n/g, '\n')
+  const allLines = combined.split('\n')
+  const bodyLines: string[] = []
+  const coAuthors: string[] = []
+
+  for (const line of allLines) {
+    const parsedCoAuthor = parseCoAuthorTrailer(line)
+    if (parsedCoAuthor) {
+      coAuthors.push(parsedCoAuthor)
+      continue
+    }
+    bodyLines.push(line)
+  }
+
+  let firstContentIndex = bodyLines.findIndex((line) => line.trim().length > 0)
+  if (firstContentIndex === -1) {
+    return { success: false, error: 'git commit message cannot be empty' }
+  }
+
+  const subject = bodyLines[firstContentIndex].trim()
+  if (/co-authored-by:/i.test(subject)) {
+    return { success: false, error: 'git commit subject must not contain Co-authored-by trailers' }
+  }
+
+  const remainingBodyLines = bodyLines.slice(firstContentIndex + 1)
+  while (remainingBodyLines.length > 0 && remainingBodyLines[0].trim() === '') {
+    remainingBodyLines.shift()
+  }
+  while (remainingBodyLines.length > 0 && remainingBodyLines[remainingBodyLines.length - 1].trim() === '') {
+    remainingBodyLines.pop()
+  }
+
+  coAuthors.push(DEFAULT_CO_AUTHOR)
+  const normalizedCoAuthors = dedupeCoAuthors(coAuthors).slice(0, 10)
+
+  const normalizedArgs: string[] = [...passthrough, '-m', subject]
+  const bodySections: string[] = []
+
+  if (remainingBodyLines.length > 0) {
+    bodySections.push(remainingBodyLines.join('\n'))
+  }
+  for (const coAuthor of normalizedCoAuthors) {
+    bodySections.push(`Co-authored-by: ${coAuthor}`)
+  }
+
+  if (bodySections.length > 0) {
+    normalizedArgs.push('-m', bodySections.join('\n\n'))
+  }
+
+  return { success: true, args: normalizedArgs }
+}
+
+function validateNormalizedGitCommitArgs(args: string[]): GitArgPreparationResult {
+  const noValueFlags = new Set([
+    '-a',
+    '--all',
+    '--amend',
+    '--allow-empty',
+    '--no-edit',
+    '--no-verify',
+    '-n',
+    '--quiet',
+    '-q',
+    '--verbose',
+    '-v',
+    '--signoff',
+    '-s',
+    '--reset-author',
+  ])
+  const valueFlags = new Set([
+    '-m',
+    '--message',
+    '-F',
+    '--file',
+    '--author',
+    '--date',
+    '--cleanup',
+    '-C',
+    '-c',
+    '--fixup',
+    '--squash',
+    '-u',
+    '--untracked-files',
+    '-S',
+    '--gpg-sign',
+  ])
+  const valuePrefixes = [
+    '--author=',
+    '--date=',
+    '--cleanup=',
+    '--fixup=',
+    '--gpg-sign=',
+    '--untracked-files=',
+  ]
+
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i]
+
+    if (arg.includes('\0')) {
+      return { success: false, error: 'git commit arguments must not contain NUL bytes' }
+    }
+    if (arg === '-') {
+      return { success: false, error: 'git commit contains an invalid standalone "-" argument' }
+    }
+    if (/^co-authored-by:/i.test(arg)) {
+      return { success: false, error: 'git commit trailers must be placed in the commit message body' }
+    }
+    if (!arg.startsWith('-')) continue
+
+    if (noValueFlags.has(arg)) continue
+    if (valueFlags.has(arg)) {
+      const nextArg = args[i + 1]
+      if (nextArg === undefined) {
+        return { success: false, error: `git commit flag "${arg}" requires a value` }
+      }
+      i++
+      continue
+    }
+    if (valuePrefixes.some((prefix) => arg.startsWith(prefix))) continue
+
+    return { success: false, error: `git commit contains unsupported or malformed flag "${arg}"` }
+  }
+
+  return { success: true, args }
+}
+
+function prepareGitArgsForProxy(inputArgs: string[]): GitArgPreparationResult {
+  if (inputArgs.length === 0) {
+    return { success: false, error: 'git args cannot be empty' }
+  }
+  if (inputArgs[0] !== 'commit') {
+    return { success: true, args: inputArgs }
+  }
+
+  const normalized = normalizeGitCommitArgs(inputArgs)
+  if (!normalized.success || !normalized.args) {
+    return normalized
+  }
+
+  return validateNormalizedGitCommitArgs(normalized.args)
 }
 
 /**
@@ -357,18 +553,16 @@ async function handleGitRequest(
       return
     }
 
-    const args = body.args || []
-
-    // Auto-inject Co-authored-by trailer for git commit commands
-    if (args[0] === 'commit') {
-      const msgIndex = args.indexOf('-m')
-      if (msgIndex !== -1 && msgIndex + 1 < args.length) {
-        const msg = args[msgIndex + 1]
-        if (!msg.toLowerCase().includes('co-authored-by:')) {
-          args[msgIndex + 1] = msg + '\n\nCo-authored-by: Claude <noreply@anthropic.com>'
-        }
-      }
+    const prepared = prepareGitArgsForProxy(body.args || [])
+    if (!prepared.success || !prepared.args) {
+      logger.warn('proxy', `git request rejected: ${prepared.error}`, { worktreePath: cwd })
+      sendJson(res, 400, {
+        success: false,
+        error: prepared.error || 'Invalid git arguments',
+      })
+      return
     }
+    const args = prepared.args
 
     logger.info('proxy', `git request received: git ${args.join(' ')}`, { worktreePath: cwd })
 
