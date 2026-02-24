@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { randomUUID } from 'crypto'
 import { devLog } from './dev-log'
+import { initShellPath } from './exec-utils'
 import { reloadToolConfig, startToolProxy } from './tool-proxy'
 import {
   initBenchmark,
@@ -1650,6 +1651,10 @@ app.whenReady().then(async () => {
 
   // Initialize config directory structure
   timeSync('main:ensureConfigDirExists', 'main', () => ensureConfigDirExists())
+
+  // Initialize shell PATH early - needed for tool detection
+  // This spawns a login shell to get the user's full PATH (nix, cabal, etc.)
+  await timeAsync('main:initShellPath', 'main', () => initShellPath())
 
   // Cleanup orphaned processes from previous sessions
   await timeAsync('main:cleanupOrphanedProcesses', 'main', () => cleanupOrphanedProcesses())
