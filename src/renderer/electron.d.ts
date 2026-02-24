@@ -251,6 +251,7 @@ export interface ElectronAPI {
   updateDockerNetworkIsolationSettings: (settings: { enabled?: boolean; allowedHosts?: string[] }) => Promise<void>
   resetDockerNetworkIsolationHosts: () => Promise<string[]>
   detectPnpmStorePath: () => Promise<string | null>
+  detectBuildBuddyMcpPath: () => Promise<{ path: string | null; source: string; valid: boolean }>
   setRawSettings: (settings: unknown) => Promise<AppSettings>
 
   // Prompt management

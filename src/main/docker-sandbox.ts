@@ -400,42 +400,79 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
   }
 
   // Mount BuildBuddy MCP server if configured
-  if (settings.docker.buildbuddyMcp?.enabled && settings.docker.buildbuddyMcp?.hostPath) {
-    const mcpHostPath = settings.docker.buildbuddyMcp.hostPath
-    try {
-      await fs.access(mcpHostPath)
-      devLog('[DockerSandbox] Mounting BuildBuddy MCP server from:', mcpHostPath)
-      args.push('-v', `${mcpHostPath}:/mcp/buildbuddy:ro`)
-      args.push('-e', 'BAZEL_BINDIR=/workspace/bazel-bin')
+  if (settings.docker.buildbuddyMcp?.enabled) {
+    let mcpHostPath = settings.docker.buildbuddyMcp.hostPath
 
-      // Generate Claude Code MCP config and mount it
-      // Claude Code stores MCP servers per-project under projects["/workspace"]
-      const claudeConfig = JSON.stringify({
-        hasCompletedOnboarding: true,
-        projects: {
-          '/workspace': {
-            mcpServers: {
-              buildbuddy: {
-                type: 'stdio',
-                command: 'node',
-                args: ['/mcp/buildbuddy/index.js'],
-                env: {
-                  BAZEL_BINDIR: '/workspace/bazel-bin',
-                },
-              },
-            },
-            hasTrustDialogAccepted: true,
-            hasCompletedProjectOnboarding: true,
+    // Auto-detect if hostPath is not explicitly configured
+    if (!mcpHostPath) {
+      const { detectBuildBuddyMcpPath } = await import('./buildbuddy-mcp-detect')
+      const detection = await detectBuildBuddyMcpPath()
+      if (detection.path) {
+        mcpHostPath = detection.path
+        devLog('[DockerSandbox] Auto-detected BuildBuddy MCP path:', mcpHostPath, `(from ${detection.source})`)
+      }
+    }
+
+    if (mcpHostPath) {
+      try {
+        await fs.access(path.join(mcpHostPath, 'dist', 'index.js'))
+        devLog('[DockerSandbox] Mounting BuildBuddy MCP server from:', mcpHostPath)
+        args.push('-v', `${mcpHostPath}:/mcp/buildbuddy:ro`)
+        args.push('-e', 'BAZEL_BINDIR=/workspace/bazel-bin')
+
+        // Merge MCP config into host's ~/.claude.json so we don't clobber
+        // auth state, onboarding flags, or other fields Claude Code needs.
+        const hostClaudeJsonPath = path.join(os.homedir(), '.claude.json')
+        let claudeJson: Record<string, unknown> = {}
+        try {
+          const raw = await fs.readFile(hostClaudeJsonPath, 'utf-8')
+          claudeJson = JSON.parse(raw)
+        } catch { /* file missing or invalid — start fresh */ }
+
+        claudeJson.hasCompletedOnboarding = true
+
+        // Build the MCP server entry pointing to the container path
+        const bbMcpEntry = {
+          type: 'stdio',
+          command: 'node',
+          args: ['/mcp/buildbuddy/dist/index.js'],
+          env: {
+            BAZEL_BINDIR: '/workspace/bazel-bin',
           },
-        },
-      }, null, 2)
-      const tmpConfigPath = path.join(os.tmpdir(), `bismarck-claude-config-${Date.now()}.json`)
-      await fs.writeFile(tmpConfigPath, claudeConfig)
-      args.push('-v', `${tmpConfigPath}:/home/agent/.claude.json:ro`)
-    } catch {
-      // MCP path doesn't exist, skip mounting
-      logger.warn('docker', 'BuildBuddy MCP hostPath not found, skipping', undefined, {
-        path: mcpHostPath,
+        }
+
+        // Set top-level mcpServers (overrides host paths with container paths)
+        const topLevelMcp = (claudeJson.mcpServers || {}) as Record<string, unknown>
+        topLevelMcp.buildbuddy = bbMcpEntry
+        claudeJson.mcpServers = topLevelMcp
+
+        // Also inject under projects["/workspace"] for per-project discovery
+        const projects = (claudeJson.projects || {}) as Record<string, Record<string, unknown>>
+        const workspaceProject = projects['/workspace'] || {}
+        const existingMcp = (workspaceProject.mcpServers || {}) as Record<string, unknown>
+        workspaceProject.mcpServers = { ...existingMcp, buildbuddy: bbMcpEntry }
+        workspaceProject.hasTrustDialogAccepted = true
+        workspaceProject.hasCompletedProjectOnboarding = true
+        projects['/workspace'] = workspaceProject
+        claudeJson.projects = projects
+
+        const tmpConfigPath = path.join(os.tmpdir(), `bismarck-claude-config-${Date.now()}.json`)
+        await fs.writeFile(tmpConfigPath, JSON.stringify(claudeJson, null, 2))
+        args.push('-v', `${tmpConfigPath}:/home/agent/.claude.json:ro`)
+      } catch {
+        logger.error('docker', 'BuildBuddy MCP dist/index.js not found at configured path', undefined, {
+          path: mcpHostPath,
+        })
+        containerEvents.emit('config-warning', {
+          type: 'buildbuddy-mcp',
+          message: `BuildBuddy MCP server not found at ${mcpHostPath}/dist/index.js — may need rebuild`,
+        })
+      }
+    } else {
+      logger.error('docker', 'BuildBuddy MCP enabled but path could not be detected. Install with: claude mcp add buildbuddy -s user')
+      containerEvents.emit('config-warning', {
+        type: 'buildbuddy-mcp',
+        message: 'BuildBuddy MCP server not found. Install with: claude mcp add buildbuddy -s user',
       })
     }
   }

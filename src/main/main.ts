@@ -1459,6 +1459,11 @@ function registerIpcHandlers() {
     return detectPnpmStorePath()
   })
 
+  ipcMain.handle('detect-buildbuddy-mcp-path', async () => {
+    const { detectBuildBuddyMcpPath } = await import('./buildbuddy-mcp-detect')
+    return detectBuildBuddyMcpPath()
+  })
+
   ipcMain.handle('set-raw-settings', async (_event, settings: unknown) => {
     return saveSettings(settings as AppSettings)
   })

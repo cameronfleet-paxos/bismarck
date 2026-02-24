@@ -495,6 +495,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reset-docker-network-isolation-hosts'),
   detectPnpmStorePath: () =>
     ipcRenderer.invoke('detect-pnpm-store-path'),
+  detectBuildBuddyMcpPath: (): Promise<{ path: string | null; source: string; valid: boolean }> =>
+    ipcRenderer.invoke('detect-buildbuddy-mcp-path'),
   setRawSettings: (settings: unknown) =>
     ipcRenderer.invoke('set-raw-settings', settings),
 
