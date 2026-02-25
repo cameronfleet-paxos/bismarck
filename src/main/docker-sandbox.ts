@@ -458,7 +458,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
         const tmpConfigPath = path.join(os.tmpdir(), `bismarck-claude-config-${Date.now()}.json`)
         await fs.writeFile(tmpConfigPath, JSON.stringify(claudeJson, null, 2))
-        args.push('-v', `${tmpConfigPath}:/home/agent/.claude.json:ro`)
+        args.push('-v', `${tmpConfigPath}:/home/agent/.claude.json`)
       } catch {
         logger.error('docker', 'BuildBuddy MCP dist/index.js not found at configured path', undefined, {
           path: mcpHostPath,
