@@ -45,7 +45,7 @@ import { WorkflowViewerModal } from '@/renderer/components/WorkflowViewerModal'
 import type { NodeStatus } from '@/renderer/components/workflow/WorkflowStatusViewer'
 import type { WorkflowGraph } from '@/shared/cron-types'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
-import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, PrefixChordConfig, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
+import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, PrefixChordConfig, SpawningHeadlessInfo, PlainTerminal, TeamMode, StandaloneAgentType } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
 import { extractPRUrl } from '@/shared/pr-utils'
@@ -1706,7 +1706,7 @@ function App() {
     setTabs(state.tabs || [])
   }
 
-  const handleLaunchAgent = async (agentId: string) => {
+  const handleLaunchAgent = async (agentId: string, options?: { agentType?: StandaloneAgentType }) => {
     const agent = agents.find((a) => a.id === agentId)
 
     // Skip terminal creation for headless agents - they use HeadlessTerminal component
@@ -1735,7 +1735,7 @@ function App() {
       return
     }
 
-    const terminalId = await window.electronAPI.createTerminal(agentId)
+    const terminalId = await window.electronAPI.createTerminal(agentId, options?.agentType ? { agentType: options.agentType } : undefined)
     setActiveTerminals((prev) => [...prev, { terminalId, workspaceId: agentId }])
     setFocusedAgentId(agentId)
     window.electronAPI?.setFocusedWorkspace?.(agentId)
@@ -2149,7 +2149,7 @@ function App() {
   }
 
   // Command search handler
-  const handleCommandSearchSelect = async (agentId: string) => {
+  const handleCommandSearchSelect = async (agentId: string, options?: { agentType?: StandaloneAgentType }) => {
     // Find the tab containing this agent
     const tab = tabs.find(t => t.workspaceIds.includes(agentId))
     if (tab && tab.id !== activeTabId) {
@@ -2163,7 +2163,7 @@ function App() {
     // If agent is not running, launch it
     const isActive = activeTerminals.some(t => t.workspaceId === agentId)
     if (!isActive) {
-      handleLaunchAgent(agentId)
+      handleLaunchAgent(agentId, options)
     }
   }
 
@@ -2283,7 +2283,7 @@ function App() {
   }
 
   // Start standalone headless agent handler
-  const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => {
+  const handleStartStandaloneHeadless = async (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean; agentType?: StandaloneAgentType }) => {
     // Generate a unique spawning ID for this placeholder
     const spawningId = `spawning-${Date.now()}`
     const referenceAgent = agents.find(a => a.id === agentId)
@@ -2313,6 +2313,7 @@ function App() {
       position: slot.position,
       prompt,
       model,
+      agentType: options?.agentType,
       startedAt: Date.now(),
       referenceName: referenceAgent.name,
       referenceIcon: referenceAgent.icon,
@@ -2326,7 +2327,7 @@ function App() {
     }
 
     try {
-      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, ipcTabId, { planPhase: options?.planPhase })
+      const result = await window.electronAPI?.startStandaloneHeadlessAgent?.(agentId, prompt, model, ipcTabId, { planPhase: options?.planPhase, agentType: options?.agentType })
       if (result) {
         // Update skeleton's tabId if the actual tab differs from what we predicted
         if (result.tabId !== slot.tabId) {
@@ -3671,11 +3672,38 @@ function App() {
                               setDropTargetHeadlessId(null)
                             }}
                             className={`px-3 py-1.5 border-b text-sm font-medium flex items-center justify-between flex-shrink-0 ${
-                              info.agentType === 'critic' ? 'bg-amber-500/15' : 'bg-card'
+                              info.agentType === 'critic' ? 'bg-amber-500/15' :
+                              info.agentType === 'architect' ? 'bg-emerald-500/15' :
+                              info.agentType === 'manager' ? 'bg-indigo-500/15' :
+                              info.agentType === 'discussion' ? 'bg-cyan-500/15' :
+                              'bg-card'
                             } ${!expandedAgentId ? 'cursor-grab active:cursor-grabbing' : ''}`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="truncate" title={`${info.agentType === 'critic' ? 'Critic' : 'Task'} ${info.taskId}`}>{info.agentType === 'critic' ? 'Critic' : 'Task'} {info.taskId}</span>
+                              <span className="truncate" title={`${
+                                info.agentType === 'critic' ? 'Critic' :
+                                info.agentType === 'architect' ? 'Architect' :
+                                info.agentType === 'manager' ? 'Manager' :
+                                info.agentType === 'discussion' ? 'Discussion' :
+                                'Task'
+                              } ${info.taskId}`}>{
+                                info.agentType === 'critic' ? 'Critic' :
+                                info.agentType === 'architect' ? 'Architect' :
+                                info.agentType === 'manager' ? 'Manager' :
+                                info.agentType === 'discussion' ? 'Discussion' :
+                                'Task'
+                              } {info.taskId}</span>
+                              {info.agentType && info.agentType !== 'task' && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  info.agentType === 'critic' ? 'bg-amber-500/20 text-amber-400' :
+                                  info.agentType === 'architect' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  info.agentType === 'manager' ? 'bg-indigo-500/20 text-indigo-400' :
+                                  info.agentType === 'discussion' ? 'bg-cyan-500/20 text-cyan-400' :
+                                  'bg-gray-500/20 text-gray-400'
+                                }`}>
+                                  {info.agentType.charAt(0).toUpperCase() + info.agentType.slice(1)}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <button

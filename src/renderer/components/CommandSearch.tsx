@@ -8,8 +8,8 @@ import {
 import { AgentIcon } from '@/renderer/components/AgentIcon'
 import { Switch } from '@/renderer/components/ui/switch'
 import { Tooltip } from '@/renderer/components/ui/tooltip'
-import { themes } from '@/shared/constants'
-import type { Agent, AgentTab, RalphLoopConfig } from '@/shared/types'
+import { themes, STANDALONE_AGENT_TYPES } from '@/shared/constants'
+import type { Agent, AgentTab, RalphLoopConfig, StandaloneAgentType } from '@/shared/types'
 import { RALPH_LOOP_PRESETS, type RalphLoopPreset } from '@/shared/ralph-loop-presets'
 import { useTutorial } from '@/renderer/components/tutorial'
 
@@ -50,8 +50,8 @@ interface CommandSearchProps {
   waitingQueue: string[]
   tabs: AgentTab[]
   activeTabId: string | null
-  onSelectAgent: (agentId: string) => void
-  onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean }) => void
+  onSelectAgent: (agentId: string, options?: { agentType?: StandaloneAgentType }) => void
+  onStartHeadless?: (agentId: string, prompt: string, model: 'opus' | 'sonnet', options?: { planPhase?: boolean; agentType?: StandaloneAgentType }) => void
   onStartHeadlessDiscussion?: (agentId: string, initialPrompt: string, model: 'opus' | 'sonnet') => void
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
@@ -101,6 +101,7 @@ export function CommandSearch({
   const [planPhase, setPlanPhase] = useState(true)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null)
   const [headlessModelOverride, setHeadlessModelOverride] = useState<'opus' | 'sonnet' | null>(null)
+  const [selectedAgentType, setSelectedAgentType] = useState<StandaloneAgentType | undefined>(undefined)
 
   // Cron schedule state
   const [cronSchedule, setCronSchedule] = useState('0 9 * * *')
@@ -281,6 +282,7 @@ export function CommandSearch({
         setPlanPhase(true)
         setPendingCommand(null)
         setHeadlessModelOverride(null)
+        setSelectedAgentType(undefined)
         setCompletionPhrase('<promise>COMPLETE</promise>')
         setMaxIterations(50)
         setRalphModel('sonnet')
@@ -321,6 +323,7 @@ export function CommandSearch({
     } else if (mode === 'prompt-input') {
       setMode('agent-select')
       setPrompt('')
+      setSelectedAgentType(undefined)
     } else if (mode === 'ralph-loop-config') {
       setMode('agent-select')
       setPrompt('')
@@ -466,7 +469,7 @@ export function CommandSearch({
         const agentIndex = idx - filteredCommands.length
         const agent = filteredAgents[agentIndex]
         if (agent) {
-          onSelectAgent(agent.id)
+          onSelectAgent(agent.id, selectedAgentType ? { agentType: selectedAgentType } : undefined)
           onOpenChange(false)
         }
       }
@@ -560,7 +563,7 @@ export function CommandSearch({
         onStartRalphLoopDiscussion?.(selectedAgent.id, prompt.trim())
         onOpenChange(false)
       } else if (onStartHeadless) {
-        onStartHeadless(selectedAgent.id, prompt.trim(), model, { planPhase })
+        onStartHeadless(selectedAgent.id, prompt.trim(), model, { planPhase, agentType: selectedAgentType })
         onOpenChange(false)
       }
     }
@@ -699,6 +702,28 @@ export function CommandSearch({
                 </div>
               )}
             </div>
+            {/* Agent type selector (headless agents only, not discussion modes) */}
+            {pendingCommand !== 'headless-discussion' && pendingCommand !== 'ralph-loop-discussion' && pendingCommand !== 'cron-headless' && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-muted-foreground">Role</span>
+                <div className="flex gap-1">
+                  {STANDALONE_AGENT_TYPES.map((type) => (
+                    <button
+                      key={type.value}
+                      onClick={() => setSelectedAgentType(selectedAgentType === type.value ? undefined : type.value)}
+                      className={`px-2 py-0.5 text-xs rounded-full transition-colors cursor-pointer ${
+                        selectedAgentType === type.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      }`}
+                      title={type.description}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end mt-2">
               {pendingCommand === 'ralph-loop-discussion' ? (
                 <button
@@ -1062,7 +1087,7 @@ export function CommandSearch({
                             key={agent.id}
                             data-index={adjustedIndex}
                             onClick={() => {
-                              onSelectAgent(agent.id)
+                              onSelectAgent(agent.id, selectedAgentType ? { agentType: selectedAgentType } : undefined)
                               onOpenChange(false)
                             }}
                             onMouseEnter={() => setSelectedIndex(adjustedIndex)}
@@ -1173,6 +1198,29 @@ export function CommandSearch({
               )}
             </div>
           </>
+        )}
+
+        {/* Role selector for commands/agent-select modes */}
+        {(mode === 'commands' || mode === 'agent-select') && (
+          <div className="border-t px-4 py-1.5 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Role</span>
+            <div className="flex gap-1">
+              {STANDALONE_AGENT_TYPES.map((type) => (
+                <button
+                  key={type.value}
+                  onClick={() => setSelectedAgentType(selectedAgentType === type.value ? undefined : type.value)}
+                  className={`px-2 py-0.5 text-xs rounded-full transition-colors cursor-pointer ${
+                    selectedAgentType === type.value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  title={type.description}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Footer with hints */}

@@ -128,6 +128,17 @@ export const AgentCard = memo(function AgentCard({
             Headless
           </span>
         )}
+        {agent.agentType && agent.agentType !== 'task' && (
+          <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+            agent.agentType === 'critic' ? 'bg-amber-500/20 text-amber-400' :
+            agent.agentType === 'architect' ? 'bg-emerald-500/20 text-emerald-400' :
+            agent.agentType === 'manager' ? 'bg-indigo-500/20 text-indigo-400' :
+            agent.agentType === 'discussion' ? 'bg-cyan-500/20 text-cyan-400' :
+            'bg-gray-500/20 text-gray-400'
+          }`}>
+            {agent.agentType.charAt(0).toUpperCase() + agent.agentType.slice(1)}
+          </span>
+        )}
         {isWaiting && (
           <span className="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded flex-shrink-0">
             Waiting

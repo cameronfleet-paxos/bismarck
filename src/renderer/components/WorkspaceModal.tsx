@@ -18,9 +18,9 @@ import {
 } from '@/renderer/components/ui/select'
 import { Tooltip } from '@/renderer/components/ui/tooltip'
 import { AgentIcon } from '@/renderer/components/AgentIcon'
-import type { Agent, AgentProvider, ThemeName, Repository } from '@/shared/types'
+import type { Agent, AgentProvider, ThemeName, Repository, StandaloneAgentType } from '@/shared/types'
 import type { AgentIconName } from '@/shared/constants'
-import { themes, agentIcons, agentProviderNames } from '@/shared/constants'
+import { themes, agentIcons, agentProviderNames, STANDALONE_AGENT_TYPES } from '@/shared/constants'
 import { GitBranch, X, FolderOpen } from 'lucide-react'
 
 interface AgentModalProps {
@@ -43,6 +43,7 @@ export function AgentModal({
   const [theme, setTheme] = useState<ThemeName>('gray')
   const [icon, setIcon] = useState<AgentIconName>('beethoven')
   const [provider, setProvider] = useState<AgentProvider>('claude')
+  const [agentType, setAgentType] = useState<StandaloneAgentType | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
   // Git repository detection state
@@ -83,12 +84,14 @@ export function AgentModal({
       setTheme(agent.theme)
       setIcon(agent.icon || 'beethoven')
       setProvider(agent.provider || 'claude')
+      setAgentType(agent.agentType)
     } else {
       setName('')
       setDirectory('')
       setTheme('gray')
       // Random icon for new agents
       setIcon(agentIcons[Math.floor(Math.random() * agentIcons.length)])
+      setAgentType(undefined)
       // Load default provider from settings
       window.electronAPI.getSettings().then(settings => {
         setProvider(settings.defaultProvider || 'claude')
@@ -132,6 +135,7 @@ export function AgentModal({
       theme,
       icon,
       provider,
+      agentType,
       repositoryId: detectedRepo?.id,
     }
 
@@ -214,6 +218,30 @@ export function AgentModal({
               </SelectContent>
             </Select>
           </div>
+          {provider === 'claude' && (
+            <div className="grid gap-2">
+              <Label>Role (optional)</Label>
+              <div className="flex gap-1.5">
+                {STANDALONE_AGENT_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    onClick={() => setAgentType(agentType === type.value ? undefined : type.value)}
+                    className={`px-2.5 py-1 text-xs rounded-full transition-colors cursor-pointer ${
+                      agentType === type.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                    title={type.description}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sets a role-specific system prompt when launching this agent. Click again to deselect.
+              </p>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="theme">Theme</Label>
             <div className="flex items-center gap-3">

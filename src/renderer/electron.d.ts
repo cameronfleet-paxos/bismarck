@@ -27,7 +27,7 @@ export interface ElectronAPI {
   reorderWorkspaces: (workspaceIds: string[]) => Promise<void>
 
   // Terminal management
-  createTerminal: (workspaceId: string) => Promise<string>
+  createTerminal: (workspaceId: string, options?: { agentType?: string }) => Promise<string>
   writeTerminal: (terminalId: string, data: string) => Promise<void>
   resizeTerminal: (
     terminalId: string,
@@ -115,7 +115,7 @@ export interface ElectronAPI {
   destroyHeadlessAgent: (taskId: string, isStandalone: boolean) => Promise<{ success: boolean; error?: string }>
 
   // Standalone headless agent management
-  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet' | 'haiku', tabId?: string, options?: { planPhase?: boolean }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
+  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet' | 'haiku', tabId?: string, options?: { planPhase?: boolean; agentType?: string }) => Promise<{ headlessId: string; workspaceId: string; tabId: string }>
   getStandaloneHeadlessAgents: () => Promise<HeadlessAgentInfo[]>
   stopStandaloneHeadlessAgent: (headlessId: string) => Promise<void>
   nudgeHeadlessAgent: (taskId: string, message: string, isStandalone: boolean) => Promise<boolean>
