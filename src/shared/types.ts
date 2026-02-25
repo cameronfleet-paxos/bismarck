@@ -1,5 +1,8 @@
 import type { AgentIconName } from './constants'
 
+// Agent types available for standalone (non-plan) agents
+export type StandaloneAgentType = 'task' | 'critic' | 'manager' | 'architect' | 'discussion'
+
 // Customizable prompt types (available in settings)
 export type CustomizablePromptType = 'orchestrator' | 'planner' | 'discussion' | 'task' | 'standalone_headless' | 'standalone_followup' | 'headless_discussion' | 'critic' | 'manager' | 'architect'
 
@@ -90,6 +93,7 @@ export interface Agent {
   taskId?: string               // Associated task ID
   isHeadless?: boolean          // Running in headless Docker mode (no interactive terminal)
   isStandaloneHeadless?: boolean // Standalone headless agent (not part of a plan)
+  agentType?: StandaloneAgentType // Agent role type (default: task)
   order?: number                 // Display order in sidebar (lower = higher in list)
 }
 
@@ -538,7 +542,7 @@ export interface HeadlessAgentInfo {
   userPrompt?: string  // Raw user-submitted prompt (for Eye modal default view)
   planText?: string  // Plan generated during planning phase (for Eye modal display)
   model?: AgentModel  // Model used for this agent (opus/sonnet/haiku)
-  agentType?: 'task' | 'critic' | 'merge' | 'manager' | 'architect'  // Type of headless agent (default: task)
+  agentType?: 'task' | 'critic' | 'merge' | 'manager' | 'architect' | 'discussion'  // Type of headless agent (default: task)
   defaultBranch?: string  // Base branch this agent was forked from (for ref-based diffing)
 }
 
@@ -556,6 +560,7 @@ export interface SpawningHeadlessInfo {
   position: number            // Grid slot index within the tab
   prompt: string              // Prompt being executed
   model: 'opus' | 'sonnet'    // Model being used
+  agentType?: StandaloneAgentType // Agent role type (default: task)
   startedAt: number           // Timestamp for display purposes
   // Fallback metadata captured at spawn time (for resilient rendering)
   referenceName: string       // Agent name for display

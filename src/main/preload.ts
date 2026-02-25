@@ -13,8 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reorder-workspaces', workspaceIds),
 
   // Terminal management
-  createTerminal: (workspaceId: string): Promise<string> =>
-    ipcRenderer.invoke('create-terminal', workspaceId),
+  createTerminal: (workspaceId: string, options?: { agentType?: string }): Promise<string> =>
+    ipcRenderer.invoke('create-terminal', workspaceId, options),
   writeTerminal: (terminalId: string, data: string): Promise<void> =>
     ipcRenderer.invoke('write-terminal', terminalId, data),
   resizeTerminal: (
@@ -144,7 +144,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('destroy-headless-agent', taskId, isStandalone),
 
   // Standalone headless agent management
-  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string, options?: { planPhase?: boolean }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
+  startStandaloneHeadlessAgent: (agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string, options?: { planPhase?: boolean; agentType?: string }): Promise<{ headlessId: string; workspaceId: string; tabId: string }> =>
     ipcRenderer.invoke('start-standalone-headless-agent', agentId, prompt, model, tabId, options),
   getStandaloneHeadlessAgents: (): Promise<HeadlessAgentInfo[]> =>
     ipcRenderer.invoke('get-standalone-headless-agents'),

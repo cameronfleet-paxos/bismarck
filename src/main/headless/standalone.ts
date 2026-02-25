@@ -37,8 +37,8 @@ import {
 } from '../git-utils'
 import { startToolProxy, isProxyRunning } from '../tool-proxy'
 import { getRepositoryById, getRepositoryByPath } from '../repository-manager'
-import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo } from '../../shared/types'
-import { buildPrompt, buildProxiedToolsSection, type PromptVariables } from '../prompt-templates'
+import type { Agent, HeadlessAgentInfo, HeadlessAgentStatus, StreamEvent, StandaloneWorktreeInfo, StandaloneAgentType } from '../../shared/types'
+import { buildPrompt, buildProxiedToolsSection, buildStandaloneTypedPrompt, type PromptVariables } from '../prompt-templates'
 import { runPlanPhase, wrapPromptWithPlan } from '../plan-phase'
 import { queueTerminalCreation } from '../terminal-queue'
 import { getTerminalEmitter, closeTerminal, getTerminalForWorkspace } from '../terminal'
@@ -180,6 +180,43 @@ ${guidance}
 }
 
 /**
+ * Build prompt for standalone agents with a non-default agent type.
+ * Composes the type-specific role prompt with standalone infrastructure.
+ */
+async function buildStandaloneTypedPromptForAgent(
+  userPrompt: string,
+  workingDir: string,
+  branchName: string,
+  protectedBranch: string,
+  agentType: StandaloneAgentType,
+  completionCriteria?: string,
+  guidance?: string
+): Promise<string> {
+  const completionCriteriaSection = completionCriteria
+    ? `\nBefore creating your PR, ensure these acceptance criteria pass:\n${completionCriteria}\nKeep iterating until all criteria are satisfied.\n\n`
+    : ''
+
+  const guidanceSection = guidance
+    ? `\n=== REPOSITORY GUIDANCE ===\nFollow these repo-specific guidelines:\n${guidance}\n`
+    : ''
+
+  const settings = await loadSettings()
+  const proxiedToolsSection = buildProxiedToolsSection(settings.docker.proxiedTools)
+
+  const standaloneVariables: PromptVariables = {
+    userPrompt,
+    workingDir,
+    branchName,
+    protectedBranch,
+    completionCriteria: completionCriteriaSection,
+    guidance: guidanceSection,
+    proxiedToolsSection,
+  }
+
+  return buildStandaloneTypedPrompt(agentType, standaloneVariables)
+}
+
+/**
  * Build enhanced prompt for follow-up agents with commit history context
  *
  * Note: Persona prompts are NOT injected into headless agents - they need to stay focused on tasks.
@@ -256,7 +293,7 @@ export async function startStandaloneHeadlessAgent(
   prompt: string,
   model: 'opus' | 'sonnet' = 'sonnet',
   targetTabId?: string,
-  startOptions?: { skipPlanPhase?: boolean }
+  startOptions?: { skipPlanPhase?: boolean; agentType?: StandaloneAgentType }
 ): Promise<{ headlessId: string; workspaceId: string; tabId: string }> {
   // Look up the reference agent to get its directory
   const referenceAgent = getWorkspaceById(referenceAgentId)
@@ -336,6 +373,7 @@ export async function startStandaloneHeadlessAgent(
     isStandaloneHeadless: true,
     taskId: headlessId,
     worktreePath: worktreePath,
+    agentType: startOptions?.agentType || 'task',
   }
 
   // Save the workspace
@@ -361,6 +399,7 @@ export async function startStandaloneHeadlessAgent(
     worktreeInfo: worktreeInfo,
     userPrompt: prompt, // Store raw user prompt for Eye modal default view
     model: model, // Store model for UI display
+    agentType: startOptions?.agentType || 'task', // Store agent type for UI display
     defaultBranch: baseBranch, // Store base branch for ref-based diffing
   }
   standaloneHeadlessAgentInfo.set(headlessId, agentInfo)
@@ -419,7 +458,10 @@ export async function startStandaloneHeadlessAgent(
     ? await getRepositoryById(referenceAgent.repositoryId)
     : await getRepositoryByPath(referenceAgent.directory)
   const protectedBranch = repository?.protectedBranches?.[0] || baseBranch
-  const enhancedPrompt = await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, protectedBranch, repository?.completionCriteria, repository?.guidance)
+  const agentType = startOptions?.agentType || 'task'
+  const enhancedPrompt = agentType !== 'task'
+    ? await buildStandaloneTypedPromptForAgent(prompt, worktreePath, branchName, protectedBranch, agentType, repository?.completionCriteria, repository?.guidance)
+    : await buildStandaloneHeadlessPrompt(prompt, worktreePath, branchName, protectedBranch, repository?.completionCriteria, repository?.guidance)
 
   // Run plan phase before execution (skip if caller already has a plan, e.g. from discussion)
   let executionPrompt = enhancedPrompt

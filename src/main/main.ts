@@ -23,6 +23,7 @@ import {
   ensureConfigDirExists,
   getConfigDir,
   getWorkspaces,
+  getWorkspaceById,
   saveWorkspace,
   deleteWorkspace,
   reorderWorkspaces,
@@ -185,7 +186,7 @@ import {
 } from './settings-manager'
 import { clearDebugSettingsCache, getGlobalLogPath } from './logger'
 import { writeCrashLog } from './crash-logger'
-import { getDefaultPrompt } from './prompt-templates'
+import { getDefaultPrompt, getPromptTemplate, applyVariables } from './prompt-templates'
 import { bdList } from './bd-client'
 import {
   startStandaloneHeadlessAgent,
@@ -469,11 +470,50 @@ function registerIpcHandlers() {
   })
 
   // Terminal management
-  ipcMain.handle('create-terminal', async (_event, workspaceId: string) => {
-    devLog('[Main] create-terminal called for workspace:', workspaceId)
+  ipcMain.handle('create-terminal', async (_event, workspaceId: string, options?: { agentType?: string }) => {
+    devLog('[Main] create-terminal called for workspace:', workspaceId, 'options:', options)
     try {
+      // Check for agent type: launch-time override > saved workspace agentType
+      let claudeFlags: string | undefined
+      const workspace = getWorkspaceById(workspaceId)
+      const agentType = (options?.agentType || workspace?.agentType) as import('../shared/types').StandaloneAgentType | undefined
+      if (agentType && agentType !== 'task' && (!workspace?.provider || workspace?.provider === 'claude')) {
+        try {
+          const template = await getPromptTemplate(agentType)
+          const prompt = applyVariables(template, {
+            taskList: '',
+            memoryPath: path.join(workspace?.directory || '.', '.memory'),
+            planTitle: workspace?.name || 'Agent',
+            planDescription: workspace?.purpose || '',
+            codebasePath: workspace?.directory || '.',
+            planDir: workspace?.directory || '.',
+            referenceRepoName: path.basename(workspace?.directory || '.'),
+            taskId: 'interactive',
+            baseBranch: 'main',
+            originalTaskId: 'interactive',
+            originalTaskTitle: workspace?.name || 'Agent',
+            criticCriteria: '',
+            criticIteration: 0,
+            maxCriticIterations: 1,
+            epicId: 'interactive',
+            repoName: path.basename(workspace?.directory || '.'),
+            worktreeName: 'interactive',
+            lastIterationWarning: '',
+            guidance: '',
+            completionCriteria: '',
+            taskRaisingInstructions: '',
+          })
+          // Write prompt to temp file and pass via --append-system-prompt
+          const tmpFile = path.join(app.getPath('temp'), `bismarck-agent-type-${workspaceId}.txt`)
+          fs.writeFileSync(tmpFile, prompt)
+          claudeFlags = `--append-system-prompt "${tmpFile}"`
+        } catch (err) {
+          devLog('[Main] Failed to build agent type prompt:', err)
+        }
+      }
+
       // Use the queue for terminal creation with full setup
-      const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow)
+      const terminalId = await queueTerminalCreationWithSetup(workspaceId, mainWindow, claudeFlags ? { claudeFlags } : undefined)
       devLog('[Main] create-terminal succeeded:', terminalId)
       return terminalId
     } catch (err) {
@@ -895,8 +935,8 @@ function registerIpcHandlers() {
   })
 
   // Standalone headless agent management
-  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string, options?: { planPhase?: boolean }) => {
-    return startStandaloneHeadlessAgent(agentId, prompt, model, tabId, { skipPlanPhase: options?.planPhase === false })
+  ipcMain.handle('start-standalone-headless-agent', async (_event, agentId: string, prompt: string, model: 'opus' | 'sonnet', tabId?: string, options?: { planPhase?: boolean; agentType?: string }) => {
+    return startStandaloneHeadlessAgent(agentId, prompt, model, tabId, { skipPlanPhase: options?.planPhase === false, agentType: (options?.agentType as import('../shared/types').StandaloneAgentType) || 'task' })
   })
 
   ipcMain.handle('get-standalone-headless-agents', () => {

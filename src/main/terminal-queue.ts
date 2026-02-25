@@ -141,7 +141,8 @@ export function queueTerminalCreation(
  */
 export async function queueTerminalCreationWithSetup(
   workspaceId: string,
-  mainWindow: BrowserWindow | null
+  mainWindow: BrowserWindow | null,
+  options?: { claudeFlags?: string }
 ): Promise<string> {
   // Create socket server for this workspace
   createSocketServer(workspaceId)
@@ -155,7 +156,7 @@ export async function queueTerminalCreationWithSetup(
   setActiveTab(tab.id)
 
   // Queue the terminal creation
-  return queueTerminalCreation(workspaceId, mainWindow)
+  return queueTerminalCreation(workspaceId, mainWindow, options ? { claudeFlags: options.claudeFlags } : undefined)
 }
 
 /**

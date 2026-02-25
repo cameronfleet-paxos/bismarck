@@ -6,7 +6,7 @@
  */
 
 import { getCustomPrompt } from './settings-manager'
-import type { PromptType } from '../shared/types'
+import type { PromptType, StandaloneAgentType } from '../shared/types'
 
 /**
  * Template variables that can be used in prompts
@@ -940,4 +940,63 @@ ${sections.join('\n\n')}`
 export async function buildPrompt(type: PromptType, variables: PromptVariables): Promise<string> {
   const template = await getPromptTemplate(type)
   return applyVariables(template, variables)
+}
+
+/**
+ * Build a prompt for standalone agents with a non-default agent type.
+ *
+ * Composes a hybrid prompt: the agent type's customizable prompt provides the
+ * role/persona, wrapped with the standalone_headless template's infrastructure
+ * instructions (worktree management, proxied tools, PR creation).
+ *
+ * For 'task' type, delegates directly to buildPrompt('standalone_headless', ...)
+ * which preserves the original behavior.
+ */
+export async function buildStandaloneTypedPrompt(
+  agentType: StandaloneAgentType,
+  standaloneVariables: PromptVariables
+): Promise<string> {
+  // Default task type uses the standalone_headless template directly (unchanged behavior)
+  if (agentType === 'task') {
+    return buildPrompt('standalone_headless', standaloneVariables)
+  }
+
+  // Get the type-specific template (e.g., critic, architect, manager, discussion)
+  const typeTemplate = await getPromptTemplate(agentType)
+
+  // Map standalone variables to type-specific variable names
+  const typeVariables: PromptVariables = {
+    taskId: 'standalone',
+    baseBranch: standaloneVariables.protectedBranch,
+    taskList: standaloneVariables.userPrompt,
+    codebasePath: '/workspace',
+    memoryPath: '/workspace/.memory',
+    planTitle: 'Standalone Agent',
+    planDescription: standaloneVariables.userPrompt,
+    // Critic-specific
+    originalTaskId: 'standalone',
+    originalTaskTitle: standaloneVariables.userPrompt?.substring(0, 100) || 'Standalone task',
+    criticCriteria: '',
+    criticIteration: 0,
+    maxCriticIterations: 1,
+    epicId: 'standalone',
+    repoName: 'workspace',
+    worktreeName: standaloneVariables.branchName,
+    lastIterationWarning: '',
+    // Discussion-specific
+    planDir: '/workspace',
+    referenceRepoName: 'workspace',
+    // Pass through guidance/completion criteria
+    guidance: standaloneVariables.guidance,
+    completionCriteria: standaloneVariables.completionCriteria,
+    taskRaisingInstructions: '',
+  }
+
+  const rolePrompt = applyVariables(typeTemplate, typeVariables)
+
+  // Build the standalone infrastructure prompt
+  const infraPrompt = await buildPrompt('standalone_headless', standaloneVariables)
+
+  // Compose: role prompt first (sets persona), then standalone infrastructure (sets environment/workflow)
+  return `${rolePrompt}\n\n${'='.repeat(60)}\n=== STANDALONE AGENT INFRASTRUCTURE ===\n${'='.repeat(60)}\n\n${infraPrompt}`
 }

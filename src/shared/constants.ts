@@ -1,4 +1,4 @@
-import type { ThemeName, ThemeColors, AgentProvider } from './types'
+import type { ThemeName, ThemeColors, AgentProvider, StandaloneAgentType } from './types'
 
 // Famous German figure icons for agents
 // Mix of iconic historical figures and modern pop-culture personalities
@@ -79,3 +79,11 @@ export const agentProviderNames: Record<AgentProvider, string> = {
   claude: 'Claude Code',
   codex: 'OpenAI Codex',
 }
+
+// Agent types available for standalone (non-plan) agent selection
+export const STANDALONE_AGENT_TYPES: Array<{ value: StandaloneAgentType; label: string; description: string }> = [
+  { value: 'critic', label: 'Critic', description: 'Reviews code and raises fix-up issues' },
+  { value: 'architect', label: 'Architect', description: 'Decomposes large tasks into subtasks' },
+  { value: 'manager', label: 'Manager', description: 'Triages and routes tasks by complexity' },
+  { value: 'discussion', label: 'Discussion', description: 'Refines requirements through structured Q&A' },
+]
