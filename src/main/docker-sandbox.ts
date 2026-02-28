@@ -15,6 +15,8 @@ import { ChildProcess } from 'child_process'
 import { Readable, Writable, PassThrough } from 'stream'
 import { EventEmitter } from 'events'
 import * as path from 'path'
+import * as fs from 'fs'
+import * as os from 'os'
 import * as https from 'https'
 import { getProxyUrl, getProxyToken } from './tool-proxy'
 import { getClaudeOAuthToken } from './config'
@@ -103,6 +105,11 @@ const runningContainers: Map<
     containerId: string | null
   }
 > = new Map()
+
+interface BuildDockerArgsResult {
+  args: string[]
+  tokenFile?: string // Temp file to clean up after container exits
+}
 
 /**
  * Build docker run arguments for an interactive Docker terminal session.
@@ -262,8 +269,9 @@ export async function buildInteractiveDockerArgs(options: InteractiveDockerOptio
 /**
  * Build the docker run command arguments
  */
-async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
+async function buildDockerArgs(config: ContainerConfig): Promise<BuildDockerArgsResult> {
   const settings = await loadSettings()
+  let tokenFile: string | undefined
 
   const args: string[] = [
     'run',
@@ -380,7 +388,9 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     args.push('-e', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/bismarck-tools')
   }
 
-  // Pass Claude OAuth token to container for headless agents using Claude subscription
+  // Pass Claude OAuth token to container via file mount instead of env var.
+  // Env vars passed via -e are visible in docker inspect and /proc/<pid>/environ.
+  // File mounts are only accessible inside the container.
   const oauthToken = getClaudeOAuthToken()
   devLog('[DockerSandbox] OAuth token present:', !!oauthToken, oauthToken ? `(len=${oauthToken.length})` : '')
   if (oauthToken) {
@@ -388,7 +398,15 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
     if (oauthToken.length < 100) {
       console.warn('[DockerSandbox] WARNING: OAuth token appears truncated (length:', oauthToken.length, '), expected ~108 chars')
     }
-    args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`)
+    // Write token to temp file with restrictive permissions
+    const tokenDir = path.join(os.tmpdir(), 'bismarck-tokens')
+    fs.mkdirSync(tokenDir, { recursive: true, mode: 0o700 })
+    tokenFile = path.join(tokenDir, `oauth-${Date.now()}.txt`)
+    fs.writeFileSync(tokenFile, oauthToken, { mode: 0o600 })
+    // Mount the token file read-only into the container
+    args.push('-v', `${tokenFile}:/run/secrets/oauth-token:ro`)
+    // Tell the container where to find the token
+    args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN_FILE=/run/secrets/oauth-token')
   }
 
   // Add any custom environment variables
@@ -426,38 +444,48 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 
   // For mock images, use the image's entrypoint instead of claude command
   if (!config.useEntrypoint) {
+    // Build the claude command parts
+    const claudeArgs: string[] = ['claude', '--dangerously-skip-permissions']
+
     if (config.mode === 'plan') {
       // Plan mode: read-only analysis with restricted tools, stream-json output, uses sonnet for speed
       // Write is included so Claude can write the plan to .bismarck-plan.md for file-based capture
-      args.push('claude')
-      args.push('--dangerously-skip-permissions')
-      args.push('--allowedTools', 'Read,Grep,Glob,Task,Write')
-      args.push('-p', config.prompt)
-      args.push('--output-format', 'stream-json')
-      args.push('--verbose')
-      args.push('--model', 'sonnet')
+      claudeArgs.push('--allowedTools', 'Read,Grep,Glob,Task,Write')
+      claudeArgs.push('-p', config.prompt)
+      claudeArgs.push('--output-format', 'stream-json')
+      claudeArgs.push('--verbose')
+      claudeArgs.push('--model', 'sonnet')
     } else {
       // Execution mode: full permissions, stream-json output
-      args.push('claude')
-      args.push('--dangerously-skip-permissions')
       if (config.inputMode === 'stream-json') {
         // stream-json input: prompt is delivered via stdin, enables multi-turn nudges
-        args.push('--input-format', 'stream-json')
+        claudeArgs.push('--input-format', 'stream-json')
       } else {
         // Default: prompt passed as CLI argument
-        args.push('-p', config.prompt)
+        claudeArgs.push('-p', config.prompt)
       }
-      args.push('--output-format', 'stream-json')
-      args.push('--verbose')
+      claudeArgs.push('--output-format', 'stream-json')
+      claudeArgs.push('--verbose')
 
       // Add any additional claude flags
       if (config.claudeFlags) {
-        args.push(...config.claudeFlags)
+        claudeArgs.push(...config.claudeFlags)
       }
+    }
+
+    // If OAuth token is passed via file mount, wrap the command to read it
+    // into an env var before running claude
+    if (oauthToken) {
+      // Shell wrapper reads token from mounted file and exports as env var
+      const escapedArgs = claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
+      args.push('sh', '-c',
+        `export CLAUDE_CODE_OAUTH_TOKEN="$(cat /run/secrets/oauth-token)" && exec ${escapedArgs}`)
+    } else {
+      args.push(...claudeArgs)
     }
   }
 
-  return args
+  return { args, tokenFile }
 }
 
 /**
@@ -466,7 +494,7 @@ async function buildDockerArgs(config: ContainerConfig): Promise<string[]> {
 export async function spawnContainerAgent(
   config: ContainerConfig
 ): Promise<ContainerResult> {
-  const args = await buildDockerArgs(config)
+  const { args, tokenFile } = await buildDockerArgs(config)
   const trackingId = `container-${Date.now()}`
   const logContext: LogContext = {
     planId: config.planId,
@@ -534,6 +562,10 @@ export async function spawnContainerAgent(
     return new Promise((resolve, reject) => {
       dockerProcess.on('close', (code) => {
         runningContainers.delete(trackingId)
+        // Clean up temp token file if it was created
+        if (tokenFile) {
+          try { fs.unlinkSync(tokenFile) } catch { /* ignore */ }
+        }
         containerEvents.emit('stopped', { trackingId, code })
         resolve(code ?? 1)
       })
