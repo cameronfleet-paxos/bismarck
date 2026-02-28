@@ -1362,14 +1362,13 @@ function registerIpcHandlers() {
     if (!tool?.authCheck?.reauthCommand) {
       throw new Error(`No reauth command configured for tool ${toolId}`)
     }
-    const { execWithPath } = await import('./exec-utils')
+    const { spawnWithPathAsync } = await import('./exec-utils')
     const [cmd, ...args] = tool.authCheck.reauthCommand
     // Use hostPath if the command matches the tool name (e.g., 'bb' -> '/usr/local/bin/bb')
     const resolvedCmd = cmd === tool.name ? tool.hostPath : cmd
-    const command = `"${resolvedCmd}" ${args.map(a => `"${a}"`).join(' ')}`
-    devLog('[Main] run-tool-reauth: executing', command)
+    devLog('[Main] run-tool-reauth: executing', resolvedCmd, args)
     // Fire and forget - don't await, let the process open the browser
-    execWithPath(command).then(
+    spawnWithPathAsync(resolvedCmd, args).then(
       () => devLog('[Main] run-tool-reauth completed'),
       (err) => console.error('[Main] run-tool-reauth failed:', err)
     )
