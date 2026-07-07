@@ -231,16 +231,7 @@ export function createTerminal(
   let agentCmd = ''
 
   if (provider === 'claude') {
-    // Claude session management (unchanged behavior)
-    let sessionId = workspace.sessionId
-    let resume = false
-    if (sessionId && claudeSessionExists(sessionId)) {
-      resume = true
-    } else if (!sessionId) {
-      sessionId = crypto.randomUUID()
-      saveWorkspace({ ...workspace, sessionId })
-    }
-    agentCmd = buildClaudeCommand({ sessionId, resume, claudeFlags, initialPrompt })
+    agentCmd = buildClaudeCommand({ sessionId: crypto.randomUUID(), resume: false, claudeFlags, initialPrompt })
   } else if (provider === 'codex' && !skipCommand) {
     // Codex session management
     let sessionId = workspace.sessionId
