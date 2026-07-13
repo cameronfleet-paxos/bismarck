@@ -21,7 +21,7 @@ interface ActiveTerminal {
 type CommandMode = 'commands' | 'agent-select' | 'prompt-input' | 'ralph-loop-config' | 'cron-schedule'
 
 // Track which command triggered agent selection
-type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | 'cron-headless' | 'docker-terminal' | 'docker-terminal-headless' | null
+type PendingCommand = 'headless' | 'headless-discussion' | 'ralph-loop' | 'ralph-loop-discussion' | 'open-terminal' | 'open-floating-terminal' | 'cron-headless' | 'docker-terminal' | 'docker-terminal-headless' | null
 
 interface Command {
   id: string
@@ -33,6 +33,7 @@ const commands: Command[] = [
   { id: 'start-headless', label: 'Start: Headless Agent', icon: Container },
   { id: 'start-headless-discussion', label: 'Discuss: Headless Agent', icon: MessageSquare },
   { id: 'open-terminal', label: 'Open: Terminal', icon: TerminalSquare },
+  { id: 'open-floating-terminal', label: 'Open: Floating Terminal', icon: TerminalSquare },
   { id: 'start-docker-terminal', label: 'Start: Docker Terminal', icon: Container },
   { id: 'start-docker-terminal-headless', label: 'Open: Headless Agent in Docker', icon: Container },
   { id: 'start-ralph-loop', label: 'Start: Ralph Loop', icon: RefreshCw },
@@ -56,6 +57,7 @@ interface CommandSearchProps {
   onStartRalphLoopDiscussion?: (agentId: string, initialPrompt: string) => void
   onStartPlan?: () => void
   onOpenTerminal?: (agentId: string) => void
+  onOpenFloatingTerminal?: (agentId: string) => void
   onStartDockerTerminal?: (agentId: string) => void
   onStartRalphLoop?: (config: RalphLoopConfig) => void
   onOpenCronAutomation?: () => void
@@ -84,6 +86,7 @@ export function CommandSearch({
   onStartRalphLoopDiscussion,
   onStartPlan,
   onOpenTerminal,
+  onOpenFloatingTerminal,
   onStartDockerTerminal,
   onStartRalphLoop,
   onOpenCronAutomation,
@@ -414,6 +417,11 @@ export function CommandSearch({
           setMode('agent-select')
           setQuery('')
           setSelectedIndex(0)
+        } else if (command.id === 'open-floating-terminal') {
+          setPendingCommand('open-floating-terminal')
+          setMode('agent-select')
+          setQuery('')
+          setSelectedIndex(0)
         } else if (command.id === 'start-docker-terminal') {
           setPendingCommand('docker-terminal')
           setMode('agent-select')
@@ -474,8 +482,12 @@ export function CommandSearch({
       const agent = filteredAgents[idx]
       if (agent) {
         if (pendingCommand === 'open-terminal') {
-          // Immediately open terminal for the selected agent's directory
           onOpenTerminal?.(agent.id)
+          onOpenChange(false)
+          return
+        }
+        if (pendingCommand === 'open-floating-terminal') {
+          onOpenFloatingTerminal?.(agent.id)
           onOpenChange(false)
           return
         }
@@ -619,6 +631,7 @@ export function CommandSearch({
     switch (mode) {
       case 'agent-select':
         if (pendingCommand === 'open-terminal') return 'Open: Terminal'
+        if (pendingCommand === 'open-floating-terminal') return 'Open: Floating Terminal'
         if (pendingCommand === 'docker-terminal') return 'Start: Docker Terminal'
         if (pendingCommand === 'docker-terminal-headless') return 'Open: Headless Agent in Docker'
         if (pendingCommand === 'ralph-loop') return 'Start: Ralph Loop'

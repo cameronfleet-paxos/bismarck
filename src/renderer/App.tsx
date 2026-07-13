@@ -45,6 +45,7 @@ import { WorkflowViewerModal } from '@/renderer/components/WorkflowViewerModal'
 import type { NodeStatus } from '@/renderer/components/workflow/WorkflowStatusViewer'
 import type { WorkflowGraph } from '@/shared/cron-types'
 import { ElapsedTime } from '@/renderer/components/ElapsedTime'
+import { FloatingTerminal } from '@/renderer/components/FloatingTerminal'
 import type { Agent, AgentModel, AppState, AgentTab, AppPreferences, Plan, TaskAssignment, PlanActivity, HeadlessAgentInfo, BranchStrategy, RalphLoopConfig, RalphLoopState, RalphLoopIteration, KeyboardShortcut, KeyboardShortcuts, PrefixChordConfig, SpawningHeadlessInfo, PlainTerminal, TeamMode } from '@/shared/types'
 import { themes } from '@/shared/constants'
 import { getGridConfig, getGridPosition } from '@/shared/grid-utils'
@@ -225,6 +226,9 @@ function App() {
   const [plainTerminals, setPlainTerminals] = useState<Map<string, PlainTerminal>>(new Map())
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null)
   const [editingTerminalName, setEditingTerminalName] = useState('')
+
+  // Floating terminal state
+  const [floatingTerminals, setFloatingTerminals] = useState<Map<string, { terminalId: string; name: string }>>(new Map())
 
   // Cron workflow status viewer state
   const [cronRunStatuses, setCronRunStatuses] = useState<Map<string, {
@@ -2227,6 +2231,22 @@ function App() {
       }
     } catch (err) {
       console.error('Failed to start Docker terminal in agent worktree:', err)
+    }
+  }
+
+  // Open floating terminal handler
+  const handleOpenFloatingTerminal = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (!agent) return
+    try {
+      const terminalName = `Terminal — ${agent.name}`
+      const result = await window.electronAPI?.createPlainTerminal?.(agent.directory, terminalName)
+      if (result) {
+        const floatId = `float-${result.terminalId}`
+        setFloatingTerminals(prev => new Map(prev).set(floatId, { terminalId: result.terminalId, name: terminalName }))
+      }
+    } catch (err) {
+      console.error('Failed to open floating terminal:', err)
     }
   }
 
@@ -4970,6 +4990,27 @@ function App() {
         />
       )}
 
+      {/* Floating Terminals */}
+      {Array.from(floatingTerminals.entries()).map(([floatId, ft]) => (
+        <FloatingTerminal
+          key={floatId}
+          terminalId={ft.terminalId}
+          name={ft.name}
+          theme="gray"
+          onClose={() => {
+            window.electronAPI?.closePlainTerminal?.(ft.terminalId)
+            setFloatingTerminals(prev => {
+              const next = new Map(prev)
+              next.delete(floatId)
+              return next
+            })
+          }}
+          registerWriter={registerWriter}
+          unregisterWriter={unregisterWriter}
+          getBufferedContent={getBufferedContent}
+        />
+      ))}
+
       {/* Dev Console (development only) */}
       <DevConsole
         open={devConsoleOpen}
@@ -5000,6 +5041,7 @@ function App() {
         onStartRalphLoopDiscussion={handleStartRalphLoopDiscussion}
         onStartPlan={() => setPlanCreatorOpen(true)}
         onOpenTerminal={handleOpenTerminal}
+        onOpenFloatingTerminal={handleOpenFloatingTerminal}
         onStartDockerTerminal={handleStartDockerTerminal}
         onStartRalphLoop={handleStartRalphLoop}
         onOpenCronAutomation={() => {
