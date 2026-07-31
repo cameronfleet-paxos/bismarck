@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle, Info, ShieldCheck, Shield, RotateCcw } from 'lucide-react'
+import { Plus, X, Save, Check, Download, Loader2, AlertTriangle, CheckCircle2, XCircle, Info, ShieldCheck, Shield, RotateCcw, RefreshCw } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -25,12 +25,16 @@ interface AppSettings {
       enabled: boolean
       allowedHosts: string[]
     }
+    buildbuddyMcp?: {
+      enabled: boolean
+      hostPath: string
+    }
   }
 }
 
 type ImageStatusState =
   | { status: 'checking' }
-  | { status: 'exists'; imageId?: string; created?: string; size?: number; version?: string; digest?: string; verified?: boolean }
+  | { status: 'exists'; imageId?: string; created?: string; size?: number }
   | { status: 'not-found' }
   | { status: 'pulling'; progress?: string }
   | { status: 'pull-success'; alreadyUpToDate: boolean }
@@ -75,6 +79,10 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
   const [networkIsolationEnabled, setNetworkIsolationEnabled] = useState(settings.docker.networkIsolation?.enabled ?? false)
   const [allowedHosts, setAllowedHosts] = useState<string[]>(settings.docker.networkIsolation?.allowedHosts ?? [])
   const [newHost, setNewHost] = useState('')
+  const [mcpDetection, setMcpDetection] = useState<{ path: string | null; source: string; valid: boolean } | null>(null)
+  const [mcpDetecting, setMcpDetecting] = useState(false)
+  const [mcpShowOverride, setMcpShowOverride] = useState(false)
+  const [mcpManualPath, setMcpManualPath] = useState(settings.docker.buildbuddyMcp?.hostPath || '')
 
   const checkImageStatuses = useCallback(async () => {
     const images = settings.docker.images
@@ -94,11 +102,10 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
           if (!result.dockerAvailable) {
             return { image, state: { status: 'not-found' as const } }
           }
-          const version = result.labels?.['org.opencontainers.image.version']
           return {
             image,
             state: result.exists
-              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size, version, digest: result.digest, verified: result.verified }
+              ? { status: 'exists' as const, imageId: result.imageId, created: result.created, size: result.size }
               : { status: 'not-found' as const },
           }
         } catch {
@@ -170,11 +177,10 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         setTimeout(async () => {
           try {
             const info = await window.electronAPI.checkDockerImageStatus(imageName)
-            const ver = info.labels?.['org.opencontainers.image.version']
             setImageStatuses((prev) => ({
               ...prev,
               [imageName]: info.exists
-                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size, version: ver, digest: info.digest, verified: info.verified }
+                ? { status: 'exists', imageId: info.imageId, created: info.created, size: info.size }
                 : { status: 'not-found' },
             }))
           } catch {
@@ -316,6 +322,63 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
     }
   }
 
+  const runMcpDetection = useCallback(async () => {
+    setMcpDetecting(true)
+    try {
+      const result = await window.electronAPI.detectBuildBuddyMcpPath()
+      setMcpDetection(result)
+      return result
+    } catch (error) {
+      console.error('Failed to detect BuildBuddy MCP path:', error)
+      setMcpDetection({ path: null, source: 'detection failed', valid: false })
+      return null
+    } finally {
+      setMcpDetecting(false)
+    }
+  }, [])
+
+  const saveMcpSettings = useCallback(async (enabled: boolean, hostPath: string) => {
+    try {
+      const currentSettings = await window.electronAPI.getSettings()
+      await window.electronAPI.setRawSettings({
+        ...currentSettings,
+        docker: {
+          ...currentSettings.docker,
+          buildbuddyMcp: { enabled, hostPath },
+        },
+      })
+      await onSettingsChange()
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to update BuildBuddy MCP settings:', error)
+    }
+  }, [onSettingsChange])
+
+  const handleBuildBuddyMcpToggle = async (enabled: boolean) => {
+    if (enabled) {
+      // Auto-detect on toggle ON
+      const result = await runMcpDetection()
+      const detectedPath = result?.path || ''
+      await saveMcpSettings(true, detectedPath)
+    } else {
+      await saveMcpSettings(false, settings.docker.buildbuddyMcp?.hostPath || '')
+    }
+  }
+
+  const handleSaveMcpManualPath = async () => {
+    await saveMcpSettings(true, mcpManualPath)
+    // Re-run detection to update status display
+    setMcpDetection(mcpManualPath ? { path: mcpManualPath, source: 'manual override', valid: true } : null)
+  }
+
+  // Run detection when MCP section is shown as enabled
+  useEffect(() => {
+    if (settings.docker.buildbuddyMcp?.enabled && !mcpDetection && !mcpDetecting) {
+      runMcpDetection()
+    }
+  }, [settings.docker.buildbuddyMcp?.enabled, mcpDetection, mcpDetecting, runMcpDetection])
+
   const renderImageStatus = (image: string) => {
     const imageStatus = imageStatuses[image]
     if (!imageStatus) return null
@@ -328,32 +391,11 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             <span>Checking...</span>
           </div>
         )
-      case 'exists': {
+      case 'exists':
         return (
-          <div className="flex items-center gap-1.5 text-xs flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
             <span className="text-green-600 dark:text-green-400">Installed</span>
-            {imageStatus.version && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground">v{imageStatus.version}</span>
-              </>
-            )}
-            {imageStatus.verified === true && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400" title="Image digest verified against Docker Hub registry">
-                  <ShieldCheck className="h-3 w-3" />
-                  Verified
-                </span>
-              </>
-            )}
-            {imageStatus.digest && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground font-mono">{imageStatus.digest.substring(7, 19)}</span>
-              </>
-            )}
             {imageStatus.size != null && (
               <>
                 <span className="text-muted-foreground">·</span>
@@ -368,7 +410,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
             )}
           </div>
         )
-      }
       case 'not-found':
         return (
           <div className="flex items-center gap-1.5 text-xs">
@@ -437,26 +478,6 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
         <p className="text-sm text-muted-foreground mb-4">
           Docker images used for headless task agents. Select which image to use.
         </p>
-
-        {baseImageUpdate && (
-          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md flex items-start gap-3">
-            <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                Base image updated{baseImageUpdate.newVersion ? ` to v${baseImageUpdate.newVersion}` : ''}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                The official Bismarck agent image has been updated. You may want to rebuild your custom image.
-              </p>
-            </div>
-            <button
-              onClick={() => setBaseImageUpdate(null)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
 
         <div className="space-y-3">
           {settings.docker.images.map((image) => {
@@ -729,6 +750,155 @@ export function DockerSettings({ settings, onSettingsChange }: DockerSettingsPro
                 <Plus className="h-4 w-4 mr-1" />
                 Add
               </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* BuildBuddy MCP Server */}
+      <div className="bg-card border rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-2">BuildBuddy MCP Server</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Mount the BuildBuddy MCP server into Docker containers for Claude Code agents
+        </p>
+
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <Label htmlFor="buildbuddy-mcp-enabled">Enable BuildBuddy MCP in Containers</Label>
+            <p className="text-xs text-muted-foreground">
+              Auto-detects from <code className="bg-muted px-1 rounded">~/.claude.json</code> and mounts at <code className="bg-muted px-1 rounded">/mcp/buildbuddy</code>
+            </p>
+          </div>
+          <Switch
+            id="buildbuddy-mcp-enabled"
+            checked={settings.docker.buildbuddyMcp?.enabled ?? false}
+            onCheckedChange={handleBuildBuddyMcpToggle}
+          />
+        </div>
+
+        {settings.docker.buildbuddyMcp?.enabled && (
+          <div className="space-y-3" data-testid="buildbuddy-mcp-status">
+            {/* Detection status display */}
+            {mcpDetecting ? (
+              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Detecting MCP server...</span>
+              </div>
+            ) : mcpDetection?.valid && mcpDetection.path ? (
+              <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  <div>
+                    <p className="text-sm text-green-600 dark:text-green-400">
+                      Detected at <code className="bg-muted px-1 rounded text-xs">{mcpDetection.path}</code>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Source: {mcpDetection.source}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={runMcpDetection}
+                  className="h-7 text-xs px-2"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Re-detect
+                </Button>
+              </div>
+            ) : mcpDetection?.path && !mcpDetection.valid ? (
+              <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      MCP server not found at detected path
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <code className="bg-muted px-1 rounded">{mcpDetection.path}/dist/index.js</code> is missing — rebuild with <code className="bg-muted px-1 rounded">cd {mcpDetection.path} && npm run build</code>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={runMcpDetection}
+                  className="h-7 text-xs px-2"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Re-detect
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-md">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                  <div>
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      MCP server not found
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Install with <code className="bg-muted px-1 rounded">claude mcp add buildbuddy -s user</code>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={runMcpDetection}
+                  className="h-7 text-xs px-2"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Re-detect
+                </Button>
+              </div>
+            )}
+
+            {/* Override link / manual path input */}
+            {!mcpShowOverride ? (
+              <button
+                onClick={() => setMcpShowOverride(true)}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Override with manual path
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="mcp-manual-path">Manual Path Override</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="mcp-manual-path"
+                    placeholder="/path/to/buildbuddy-mcp"
+                    value={mcpManualPath}
+                    onChange={(e) => setMcpManualPath(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveMcpManualPath()
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={handleSaveMcpManualPath}
+                    disabled={!mcpManualPath.trim()}
+                    size="sm"
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    Save
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Path to the directory containing <code className="bg-muted px-1 rounded">dist/index.js</code>
+                </p>
+              </div>
+            )}
+
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                <strong>How it works:</strong> The MCP server directory is mounted read-only into containers.
+                A <code className="bg-muted px-1 rounded">.claude.json</code> config is generated and mounted to configure
+                Claude Code to use the BuildBuddy MCP server for build and test operations.
+              </p>
             </div>
           </div>
         )}

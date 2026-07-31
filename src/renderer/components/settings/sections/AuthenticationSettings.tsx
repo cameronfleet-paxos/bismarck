@@ -20,6 +20,11 @@ export function AuthenticationSettings() {
   const [tokenCreatedAt, setTokenCreatedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // BuildBuddy API key state
+  const [hasBuildBuddyKey, setHasBuildBuddyKey] = useState(false)
+  const [newBuildBuddyKey, setNewBuildBuddyKey] = useState('')
+  const [savingBuildBuddyKey, setSavingBuildBuddyKey] = useState(false)
+
   // GitHub token state
   const [hasGitHubToken, setHasGitHubToken] = useState(false)
   const [newGitHubToken, setNewGitHubToken] = useState('')
@@ -59,12 +64,14 @@ export function AuthenticationSettings() {
 
   const checkTokenStatus = async () => {
     try {
-      const [oauthConfigured, gitHubConfigured] = await Promise.all([
+      const [oauthConfigured, gitHubConfigured, buildBuddyConfigured] = await Promise.all([
         window.electronAPI.hasOAuthToken(),
         window.electronAPI.hasGitHubToken(),
+        window.electronAPI.hasBuildBuddyApiKey(),
       ])
       setHasToken(oauthConfigured)
       setHasGitHubToken(gitHubConfigured)
+      setHasBuildBuddyKey(buildBuddyConfigured)
       // Note: We don't have token creation timestamp - the API returns just the token string
       setTokenCreatedAt(null)
     } catch (err) {
@@ -152,6 +159,35 @@ export function AuthenticationSettings() {
       setGitHubTokenDetectResult({ success: false, source: null })
     } finally {
       setDetectingGitHubToken(false)
+    }
+  }
+
+  // BuildBuddy API key handlers
+  const handleSaveBuildBuddyKey = async () => {
+    if (!newBuildBuddyKey.trim()) return
+
+    setSavingBuildBuddyKey(true)
+    try {
+      await window.electronAPI.setBuildBuddyApiKey(newBuildBuddyKey.trim())
+      setNewBuildBuddyKey('')
+      setHasBuildBuddyKey(true)
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to save BuildBuddy API key:', error)
+    } finally {
+      setSavingBuildBuddyKey(false)
+    }
+  }
+
+  const handleClearBuildBuddyKey = async () => {
+    try {
+      await window.electronAPI.clearBuildBuddyApiKey()
+      setHasBuildBuddyKey(false)
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to clear BuildBuddy API key:', error)
     }
   }
 
@@ -513,6 +549,78 @@ export function AuthenticationSettings() {
                 <strong>When to use:</strong> If you're getting SAML SSO errors when creating PRs for organization repositories, you need to configure a token here. The token is passed to <code className="bg-muted px-1 rounded">gh</code> commands via the <code className="bg-muted px-1 rounded">GITHUB_TOKEN</code> environment variable.
               </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BuildBuddy API Key Section */}
+      <div className="border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between py-2">
+          <div className="space-y-0.5">
+            <Label className="text-base font-medium">BuildBuddy API Key</Label>
+            <p className="text-sm text-muted-foreground">
+              Used for <code className="bg-muted px-1 rounded text-xs">bb</code> CLI authentication in headless agents
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasBuildBuddyKey ? (
+              <>
+                <Check className="h-4 w-4 text-green-500" />
+                <span className="text-sm text-green-600 dark:text-green-400 font-medium">Configured</span>
+              </>
+            ) : (
+              <>
+                <X className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Not configured</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Manual entry */}
+        <div className="space-y-2">
+          <Label htmlFor="buildbuddy-api-key">API Key</Label>
+          <div className="flex gap-2">
+            <Input
+              id="buildbuddy-api-key"
+              type="password"
+              placeholder={hasBuildBuddyKey ? '••••••••' : 'Enter BuildBuddy API key'}
+              value={newBuildBuddyKey}
+              onChange={(e) => setNewBuildBuddyKey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSaveBuildBuddyKey()
+                }
+              }}
+            />
+            <Button
+              onClick={handleSaveBuildBuddyKey}
+              disabled={!newBuildBuddyKey.trim() || savingBuildBuddyKey}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {savingBuildBuddyKey ? 'Saving...' : 'Save'}
+            </Button>
+            {hasBuildBuddyKey && (
+              <Button
+                onClick={handleClearBuildBuddyKey}
+                variant="outline"
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Info box */}
+        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+          <div className="flex gap-2">
+            <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              <strong>What is this?</strong> The BuildBuddy API key authenticates <code className="bg-muted px-1 rounded">bb</code> CLI commands
+              (remote builds, test execution) in headless agents and Docker containers. The key is passed via
+              the <code className="bg-muted px-1 rounded">BUILDBUDDY_API_KEY</code> environment variable. If set in your shell environment,
+              it will be used automatically.
+            </p>
           </div>
         </div>
       </div>
