@@ -187,8 +187,9 @@ export async function execWithPath(
 }
 
 /**
- * Execute a binary by its name, automatically finding its full path
- * Throws if binary is not found
+ * Execute a binary by its name, automatically finding its full path.
+ * Uses spawn() with args array to avoid shell injection.
+ * Throws if binary is not found.
  */
 export async function execBinary(
   binaryName: string,
@@ -200,13 +201,7 @@ export async function execBinary(
     throw new Error(`Binary not found: ${binaryName}. Searched common paths.`)
   }
 
-  // Quote args that contain spaces
-  const quotedArgs = args.map(arg =>
-    arg.includes(' ') ? `"${arg}"` : arg
-  )
-  const command = `"${binaryPath}" ${quotedArgs.join(' ')}`
-
-  return execWithPath(command, options)
+  return spawnWithPathAsync(binaryPath, args, options)
 }
 
 /**
@@ -224,6 +219,51 @@ export function spawnWithPath(
     PATH: getExtendedPath(),
   }
   return spawnRaw(command, args, { ...options, env: { ...options?.env, ...env } })
+}
+
+/**
+ * Spawn a process with extended PATH and return stdout/stderr as a promise.
+ * This is the safe alternative to execWithPath() - uses spawn() with an args
+ * array instead of shell string interpolation, preventing command injection.
+ */
+export async function spawnWithPathAsync(
+  command: string,
+  args: string[],
+  options?: ExecOptions
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawnWithPath(command, args, {
+      cwd: options?.cwd as string | undefined,
+      env: options?.env as NodeJS.ProcessEnv | undefined,
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString()
+    })
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString()
+    })
+
+    child.on('error', (error: Error) => {
+      reject(error)
+    })
+
+    child.on('close', (code: number | null) => {
+      if (code === 0) {
+        resolve({ stdout, stderr })
+      } else {
+        const error = new Error(`Command failed: ${command} ${args.join(' ')}\n${stderr}`) as Error & { stdout: string; stderr: string; code: number | null }
+        error.stdout = stdout
+        error.stderr = stderr
+        error.code = code
+        reject(error)
+      }
+    })
+  })
 }
 
 /**
